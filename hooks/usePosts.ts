@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { postsService } from '../services/posts';
-import type { PostFormData } from '../types/post';
+import type { PostItem, PostFormData } from '../types/post';
 import type { ListParams } from '../types/common';
 
 const STALE_TIME = 1000 * 60 * 2;
@@ -43,7 +43,7 @@ export const useUpdatePost = () => {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<PostFormData> }) =>
       postsService.update(id, data).then((res) => res.data),
-    onSuccess: (_result, { id }) => {
+    onSuccess: (_result: PostItem, { id }: { id: string; data: Partial<PostFormData> }) => {
       queryClient.invalidateQueries({ queryKey: POST_KEYS.lists() });
       queryClient.invalidateQueries({ queryKey: POST_KEYS.detail(id) });
     },

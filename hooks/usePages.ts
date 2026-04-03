@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { pagesService } from '../services/pages';
-import type { PageFormData } from '../types/page';
+import type { PageItem, PageFormData } from '../types/page';
 import type { ListParams } from '../types/common';
 
 const STALE_TIME = 1000 * 60 * 2;
@@ -43,7 +43,7 @@ export const useUpdatePage = () => {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<PageFormData> }) =>
       pagesService.update(id, data).then((res) => res.data),
-    onSuccess: (_result, { id }) => {
+    onSuccess: (_result: PageItem, { id }: { id: string; data: Partial<PageFormData> }) => {
       queryClient.invalidateQueries({ queryKey: PAGE_KEYS.lists() });
       queryClient.invalidateQueries({ queryKey: PAGE_KEYS.detail(id) });
     },
