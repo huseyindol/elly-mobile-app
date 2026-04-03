@@ -5,7 +5,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { widgetsService } from '../services/widgets';
-import type { WidgetFormData } from '../types/widget';
+import type { WidgetItem, WidgetFormData } from '../types/widget';
 import type { ListParams } from '../types/common';
 
 const STALE_TIME = 1000 * 60 * 2;
@@ -48,7 +48,7 @@ export const useUpdateWidget = () => {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<WidgetFormData> }) =>
       widgetsService.update(id, data).then((res) => res.data),
-    onSuccess: (_result, { id }) => {
+    onSuccess: (_result: WidgetItem, { id }: { id: string; data: Partial<WidgetFormData> }) => {
       queryClient.invalidateQueries({ queryKey: WIDGET_KEYS.lists() });
       queryClient.invalidateQueries({ queryKey: WIDGET_KEYS.detail(id) });
     },

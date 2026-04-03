@@ -3,7 +3,7 @@
 // the token is always read from the latest Zustand store state.
 // 401 responses clear auth state and redirect to the login screen via Expo Router.
 
-import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 import { router } from 'expo-router';
 import { ENV } from '../constants/env';
 import { useAuthStore } from '../store/authStore';
@@ -31,7 +31,7 @@ apiClient.interceptors.request.use(
 
 // On 401, clear auth state and redirect to login.
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response: AxiosResponse) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401) {
       useAuthStore.getState().logout();

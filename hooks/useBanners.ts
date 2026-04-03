@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { bannersService } from '../services/banners';
-import type { BannerFormData } from '../types/banner';
+import type { BannerItem, BannerFormData } from '../types/banner';
 import type { ListParams } from '../types/common';
 
 const STALE_TIME = 1000 * 60 * 2;
@@ -43,7 +43,7 @@ export const useUpdateBanner = () => {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<BannerFormData> }) =>
       bannersService.update(id, data).then((res) => res.data),
-    onSuccess: (_result, { id }) => {
+    onSuccess: (_result: BannerItem, { id }: { id: string; data: Partial<BannerFormData> }) => {
       queryClient.invalidateQueries({ queryKey: BANNER_KEYS.lists() });
       queryClient.invalidateQueries({ queryKey: BANNER_KEYS.detail(id) });
     },

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { componentsService } from '../services/components';
-import type { ComponentFormData } from '../types/component';
+import type { ComponentItem, ComponentFormData } from '../types/component';
 import type { ListParams } from '../types/common';
 
 const STALE_TIME = 1000 * 60 * 2;
@@ -44,7 +44,7 @@ export const useUpdateComponent = () => {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<ComponentFormData> }) =>
       componentsService.update(id, data).then((res) => res.data),
-    onSuccess: (_result, { id }) => {
+    onSuccess: (_result: ComponentItem, { id }: { id: string; data: Partial<ComponentFormData> }) => {
       queryClient.invalidateQueries({ queryKey: COMPONENT_KEYS.lists() });
       queryClient.invalidateQueries({ queryKey: COMPONENT_KEYS.detail(id) });
     },

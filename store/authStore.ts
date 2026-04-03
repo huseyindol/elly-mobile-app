@@ -21,7 +21,7 @@ interface AuthState {
   logout: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>()((set) => ({
   token: null,
   isAuthenticated: false,
   user: null,
