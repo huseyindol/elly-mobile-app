@@ -43,7 +43,7 @@ function AuthGuard() {
     if (!isAuthenticated && !inAuthGroup) {
       router.replace('/(auth)/login');
     } else if (isAuthenticated && inAuthGroup) {
-      router.replace('/(tabs)/dashboard');
+      router.replace('/(drawer)/dashboard');
     }
   }, [isAuthenticated, hydrated, segments]);
 
