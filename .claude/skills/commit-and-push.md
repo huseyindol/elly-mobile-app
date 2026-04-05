@@ -13,8 +13,8 @@ Run pre-commit checks, create a semantic commit, and push to the feature branch.
 
 ### 1. Pre-commit Checks
 ```bash
-npx tsc --noEmit          # Must have 0 errors
-npx eslint . --max-warnings 0   # Must have 0 warnings
+bunx tsc --noEmit                 # Must have 0 errors
+bunx eslint . --max-warnings 0    # Must have 0 warnings
 ```
 If either fails → STOP. Fix errors before committing.
 

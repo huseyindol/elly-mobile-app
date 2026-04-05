@@ -139,13 +139,16 @@ Access via `process.env.EXPO_PUBLIC_*` or use `constants/env.ts`.
 ## Key Commands
 
 ```bash
-npx expo start              # Start dev server
-npx expo start --ios        # iOS simulator
-npx expo start --android    # Android emulator
-npx tsc --noEmit            # Type check
-npx eslint .                # Lint
-npx jest                    # Run tests
-npx expo export             # Production build
+bun start                   # Start dev server (expo start)
+bun run ios                 # iOS simulator
+bun run android             # Android emulator
+bunx tsc --noEmit           # Type check
+bunx eslint .               # Lint
+bun test                    # Run tests
+bunx expo export            # Production build
+
+# Install deps
+bun install
 ```
 
 ## Notes for Claude Agents
