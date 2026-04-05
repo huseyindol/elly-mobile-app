@@ -1,21 +1,36 @@
 import type { AxiosResponse } from 'axios';
 import { apiClient } from './api-client';
-import type { ComponentItem, ComponentFormData, ComponentListResponse } from '../types/component';
-import type { ListParams } from '../types/common';
+import type {
+  ComponentFormData,
+  ComponentListResponse,
+  ComponentPagedResponse,
+  ComponentResponse,
+  ComponentSummary,
+} from '../types/component';
+import type { BaseApiResponse, ListParams } from '../types/common';
 
 export const componentsService = {
-  getList: (params?: ListParams): Promise<AxiosResponse<ComponentListResponse>> =>
-    apiClient.get<ComponentListResponse>('/components', { params }),
+  getList: (): Promise<AxiosResponse<ComponentListResponse>> =>
+    apiClient.get<ComponentListResponse>('/components/list'),
 
-  getById: (id: string): Promise<AxiosResponse<ComponentItem>> =>
-    apiClient.get<ComponentItem>(`/components/${id}`),
+  getListPaged: (params?: ListParams): Promise<AxiosResponse<ComponentPagedResponse>> =>
+    apiClient.get<ComponentPagedResponse>('/components/list/paged', { params }),
 
-  create: (data: ComponentFormData): Promise<AxiosResponse<ComponentItem>> =>
-    apiClient.post<ComponentItem>('/components', data),
+  getSummary: (): Promise<AxiosResponse<BaseApiResponse<ComponentSummary[]>>> =>
+    apiClient.get<BaseApiResponse<ComponentSummary[]>>('/components/list/summary'),
 
-  update: (id: string, data: Partial<ComponentFormData>): Promise<AxiosResponse<ComponentItem>> =>
-    apiClient.patch<ComponentItem>(`/components/${id}`, data),
+  getById: (id: number): Promise<AxiosResponse<ComponentResponse>> =>
+    apiClient.get<ComponentResponse>(`/components/${id}`),
 
-  remove: (id: string): Promise<AxiosResponse<void>> =>
+  create: (data: ComponentFormData): Promise<AxiosResponse<ComponentResponse>> =>
+    apiClient.post<ComponentResponse>('/components', data),
+
+  update: (
+    id: number,
+    data: Partial<ComponentFormData>,
+  ): Promise<AxiosResponse<ComponentResponse>> =>
+    apiClient.put<ComponentResponse>(`/components/${id}`, data),
+
+  remove: (id: number): Promise<AxiosResponse<void>> =>
     apiClient.delete<void>(`/components/${id}`),
 };

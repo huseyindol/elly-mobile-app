@@ -1,21 +1,33 @@
 import type { AxiosResponse } from 'axios';
 import { apiClient } from './api-client';
-import type { WidgetItem, WidgetFormData, WidgetListResponse } from '../types/widget';
-import type { ListParams } from '../types/common';
+import type {
+  WidgetFormData,
+  WidgetListResponse,
+  WidgetPagedResponse,
+  WidgetResponse,
+  WidgetSummary,
+} from '../types/widget';
+import type { BaseApiResponse, ListParams } from '../types/common';
 
 export const widgetsService = {
-  getList: (params?: ListParams): Promise<AxiosResponse<WidgetListResponse>> =>
-    apiClient.get<WidgetListResponse>('/widgets', { params }),
+  getList: (): Promise<AxiosResponse<WidgetListResponse>> =>
+    apiClient.get<WidgetListResponse>('/widgets/list'),
 
-  getById: (id: string): Promise<AxiosResponse<WidgetItem>> =>
-    apiClient.get<WidgetItem>(`/widgets/${id}`),
+  getListPaged: (params?: ListParams): Promise<AxiosResponse<WidgetPagedResponse>> =>
+    apiClient.get<WidgetPagedResponse>('/widgets/list/paged', { params }),
 
-  create: (data: WidgetFormData): Promise<AxiosResponse<WidgetItem>> =>
-    apiClient.post<WidgetItem>('/widgets', data),
+  getSummary: (): Promise<AxiosResponse<BaseApiResponse<WidgetSummary[]>>> =>
+    apiClient.get<BaseApiResponse<WidgetSummary[]>>('/widgets/list/summary'),
 
-  update: (id: string, data: Partial<WidgetFormData>): Promise<AxiosResponse<WidgetItem>> =>
-    apiClient.patch<WidgetItem>(`/widgets/${id}`, data),
+  getById: (id: number): Promise<AxiosResponse<WidgetResponse>> =>
+    apiClient.get<WidgetResponse>(`/widgets/${id}`),
 
-  remove: (id: string): Promise<AxiosResponse<void>> =>
+  create: (data: WidgetFormData): Promise<AxiosResponse<WidgetResponse>> =>
+    apiClient.post<WidgetResponse>('/widgets', data),
+
+  update: (id: number, data: Partial<WidgetFormData>): Promise<AxiosResponse<WidgetResponse>> =>
+    apiClient.put<WidgetResponse>(`/widgets/${id}`, data),
+
+  remove: (id: number): Promise<AxiosResponse<void>> =>
     apiClient.delete<void>(`/widgets/${id}`),
 };

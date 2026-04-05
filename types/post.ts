@@ -1,23 +1,35 @@
-import type { PaginatedResponse } from './common';
-
-export type PostStatus = 'draft' | 'published' | 'archived';
+import type { BaseApiResponse, PagedResponse } from './common';
+import type { SeoInfo } from './seo';
 
 export interface PostItem {
-  id: string;
+  id: number;
   title: string;
-  status: PostStatus;
+  content?: string;
   slug: string;
-  excerpt?: string;
-  createdAt: string;
-  updatedAt: string;
+  status: boolean;
+  orderIndex: number;
+  template?: string;
+  seoInfo?: SeoInfo;
 }
 
 export interface PostFormData {
   title: string;
-  slug: string;
-  status: PostStatus;
-  excerpt?: string;
   content?: string;
+  slug: string;
+  status: boolean;
+  orderIndex?: number;
+  template?: string;
+  seoInfo?: Omit<SeoInfo, 'id'>;
 }
 
-export type PostListResponse = PaginatedResponse<PostItem>;
+export interface PostSummary {
+  id: number;
+  title: string;
+  slug: string;
+  status: boolean;
+  orderIndex: number;
+}
+
+export type PostListResponse = BaseApiResponse<PostItem[]>;
+export type PostPagedResponse = BaseApiResponse<PagedResponse<PostItem>>;
+export type PostResponse = BaseApiResponse<PostItem>;

@@ -1,21 +1,24 @@
 import type { AxiosResponse } from 'axios';
 import { apiClient } from './api-client';
-import type { PageItem, PageFormData, PageListResponse } from '../types/page';
+import type { PageFormData, PageListResponse, PagePagedResponse, PageResponse } from '../types/page';
 import type { ListParams } from '../types/common';
 
 export const pagesService = {
-  getList: (params?: ListParams): Promise<AxiosResponse<PageListResponse>> =>
-    apiClient.get<PageListResponse>('/pages', { params }),
+  getList: (): Promise<AxiosResponse<PageListResponse>> =>
+    apiClient.get<PageListResponse>('/pages/list'),
 
-  getById: (id: string): Promise<AxiosResponse<PageItem>> =>
-    apiClient.get<PageItem>(`/pages/${id}`),
+  getListPaged: (params?: ListParams): Promise<AxiosResponse<PagePagedResponse>> =>
+    apiClient.get<PagePagedResponse>('/pages/list/paged', { params }),
 
-  create: (data: PageFormData): Promise<AxiosResponse<PageItem>> =>
-    apiClient.post<PageItem>('/pages', data),
+  getBySlug: (slug: string): Promise<AxiosResponse<PageResponse>> =>
+    apiClient.get<PageResponse>(`/pages/${slug}`),
 
-  update: (id: string, data: Partial<PageFormData>): Promise<AxiosResponse<PageItem>> =>
-    apiClient.patch<PageItem>(`/pages/${id}`, data),
+  create: (data: PageFormData): Promise<AxiosResponse<PageResponse>> =>
+    apiClient.post<PageResponse>('/pages', data),
 
-  remove: (id: string): Promise<AxiosResponse<void>> =>
+  update: (id: number, data: Partial<PageFormData>): Promise<AxiosResponse<PageResponse>> =>
+    apiClient.put<PageResponse>(`/pages/${id}`, data),
+
+  remove: (id: number): Promise<AxiosResponse<void>> =>
     apiClient.delete<void>(`/pages/${id}`),
 };

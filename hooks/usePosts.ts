@@ -1,31 +1,36 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { postsService } from '../services/posts';
-import type { PostItem, PostFormData } from '../types/post';
+import type { PostFormData } from '../types/post';
 import type { ListParams } from '../types/common';
 
 const STALE_TIME = 1000 * 60 * 2;
 
 export const POST_KEYS = {
   all: ['posts'] as const,
-  lists: () => [...POST_KEYS.all, 'list'] as const,
-  list: (params?: ListParams) => [...POST_KEYS.lists(), params] as const,
-  details: () => [...POST_KEYS.all, 'detail'] as const,
-  detail: (id: string) => [...POST_KEYS.details(), id] as const,
+  lists: () => ['posts', 'list'] as const,
+  detail: (id: number) => ['posts', 'detail', id] as const,
 };
 
 export const usePostList = (params?: ListParams) =>
   useQuery({
-    queryKey: POST_KEYS.list(params),
-    queryFn: () => postsService.getList(params).then((res) => res.data),
+    queryKey: [...POST_KEYS.lists(), params] as const,
+    queryFn: () => postsService.getList().then((res) => res.data),
     staleTime: STALE_TIME,
   });
 
-export const usePost = (id: string) =>
+export const usePostsPaged = (params?: ListParams) =>
+  useQuery({
+    queryKey: [...POST_KEYS.lists(), 'paged', params] as const,
+    queryFn: () => postsService.getListPaged(params).then((res) => res.data),
+    staleTime: STALE_TIME,
+  });
+
+export const usePost = (id: number) =>
   useQuery({
     queryKey: POST_KEYS.detail(id),
     queryFn: () => postsService.getById(id).then((res) => res.data),
     staleTime: STALE_TIME,
-    enabled: Boolean(id),
+    enabled: id > 0,
   });
 
 export const useCreatePost = () => {
@@ -41,9 +46,9 @@ export const useCreatePost = () => {
 export const useUpdatePost = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<PostFormData> }) =>
+    mutationFn: ({ id, data }: { id: number; data: Partial<PostFormData> }) =>
       postsService.update(id, data).then((res) => res.data),
-    onSuccess: (_result: PostItem, { id }: { id: string; data: Partial<PostFormData> }) => {
+    onSuccess: (_result, { id }) => {
       queryClient.invalidateQueries({ queryKey: POST_KEYS.lists() });
       queryClient.invalidateQueries({ queryKey: POST_KEYS.detail(id) });
     },
@@ -53,7 +58,7 @@ export const useUpdatePost = () => {
 export const useDeletePost = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => postsService.remove(id).then((res) => res.data),
+    mutationFn: (id: number) => postsService.remove(id).then((res) => res.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: POST_KEYS.lists() });
     },

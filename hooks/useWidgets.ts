@@ -5,32 +5,37 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { widgetsService } from '../services/widgets';
-import type { WidgetItem, WidgetFormData } from '../types/widget';
+import type { WidgetFormData } from '../types/widget';
 import type { ListParams } from '../types/common';
 
 const STALE_TIME = 1000 * 60 * 2;
 
 export const WIDGET_KEYS = {
   all: ['widgets'] as const,
-  lists: () => [...WIDGET_KEYS.all, 'list'] as const,
-  list: (params?: ListParams) => [...WIDGET_KEYS.lists(), params] as const,
-  details: () => [...WIDGET_KEYS.all, 'detail'] as const,
-  detail: (id: string) => [...WIDGET_KEYS.details(), id] as const,
+  lists: () => ['widgets', 'list'] as const,
+  detail: (id: number) => ['widgets', 'detail', id] as const,
 };
 
 export const useWidgetList = (params?: ListParams) =>
   useQuery({
-    queryKey: WIDGET_KEYS.list(params),
-    queryFn: () => widgetsService.getList(params).then((res) => res.data),
+    queryKey: [...WIDGET_KEYS.lists(), params] as const,
+    queryFn: () => widgetsService.getList().then((res) => res.data),
     staleTime: STALE_TIME,
   });
 
-export const useWidget = (id: string) =>
+export const useWidgetsPaged = (params?: ListParams) =>
+  useQuery({
+    queryKey: [...WIDGET_KEYS.lists(), 'paged', params] as const,
+    queryFn: () => widgetsService.getListPaged(params).then((res) => res.data),
+    staleTime: STALE_TIME,
+  });
+
+export const useWidget = (id: number) =>
   useQuery({
     queryKey: WIDGET_KEYS.detail(id),
     queryFn: () => widgetsService.getById(id).then((res) => res.data),
     staleTime: STALE_TIME,
-    enabled: Boolean(id),
+    enabled: id > 0,
   });
 
 export const useCreateWidget = () => {
@@ -46,9 +51,9 @@ export const useCreateWidget = () => {
 export const useUpdateWidget = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<WidgetFormData> }) =>
+    mutationFn: ({ id, data }: { id: number; data: Partial<WidgetFormData> }) =>
       widgetsService.update(id, data).then((res) => res.data),
-    onSuccess: (_result: WidgetItem, { id }: { id: string; data: Partial<WidgetFormData> }) => {
+    onSuccess: (_result, { id }) => {
       queryClient.invalidateQueries({ queryKey: WIDGET_KEYS.lists() });
       queryClient.invalidateQueries({ queryKey: WIDGET_KEYS.detail(id) });
     },
@@ -58,7 +63,7 @@ export const useUpdateWidget = () => {
 export const useDeleteWidget = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => widgetsService.remove(id).then((res) => res.data),
+    mutationFn: (id: number) => widgetsService.remove(id).then((res) => res.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: WIDGET_KEYS.lists() });
     },

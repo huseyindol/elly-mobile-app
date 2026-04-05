@@ -1,30 +1,28 @@
 import type { AxiosResponse } from 'axios';
 import { apiClient } from './api-client';
-import type { AuthUser } from '../store/authStore';
-
-export interface LoginCredentials {
-  email: string;
-  password: string;
-}
-
-export interface LoginResponse {
-  token: string;
-  refreshToken: string;
-  user: AuthUser;
-}
-
-export interface RefreshTokenResponse {
-  token: string;
-  refreshToken: string;
-}
+import type {
+  LoginCredentials,
+  LoginResponse,
+  RefreshTokenResponse,
+  TokenDecodeResponse,
+} from '../types/auth';
+import type { BaseApiResponse } from '../types/common';
 
 export const authService = {
-  login: (credentials: LoginCredentials): Promise<AxiosResponse<LoginResponse>> =>
-    apiClient.post<LoginResponse>('/auth/login', credentials),
+  login: (
+    credentials: LoginCredentials,
+  ): Promise<AxiosResponse<BaseApiResponse<LoginResponse>>> =>
+    apiClient.post<BaseApiResponse<LoginResponse>>('/auth/login', credentials),
 
-  logout: (): Promise<AxiosResponse<void>> =>
-    apiClient.post<void>('/auth/logout'),
+  logout: (): Promise<AxiosResponse<void>> => apiClient.post<void>('/auth/logout'),
 
-  refreshToken: (refreshToken: string): Promise<AxiosResponse<RefreshTokenResponse>> =>
-    apiClient.post<RefreshTokenResponse>('/auth/refresh', { refreshToken }),
+  refreshToken: (
+    token: string,
+  ): Promise<AxiosResponse<BaseApiResponse<RefreshTokenResponse>>> =>
+    apiClient.post<BaseApiResponse<RefreshTokenResponse>>('/auth/refresh', {
+      refreshToken: token,
+    }),
+
+  decodeToken: (): Promise<AxiosResponse<BaseApiResponse<TokenDecodeResponse>>> =>
+    apiClient.get<BaseApiResponse<TokenDecodeResponse>>('/auth/decode'),
 };

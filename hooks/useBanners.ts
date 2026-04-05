@@ -1,37 +1,43 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { bannersService } from '../services/banners';
-import type { BannerItem, BannerFormData } from '../types/banner';
+import type { BannerFormData, BannerImageFiles } from '../types/banner';
 import type { ListParams } from '../types/common';
 
 const STALE_TIME = 1000 * 60 * 2;
 
 export const BANNER_KEYS = {
   all: ['banners'] as const,
-  lists: () => [...BANNER_KEYS.all, 'list'] as const,
-  list: (params?: ListParams) => [...BANNER_KEYS.lists(), params] as const,
-  details: () => [...BANNER_KEYS.all, 'detail'] as const,
-  detail: (id: string) => [...BANNER_KEYS.details(), id] as const,
+  lists: () => ['banners', 'list'] as const,
+  detail: (id: number) => ['banners', 'detail', id] as const,
 };
 
 export const useBannerList = (params?: ListParams) =>
   useQuery({
-    queryKey: BANNER_KEYS.list(params),
-    queryFn: () => bannersService.getList(params).then((res) => res.data),
+    queryKey: [...BANNER_KEYS.lists(), params] as const,
+    queryFn: () => bannersService.getList().then((res) => res.data),
     staleTime: STALE_TIME,
   });
 
-export const useBanner = (id: string) =>
+export const useBannersPaged = (params?: ListParams) =>
+  useQuery({
+    queryKey: [...BANNER_KEYS.lists(), 'paged', params] as const,
+    queryFn: () => bannersService.getListPaged(params).then((res) => res.data),
+    staleTime: STALE_TIME,
+  });
+
+export const useBanner = (id: number) =>
   useQuery({
     queryKey: BANNER_KEYS.detail(id),
     queryFn: () => bannersService.getById(id).then((res) => res.data),
     staleTime: STALE_TIME,
-    enabled: Boolean(id),
+    enabled: id > 0,
   });
 
 export const useCreateBanner = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: BannerFormData) => bannersService.create(data).then((res) => res.data),
+    mutationFn: ({ data, imageFiles }: { data: BannerFormData; imageFiles?: BannerImageFiles }) =>
+      bannersService.create(data, imageFiles).then((res) => res.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: BANNER_KEYS.lists() });
     },
@@ -41,9 +47,16 @@ export const useCreateBanner = () => {
 export const useUpdateBanner = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<BannerFormData> }) =>
-      bannersService.update(id, data).then((res) => res.data),
-    onSuccess: (_result: BannerItem, { id }: { id: string; data: Partial<BannerFormData> }) => {
+    mutationFn: ({
+      id,
+      data,
+      imageFiles,
+    }: {
+      id: number;
+      data: Partial<BannerFormData>;
+      imageFiles?: BannerImageFiles;
+    }) => bannersService.update(id, data, imageFiles).then((res) => res.data),
+    onSuccess: (_result, { id }) => {
       queryClient.invalidateQueries({ queryKey: BANNER_KEYS.lists() });
       queryClient.invalidateQueries({ queryKey: BANNER_KEYS.detail(id) });
     },
@@ -53,7 +66,7 @@ export const useUpdateBanner = () => {
 export const useDeleteBanner = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => bannersService.remove(id).then((res) => res.data),
+    mutationFn: (id: number) => bannersService.remove(id).then((res) => res.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: BANNER_KEYS.lists() });
     },

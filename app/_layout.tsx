@@ -5,6 +5,8 @@
 //   3. Auth guard uses Zustand useAuthStore; unauthenticated users are redirected
 //      to /(auth)/login before any tabs render.
 //   4. SplashScreen is kept visible until the layout is ready to avoid flash.
+//   5. AuthGuard waits for Zustand AsyncStorage rehydration ('hydrated' flag)
+//      before performing any redirects to prevent spurious login redirects on launch.
 
 import { useEffect } from 'react';
 import { Slot, useRouter, useSegments } from 'expo-router';
@@ -25,25 +27,29 @@ const queryClient = new QueryClient({
 });
 
 function AuthGuard() {
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const { isAuthenticated, hydrated } = useAuthStore();
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
+    if (!hydrated) return; // Wait for rehydration
     SplashScreen.hideAsync();
-  }, []);
+  }, [hydrated]);
 
   useEffect(() => {
-    const inAuthGroup = segments[0] === '(auth)';
+    if (!hydrated) return; // Wait for rehydration
 
+    const inAuthGroup = segments[0] === '(auth)';
     if (!isAuthenticated && !inAuthGroup) {
-      // Not authenticated — send to login
       router.replace('/(auth)/login');
     } else if (isAuthenticated && inAuthGroup) {
-      // Already authenticated — send to main app
-      router.replace('/(tabs)/dashboard/index');
+      router.replace('/(tabs)/dashboard');
     }
-  }, [isAuthenticated, segments, router]);
+  }, [isAuthenticated, hydrated, segments]);
+
+  if (!hydrated) {
+    return null; // Keep splash screen visible during rehydration
+  }
 
   return <Slot />;
 }

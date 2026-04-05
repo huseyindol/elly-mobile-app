@@ -1,6 +1,7 @@
 // Architectural decision: A single Axios instance is shared across all services.
 // Authorization headers are injected at request time via an interceptor so that
 // the token is always read from the latest Zustand store state.
+// tenantId is injected via the X-Tenant-ID header when present in auth store.
 // 401 responses clear auth state and redirect to the login screen via Expo Router.
 
 import axios, { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
@@ -12,17 +13,19 @@ export const apiClient = axios.create({
   baseURL: ENV.API_URL,
   headers: {
     'Content-Type': 'application/json',
-    ...(ENV.API_KEY ? { 'x-api-key': ENV.API_KEY } : {}),
   },
   timeout: 15000,
 });
 
-// Attach the current auth token to every outgoing request.
+// Attach the current auth token and optional tenant ID to every outgoing request.
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = useAuthStore.getState().token;
+    const { token, tenantId } = useAuthStore.getState();
     if (token) {
       config.headers.set('Authorization', `Bearer ${token}`);
+    }
+    if (tenantId) {
+      config.headers.set('X-Tenant-ID', tenantId);
     }
     return config;
   },

@@ -5,31 +5,40 @@
 // app reactively picks up the new auth state.
 
 import { useMutation } from '@tanstack/react-query';
-import { authService, type LoginCredentials, type LoginResponse } from '../services/auth';
-import { useAuthStore, type AuthUser } from '../store/authStore';
+import { authService } from '../services/auth';
+import type { LoginCredentials } from '../types/auth';
+import { useAuthStore } from '../store/authStore';
 
-export const useLogin = () => {
-  const login = useAuthStore((state: { login: (token: string, user: AuthUser) => void }) => state.login);
-  return useMutation({
+export const useLogin = () =>
+  useMutation({
     mutationFn: (credentials: LoginCredentials) =>
       authService.login(credentials).then((res) => res.data),
-    onSuccess: (data: LoginResponse) => {
-      login(data.token, data.user);
+    onSuccess: (data, credentials) => {
+      useAuthStore.getState().login({
+        token: data.data.token,
+        refreshToken: data.data.refreshToken,
+        expiredDate: data.data.expiredDate,
+        user: {
+          userId: data.data.userId,
+          username: data.data.username,
+          email: data.data.email,
+          userCode: data.data.userCode,
+        },
+        tenantId: credentials.tenantId,
+        loginType: credentials.loginType ?? 'admin',
+      });
     },
   });
-};
 
-export const useLogout = () => {
-  const logout = useAuthStore((state: { logout: () => void }) => state.logout);
-  return useMutation({
+export const useLogout = () =>
+  useMutation({
     mutationFn: () => authService.logout().then((res) => res.data),
     onSuccess: () => {
-      logout();
+      useAuthStore.getState().logout();
     },
     onError: () => {
       // Clear local auth state even if the server-side logout call fails so
       // the user is never stuck in an authenticated-but-broken state.
-      logout();
+      useAuthStore.getState().logout();
     },
   });
-};

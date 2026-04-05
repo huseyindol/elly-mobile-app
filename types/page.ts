@@ -1,21 +1,28 @@
-import type { PaginatedResponse } from './common';
-
-export type PageStatus = 'draft' | 'published' | 'archived';
+import type { BaseApiResponse, PagedResponse } from './common';
+import type { SeoInfo } from './seo';
 
 export interface PageItem {
-  id: string;
+  id: number;
   title: string;
+  description?: string;
   slug: string;
-  status: PageStatus;
-  createdAt: string;
-  updatedAt: string;
+  status: boolean;
+  template?: string;
+  seoInfo?: SeoInfo;
+  componentIds?: number[];
+  components?: unknown[];
 }
 
 export interface PageFormData {
   title: string;
+  description?: string;
   slug: string;
-  status: PageStatus;
-  content?: string;
+  status: boolean;
+  template?: string;
+  seoInfo?: Omit<SeoInfo, 'id'>;
+  componentIds?: number[];
 }
 
-export type PageListResponse = PaginatedResponse<PageItem>;
+export type PageListResponse = BaseApiResponse<PageItem[]>;
+export type PagePagedResponse = BaseApiResponse<PagedResponse<PageItem>>;
+export type PageResponse = BaseApiResponse<PageItem>;

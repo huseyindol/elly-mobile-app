@@ -70,3 +70,13 @@ export function getStatusLabel(status: string): string {
     status.charAt(0).toUpperCase() + status.slice(1)
   );
 }
+
+/**
+ * Maps a boolean active/inactive flag to a badge label and variant.
+ * Useful for API fields that use boolean rather than string status.
+ */
+export function formatBooleanStatus(status: boolean): { label: string; variant: 'success' | 'neutral' } {
+  return status
+    ? { label: 'Aktif', variant: 'success' }
+    : { label: 'Pasif', variant: 'neutral' };
+}
