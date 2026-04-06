@@ -28,7 +28,7 @@ export const usePagesPaged = (params?: ListParams) =>
 export const usePage = (id: number) =>
   useQuery({
     queryKey: PAGE_KEYS.detail(id),
-    queryFn: () => pagesService.getBySlug(String(id)).then((res) => res.data),
+    queryFn: () => pagesService.getBySlug(String(id)).then((res) => res.data.data),
     staleTime: STALE_TIME,
     enabled: id > 0,
   });

@@ -28,7 +28,7 @@ export const useBannersPaged = (params?: ListParams) =>
 export const useBanner = (id: number) =>
   useQuery({
     queryKey: BANNER_KEYS.detail(id),
-    queryFn: () => bannersService.getById(id).then((res) => res.data),
+    queryFn: () => bannersService.getById(id).then((res) => res.data.data),
     staleTime: STALE_TIME,
     enabled: id > 0,
   });

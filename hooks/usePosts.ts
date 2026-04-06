@@ -28,7 +28,7 @@ export const usePostsPaged = (params?: ListParams) =>
 export const usePost = (id: number) =>
   useQuery({
     queryKey: POST_KEYS.detail(id),
-    queryFn: () => postsService.getById(id).then((res) => res.data),
+    queryFn: () => postsService.getById(id).then((res) => res.data.data),
     staleTime: STALE_TIME,
     enabled: id > 0,
   });

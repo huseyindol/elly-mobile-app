@@ -1,37 +1,64 @@
-// New post screen stub — form for creating a new blog/article post.
-// Form fields and submission to be wired up by api-agent + ui-agent.
+// Elly Mobile App — New post screen
+// Standalone create form. Mirrors [id].tsx with isNew=true always.
+// Kept separate so Expo Router can resolve /posts/new without ambiguity.
 
-import { View, Text, StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useCreatePost } from '../../../hooks/usePosts';
+import { PostFormContent } from '../../../components/forms/PostFormContent';
+import { postSchema } from './[id]';
+import type { PostFormValues } from './[id]';
+import type { PostFormData } from '../../../types/post';
 
 export default function NewPostScreen() {
+  const router = useRouter();
+  const { mutate: createPost, isPending } = useCreatePost();
+
+  const form = useForm<PostFormValues>({
+    resolver: zodResolver(postSchema),
+    defaultValues: { status: true, orderIndex: 0, noIndex: false, noFollow: false },
+  });
+
+  function onSubmit(values: PostFormValues) {
+    const payload: PostFormData = {
+      title: values.title,
+      slug: values.slug,
+      content: values.content,
+      status: values.status,
+      orderIndex: values.orderIndex,
+      template: values.template,
+      seoInfo: {
+        title: values.seoTitle ?? '',
+        description: values.seoDescription ?? '',
+        keywords: values.seoKeywords,
+        noIndex: values.noIndex,
+        noFollow: values.noFollow,
+      },
+    };
+    createPost(payload, { onSuccess: () => router.back() });
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
-      <View style={styles.container}>
-        <Text style={styles.heading}>Yeni Yazı</Text>
-        <Text style={styles.placeholder}>Yeni Yazı oluşturulacak</Text>
-      </View>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <PostFormContent
+          form={form}
+          isNew
+          isBusy={isPending}
+          onSubmit={onSubmit}
+          onDelete={() => undefined}
+        />
+        <View style={styles.bottomSpacer} />
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: '#F9FAFB',
-  },
-  container: {
-    flex: 1,
-    padding: 20,
-  },
-  heading: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 8,
-  },
-  placeholder: {
-    fontSize: 15,
-    color: '#6B7280',
-  },
+  safe: { flex: 1, backgroundColor: '#F9FAFB' },
+  scroll: { padding: 16 },
+  bottomSpacer: { height: 32 },
 });
