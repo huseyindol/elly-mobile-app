@@ -1,12 +1,12 @@
 // Elly Mobile App — Forms list screen
-// Displays all form schemas with search by title and navigation to detail/new screens.
+// Server-side search, infinite scroll, pull-to-refresh, FAB.
 
 import { useState, useCallback } from 'react';
-import { View, FlatList, TextInput, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
+import { View, FlatList, TextInput, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useFormList } from '../../../hooks/useForms';
+import { useInfiniteForms } from '../../../hooks/useForms';
 import { FormCard } from '../../../components/ui/FormCard';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { ErrorView } from '../../../components/ui/ErrorView';
@@ -17,17 +17,28 @@ export default function FormsScreen() {
   const router = useRouter();
   const [search, setSearch] = useState('');
 
-  const { data, isLoading, isError, refetch, isFetching } = useFormList();
+  const {
+    data,
+    isLoading,
+    isError,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetching,
+  } = useInfiniteForms(search || undefined);
 
-  const forms: FormSchema[] = (data?.data ?? []) as FormSchema[];
-
-  const filtered = forms.filter((f) =>
-    !search.trim() || f.title.toLowerCase().includes(search.toLowerCase())
-  );
+  const forms: FormSchema[] = data?.pages.flatMap((p) => p.data.content) ?? [];
 
   const handlePress = useCallback((id: number) => {
     router.push(`/(drawer)/forms/${id}` as `/${string}`);
   }, [router]);
+
+  const handleEndReached = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   if (isLoading) return <LoadingSpinner />;
   if (isError) return <ErrorView message="Formlar yüklenemedi." onRetry={() => void refetch()} />;
@@ -52,20 +63,33 @@ export default function FormsScreen() {
       </View>
 
       <FlatList
-        data={filtered}
+        data={forms}
         keyExtractor={(item) => String(item.id)}
         renderItem={({ item }) => (
           <FormCard form={item} onPress={() => handlePress(item.id)} />
         )}
-        contentContainerStyle={[styles.list, filtered.length === 0 && styles.listEmpty]}
-        ListEmptyComponent={<EmptyState title="Form bulunamadı" icon="list-outline" />}
+        contentContainerStyle={[styles.list, forms.length === 0 && styles.listEmpty]}
+        ListEmptyComponent={
+          <EmptyState
+            title="Form bulunamadı"
+            description={search ? 'Arama kriterlerine uyan form yok.' : 'Henüz form oluşturulmamış.'}
+            icon="list-outline"
+          />
+        }
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <ActivityIndicator size="small" color="#4F46E5" style={styles.footer} />
+          ) : null
+        }
         refreshControl={
           <RefreshControl
-            refreshing={isFetching && !isLoading}
+            refreshing={isFetching && !isLoading && !isFetchingNextPage}
             onRefresh={() => void refetch()}
             tintColor="#4F46E5"
           />
         }
+        onEndReached={handleEndReached}
+        onEndReachedThreshold={0.3}
         showsVerticalScrollIndicator={false}
       />
 
@@ -87,5 +111,6 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, height: 44, fontSize: 15, color: '#111827' },
   list: { paddingHorizontal: 16, paddingBottom: 100 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
+  footer: { paddingVertical: 16 },
   fab: { position: 'absolute', bottom: 24, right: 24, width: 56, height: 56, borderRadius: 28, backgroundColor: '#4F46E5', justifyContent: 'center', alignItems: 'center', shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 8 },
 });

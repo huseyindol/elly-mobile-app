@@ -1,11 +1,11 @@
-// Posts list screen — displays all blog/article posts with search, pull-to-refresh, and FAB.
+// Posts list screen — server-side search, infinite scroll, pull-to-refresh, FAB.
 
 import { useState, useCallback } from 'react';
-import { View, FlatList, TextInput, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
+import { View, FlatList, TextInput, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { usePostList } from '../../../hooks/usePosts';
+import { useInfinitePosts } from '../../../hooks/usePosts';
 import { PostCard } from '../../../components/ui/PostCard';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { ErrorView } from '../../../components/ui/ErrorView';
@@ -15,16 +15,19 @@ import type { PostItem } from '../../../types/post';
 export default function PostsScreen() {
   const router = useRouter();
   const [search, setSearch] = useState('');
-  const { data, isLoading, isError, refetch, isFetching } = usePostList();
 
-  const posts: PostItem[] = (data?.data ?? []) as PostItem[];
-  const filtered = search.trim()
-    ? posts.filter(
-        (p) =>
-          p.title.toLowerCase().includes(search.toLowerCase()) ||
-          p.slug.toLowerCase().includes(search.toLowerCase()),
-      )
-    : posts;
+  const {
+    data,
+    isLoading,
+    isError,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetching,
+  } = useInfinitePosts(search || undefined);
+
+  const posts: PostItem[] = data?.pages.flatMap((p) => p.data.content) ?? [];
 
   const handlePress = useCallback(
     (id: number) => {
@@ -32,6 +35,12 @@ export default function PostsScreen() {
     },
     [router],
   );
+
+  const handleEndReached = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   if (isLoading) return <LoadingSpinner />;
   if (isError) return <ErrorView message="Yazılar yüklenemedi." onRetry={() => void refetch()} />;
@@ -57,30 +66,33 @@ export default function PostsScreen() {
       </View>
 
       <FlatList
-        data={filtered}
+        data={posts}
         keyExtractor={(item) => String(item.id)}
         renderItem={({ item }) => (
           <PostCard post={item} onPress={() => handlePress(item.id)} />
         )}
-        contentContainerStyle={[styles.list, filtered.length === 0 && styles.listEmpty]}
+        contentContainerStyle={[styles.list, posts.length === 0 && styles.listEmpty]}
         ListEmptyComponent={
           <EmptyState
             title="Yazı bulunamadı"
-            description={
-              search
-                ? 'Arama kriterlerine uyan yazı yok.'
-                : 'Henüz yazı oluşturulmamış.'
-            }
+            description={search ? 'Arama kriterlerine uyan yazı yok.' : 'Henüz yazı oluşturulmamış.'}
             icon="newspaper-outline"
           />
         }
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <ActivityIndicator size="small" color="#4F46E5" style={styles.footer} />
+          ) : null
+        }
         refreshControl={
           <RefreshControl
-            refreshing={isFetching && !isLoading}
+            refreshing={isFetching && !isLoading && !isFetchingNextPage}
             onRefresh={() => void refetch()}
             tintColor="#4F46E5"
           />
         }
+        onEndReached={handleEndReached}
+        onEndReachedThreshold={0.3}
         showsVerticalScrollIndicator={false}
       />
 
@@ -112,6 +124,7 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, height: 44, fontSize: 15, color: '#111827' },
   list: { paddingHorizontal: 16, paddingBottom: 100 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
+  footer: { paddingVertical: 16 },
   fab: {
     position: 'absolute',
     bottom: 24,

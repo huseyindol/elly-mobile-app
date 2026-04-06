@@ -1,4 +1,4 @@
-// Widgets list screen — search, type filter chips (all/BANNER/POST), FlatList with WidgetCard, FAB.
+// Widgets list screen — server-side search, client-side type chips (all/BANNER/POST), infinite scroll, FAB.
 
 import { useState, useCallback } from 'react';
 import {
@@ -10,11 +10,12 @@ import {
   ScrollView,
   StyleSheet,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useWidgetList } from '../../../hooks/useWidgets';
+import { useInfiniteWidgets } from '../../../hooks/useWidgets';
 import { WidgetCard } from '../../../components/ui/WidgetCard';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { ErrorView } from '../../../components/ui/ErrorView';
@@ -34,16 +35,24 @@ export default function WidgetsScreen() {
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [selectedType, setSelectedType] = useState<FilterType>('all');
-  const { data, isLoading, isError, refetch, isFetching } = useWidgetList();
 
-  const widgets: WidgetItem[] = (data?.data ?? []) as WidgetItem[];
+  const {
+    data,
+    isLoading,
+    isError,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetching,
+  } = useInfiniteWidgets(search || undefined);
 
-  const filtered = widgets.filter((w) => {
-    const matchType = selectedType === 'all' || w.type === selectedType;
-    const matchSearch =
-      !search.trim() || w.name.toLowerCase().includes(search.toLowerCase());
-    return matchType && matchSearch;
-  });
+  const allWidgets: WidgetItem[] = data?.pages.flatMap((p) => p.data.content) ?? [];
+
+  const filtered =
+    selectedType === 'all'
+      ? allWidgets
+      : allWidgets.filter((w) => w.type === selectedType);
 
   const handlePress = useCallback(
     (id: number) => {
@@ -51,6 +60,12 @@ export default function WidgetsScreen() {
     },
     [router],
   );
+
+  const handleEndReached = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   if (isLoading) return <LoadingSpinner />;
   if (isError) return <ErrorView message="Widget'lar yüklenemedi." onRetry={() => void refetch()} />;
@@ -113,13 +128,20 @@ export default function WidgetsScreen() {
             icon="apps-outline"
           />
         }
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <ActivityIndicator size="small" color="#4F46E5" style={styles.footer} />
+          ) : null
+        }
         refreshControl={
           <RefreshControl
-            refreshing={isFetching && !isLoading}
+            refreshing={isFetching && !isLoading && !isFetchingNextPage}
             onRefresh={() => void refetch()}
             tintColor="#4F46E5"
           />
         }
+        onEndReached={handleEndReached}
+        onEndReachedThreshold={0.3}
         showsVerticalScrollIndicator={false}
       />
 
@@ -163,6 +185,7 @@ const styles = StyleSheet.create({
   chipTextActive: { color: '#4F46E5', fontWeight: '600' },
   list: { paddingHorizontal: 16, paddingBottom: 100 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
+  footer: { paddingVertical: 16 },
   fab: {
     position: 'absolute',
     bottom: 24,

@@ -1,11 +1,11 @@
-// Pages list screen — displays all CMS pages with search, pull-to-refresh, and FAB.
+// Pages list screen — server-side search, infinite scroll, pull-to-refresh, FAB.
 
 import { useState, useCallback } from 'react';
-import { View, FlatList, TextInput, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
+import { View, FlatList, TextInput, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { usePageList } from '../../../hooks/usePages';
+import { useInfinitePages } from '../../../hooks/usePages';
 import { PageCard } from '../../../components/ui/PageCard';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { ErrorView } from '../../../components/ui/ErrorView';
@@ -15,16 +15,19 @@ import type { PageItem } from '../../../types/page';
 export default function PagesScreen() {
   const router = useRouter();
   const [search, setSearch] = useState('');
-  const { data, isLoading, isError, refetch, isFetching } = usePageList();
 
-  const pages: PageItem[] = (data?.data ?? []) as PageItem[];
-  const filtered = search.trim()
-    ? pages.filter(
-        (p) =>
-          p.title.toLowerCase().includes(search.toLowerCase()) ||
-          p.slug.toLowerCase().includes(search.toLowerCase()),
-      )
-    : pages;
+  const {
+    data,
+    isLoading,
+    isError,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetching,
+  } = useInfinitePages(search || undefined);
+
+  const pages: PageItem[] = data?.pages.flatMap((p) => p.data.content) ?? [];
 
   const handlePress = useCallback(
     (id: number) => {
@@ -32,6 +35,12 @@ export default function PagesScreen() {
     },
     [router],
   );
+
+  const handleEndReached = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   if (isLoading) return <LoadingSpinner />;
   if (isError) return <ErrorView message="Sayfalar yüklenemedi." onRetry={() => void refetch()} />;
@@ -57,30 +66,33 @@ export default function PagesScreen() {
       </View>
 
       <FlatList
-        data={filtered}
+        data={pages}
         keyExtractor={(item) => String(item.id)}
         renderItem={({ item }) => (
           <PageCard page={item} onPress={() => handlePress(item.id)} />
         )}
-        contentContainerStyle={[styles.list, filtered.length === 0 && styles.listEmpty]}
+        contentContainerStyle={[styles.list, pages.length === 0 && styles.listEmpty]}
         ListEmptyComponent={
           <EmptyState
             title="Sayfa bulunamadı"
-            description={
-              search
-                ? 'Arama kriterlerine uyan sayfa yok.'
-                : 'Henüz sayfa oluşturulmamış.'
-            }
+            description={search ? 'Arama kriterlerine uyan sayfa yok.' : 'Henüz sayfa oluşturulmamış.'}
             icon="document-text-outline"
           />
         }
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <ActivityIndicator size="small" color="#4F46E5" style={styles.footer} />
+          ) : null
+        }
         refreshControl={
           <RefreshControl
-            refreshing={isFetching && !isLoading}
+            refreshing={isFetching && !isLoading && !isFetchingNextPage}
             onRefresh={() => void refetch()}
             tintColor="#4F46E5"
           />
         }
+        onEndReached={handleEndReached}
+        onEndReachedThreshold={0.3}
         showsVerticalScrollIndicator={false}
       />
 
@@ -112,6 +124,7 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, height: 44, fontSize: 15, color: '#111827' },
   list: { paddingHorizontal: 16, paddingBottom: 100 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
+  footer: { paddingVertical: 16 },
   fab: {
     position: 'absolute',
     bottom: 24,

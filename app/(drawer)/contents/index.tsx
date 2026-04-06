@@ -1,12 +1,12 @@
 // Elly Mobile App — Contents list screen
-// Displays all content items with search by title, contentType filter chips, and navigation to detail/new screens.
+// Server-side search, client-side contentType chips, infinite scroll, pull-to-refresh, FAB.
 
 import { useState, useCallback, useMemo } from 'react';
-import { View, FlatList, TextInput, TouchableOpacity, Text, ScrollView, StyleSheet, RefreshControl } from 'react-native';
+import { View, FlatList, TextInput, TouchableOpacity, Text, ScrollView, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useContentList } from '../../../hooks/useContents';
+import { useInfiniteContents } from '../../../hooks/useContents';
 import { ContentCard } from '../../../components/ui/ContentCard';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { ErrorView } from '../../../components/ui/ErrorView';
@@ -18,24 +18,38 @@ export default function ContentsScreen() {
   const [search, setSearch] = useState('');
   const [selectedType, setSelectedType] = useState('all');
 
-  const { data, isLoading, isError, refetch, isFetching } = useContentList();
+  const {
+    data,
+    isLoading,
+    isError,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetching,
+  } = useInfiniteContents(search || undefined);
 
-  const contents: ContentItem[] = (data?.data ?? []) as ContentItem[];
+  const allContents: ContentItem[] = data?.pages.flatMap((p) => p.data.content) ?? [];
 
   const contentTypes = useMemo(() => {
-    const types = Array.from(new Set(contents.map((c) => c.contentType)));
+    const types = Array.from(new Set(allContents.map((c) => c.contentType)));
     return ['all', ...types];
-  }, [contents]);
+  }, [allContents]);
 
-  const filtered = contents.filter((c) => {
-    const matchType = selectedType === 'all' || c.contentType === selectedType;
-    const matchSearch = !search.trim() || c.basicInfo.title.toLowerCase().includes(search.toLowerCase());
-    return matchType && matchSearch;
-  });
+  const filtered =
+    selectedType === 'all'
+      ? allContents
+      : allContents.filter((c) => c.contentType === selectedType);
 
   const handlePress = useCallback((id: string) => {
     router.push(`/(drawer)/contents/${id}` as `/${string}`);
   }, [router]);
+
+  const handleEndReached = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   if (isLoading) return <LoadingSpinner />;
   if (isError) return <ErrorView message="İçerikler yüklenemedi." onRetry={() => void refetch()} />;
@@ -82,14 +96,27 @@ export default function ContentsScreen() {
           <ContentCard content={item} onPress={() => handlePress(item.id)} />
         )}
         contentContainerStyle={[styles.list, filtered.length === 0 && styles.listEmpty]}
-        ListEmptyComponent={<EmptyState title="İçerik bulunamadı" icon="reader-outline" />}
+        ListEmptyComponent={
+          <EmptyState
+            title="İçerik bulunamadı"
+            description={search || selectedType !== 'all' ? 'Seçilen kriterlere uyan içerik yok.' : 'Henüz içerik oluşturulmamış.'}
+            icon="reader-outline"
+          />
+        }
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <ActivityIndicator size="small" color="#059669" style={styles.footer} />
+          ) : null
+        }
         refreshControl={
           <RefreshControl
-            refreshing={isFetching && !isLoading}
+            refreshing={isFetching && !isLoading && !isFetchingNextPage}
             onRefresh={() => void refetch()}
             tintColor="#059669"
           />
         }
+        onEndReached={handleEndReached}
+        onEndReachedThreshold={0.3}
         showsVerticalScrollIndicator={false}
       />
 
@@ -116,5 +143,6 @@ const styles = StyleSheet.create({
   chipTextActive: { color: '#059669', fontWeight: '600' },
   list: { paddingHorizontal: 16, paddingBottom: 100, paddingTop: 4 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
+  footer: { paddingVertical: 16 },
   fab: { position: 'absolute', bottom: 24, right: 24, width: 56, height: 56, borderRadius: 28, backgroundColor: '#059669', justifyContent: 'center', alignItems: 'center', shadowColor: '#059669', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 8 },
 });

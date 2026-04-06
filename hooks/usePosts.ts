@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { postsService } from '../services/posts';
 import type { PostFormData } from '../types/post';
 import type { ListParams } from '../types/common';
@@ -64,3 +64,16 @@ export const useDeletePost = () => {
     },
   });
 };
+
+export const useInfinitePosts = (search?: string) =>
+  useInfiniteQuery({
+    queryKey: [...POST_KEYS.lists(), 'infinite', { search }] as const,
+    queryFn: ({ pageParam }) =>
+      postsService.getListPaged({ page: pageParam as number, size: 20, search }).then((res) => res.data),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => {
+      const d = lastPage.data;
+      return d.last ? undefined : d.page + 1;
+    },
+    staleTime: STALE_TIME,
+  });

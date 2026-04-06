@@ -1,4 +1,4 @@
-// Banners list screen — search, subFolder filter chips, FlatList with BannerCard, FAB to create.
+// Banners list screen — server-side search, client-side subFolder chips, infinite scroll, FAB.
 
 import { useState, useCallback } from 'react';
 import {
@@ -10,11 +10,12 @@ import {
   ScrollView,
   StyleSheet,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useBannerList } from '../../../hooks/useBanners';
+import { useInfiniteBanners } from '../../../hooks/useBanners';
 import { BannerCard } from '../../../components/ui/BannerCard';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { ErrorView } from '../../../components/ui/ErrorView';
@@ -25,23 +26,29 @@ export default function BannersScreen() {
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [selectedFolder, setSelectedFolder] = useState<string>('all');
-  const { data, isLoading, isError, refetch, isFetching } = useBannerList();
 
-  const banners: BannerItem[] = (data?.data ?? []) as BannerItem[];
+  const {
+    data,
+    isLoading,
+    isError,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetching,
+  } = useInfiniteBanners(search || undefined);
+
+  const allBanners: BannerItem[] = data?.pages.flatMap((p) => p.data.content) ?? [];
 
   const folders = [
     'all',
-    ...Array.from(
-      new Set(banners.filter((b) => b.subFolder).map((b) => b.subFolder as string)),
-    ),
+    ...Array.from(new Set(allBanners.filter((b) => b.subFolder).map((b) => b.subFolder as string))),
   ];
 
-  const filtered = banners.filter((b) => {
-    const matchFolder = selectedFolder === 'all' || b.subFolder === selectedFolder;
-    const matchSearch =
-      !search.trim() || b.title.toLowerCase().includes(search.toLowerCase());
-    return matchFolder && matchSearch;
-  });
+  const filtered =
+    selectedFolder === 'all'
+      ? allBanners
+      : allBanners.filter((b) => b.subFolder === selectedFolder);
 
   const handlePress = useCallback(
     (id: number) => {
@@ -49,6 +56,12 @@ export default function BannersScreen() {
     },
     [router],
   );
+
+  const handleEndReached = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   if (isLoading) return <LoadingSpinner />;
   if (isError) return <ErrorView message="Bannerlar yüklenemedi." onRetry={() => void refetch()} />;
@@ -113,13 +126,20 @@ export default function BannersScreen() {
             icon="image-outline"
           />
         }
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <ActivityIndicator size="small" color="#4F46E5" style={styles.footer} />
+          ) : null
+        }
         refreshControl={
           <RefreshControl
-            refreshing={isFetching && !isLoading}
+            refreshing={isFetching && !isLoading && !isFetchingNextPage}
             onRefresh={() => void refetch()}
             tintColor="#4F46E5"
           />
         }
+        onEndReached={handleEndReached}
+        onEndReachedThreshold={0.3}
         showsVerticalScrollIndicator={false}
       />
 
@@ -163,6 +183,7 @@ const styles = StyleSheet.create({
   chipTextActive: { color: '#4F46E5', fontWeight: '600' },
   list: { paddingHorizontal: 16, paddingBottom: 100 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
+  footer: { paddingVertical: 16 },
   fab: {
     position: 'absolute',
     bottom: 24,

@@ -1,4 +1,4 @@
-// Components list screen — search, type filter chips (all/BANNER/WIDGET/FORM), FlatList with ComponentCard, FAB.
+// Components list screen — server-side search, client-side type chips, infinite scroll, FAB.
 
 import { useState, useCallback } from 'react';
 import {
@@ -10,11 +10,12 @@ import {
   ScrollView,
   StyleSheet,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useComponentList } from '../../../hooks/useComponents';
+import { useInfiniteComponents } from '../../../hooks/useComponents';
 import { ComponentCard } from '../../../components/ui/ComponentCard';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { ErrorView } from '../../../components/ui/ErrorView';
@@ -35,16 +36,24 @@ export default function ComponentsScreen() {
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [selectedType, setSelectedType] = useState<FilterType>('all');
-  const { data, isLoading, isError, refetch, isFetching } = useComponentList();
 
-  const components: ComponentItem[] = (data?.data ?? []) as ComponentItem[];
+  const {
+    data,
+    isLoading,
+    isError,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetching,
+  } = useInfiniteComponents(search || undefined);
 
-  const filtered = components.filter((c) => {
-    const matchType = selectedType === 'all' || c.type === selectedType;
-    const matchSearch =
-      !search.trim() || c.name.toLowerCase().includes(search.toLowerCase());
-    return matchType && matchSearch;
-  });
+  const allComponents: ComponentItem[] = data?.pages.flatMap((p) => p.data.content) ?? [];
+
+  const filtered =
+    selectedType === 'all'
+      ? allComponents
+      : allComponents.filter((c) => c.type === selectedType);
 
   const handlePress = useCallback(
     (id: number) => {
@@ -52,6 +61,12 @@ export default function ComponentsScreen() {
     },
     [router],
   );
+
+  const handleEndReached = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   if (isLoading) return <LoadingSpinner />;
   if (isError) return <ErrorView message="Bileşenler yüklenemedi." onRetry={() => void refetch()} />;
@@ -114,13 +129,20 @@ export default function ComponentsScreen() {
             icon="cube-outline"
           />
         }
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <ActivityIndicator size="small" color="#4F46E5" style={styles.footer} />
+          ) : null
+        }
         refreshControl={
           <RefreshControl
-            refreshing={isFetching && !isLoading}
+            refreshing={isFetching && !isLoading && !isFetchingNextPage}
             onRefresh={() => void refetch()}
             tintColor="#4F46E5"
           />
         }
+        onEndReached={handleEndReached}
+        onEndReachedThreshold={0.3}
         showsVerticalScrollIndicator={false}
       />
 
@@ -164,6 +186,7 @@ const styles = StyleSheet.create({
   chipTextActive: { color: '#4F46E5', fontWeight: '600' },
   list: { paddingHorizontal: 16, paddingBottom: 100 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
+  footer: { paddingVertical: 16 },
   fab: {
     position: 'absolute',
     bottom: 24,

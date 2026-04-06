@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { bannersService } from '../services/banners';
 import type { BannerFormData, BannerImageFiles } from '../types/banner';
 import type { ListParams } from '../types/common';
@@ -72,3 +72,16 @@ export const useDeleteBanner = () => {
     },
   });
 };
+
+export const useInfiniteBanners = (search?: string) =>
+  useInfiniteQuery({
+    queryKey: [...BANNER_KEYS.lists(), 'infinite', { search }] as const,
+    queryFn: ({ pageParam }) =>
+      bannersService.getListPaged({ page: pageParam as number, size: 20, search }).then((res) => res.data),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => {
+      const d = lastPage.data;
+      return d.last ? undefined : d.page + 1;
+    },
+    staleTime: STALE_TIME,
+  });

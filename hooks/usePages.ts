@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { pagesService } from '../services/pages';
 import type { PageFormData } from '../types/page';
 import type { ListParams } from '../types/common';
@@ -64,3 +64,16 @@ export const useDeletePage = () => {
     },
   });
 };
+
+export const useInfinitePages = (search?: string) =>
+  useInfiniteQuery({
+    queryKey: [...PAGE_KEYS.lists(), 'infinite', { search }] as const,
+    queryFn: ({ pageParam }) =>
+      pagesService.getListPaged({ page: pageParam as number, size: 20, search }).then((res) => res.data),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => {
+      const d = lastPage.data;
+      return d.last ? undefined : d.page + 1;
+    },
+    staleTime: STALE_TIME,
+  });
