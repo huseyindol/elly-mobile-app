@@ -1,8 +1,8 @@
 // Elly Mobile App — Component detail / edit screen
 // Handles both editing an existing component (numeric id) and creating a new one (id="new").
-// Uses react-hook-form + zod for validation, React Query mutations for persistence.
+// Includes relation pickers for banners, widgets, and forms.
 
-import { useEffect } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -10,6 +10,9 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useComponent, useCreateComponent, useUpdateComponent, useDeleteComponent } from '../../../hooks/useComponents';
+import { useBannerList } from '../../../hooks/useBanners';
+import { useWidgetList } from '../../../hooks/useWidgets';
+import { useFormList } from '../../../hooks/useForms';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { ErrorView } from '../../../components/ui/ErrorView';
 import { showConfirmDialog } from '../../../components/forms/ConfirmDialog';
@@ -39,6 +42,28 @@ export default function ComponentDetailScreen() {
   const { mutate: updateComponent, isPending: isUpdating } = useUpdateComponent();
   const { mutate: deleteComponent, isPending: isDeleting } = useDeleteComponent();
 
+  // Relation lists for pickers
+  const { data: bannersData } = useBannerList();
+  const { data: widgetsData } = useWidgetList();
+  const { data: formsData } = useFormList();
+
+  const [selectedBannerIds, setSelectedBannerIds] = useState<number[]>([]);
+  const [selectedWidgetIds, setSelectedWidgetIds] = useState<number[]>([]);
+  const [selectedFormIds, setSelectedFormIds] = useState<number[]>([]);
+
+  const bannerItems = useMemo(
+    () => (bannersData?.data ?? []).map((b) => ({ id: b.id, label: b.title, sublabel: b.subFolder })),
+    [bannersData],
+  );
+  const widgetItems = useMemo(
+    () => (widgetsData?.data ?? []).map((w) => ({ id: w.id, label: w.name, sublabel: w.type })),
+    [widgetsData],
+  );
+  const formItems = useMemo(
+    () => (formsData?.data ?? []).map((f) => ({ id: f.id, label: f.title, sublabel: `v${f.version}` })),
+    [formsData],
+  );
+
   const form = useForm<ComponentFormValues>({
     resolver: zodResolver(componentSchema),
     defaultValues: { status: true, orderIndex: 0, type: 'BANNER' },
@@ -56,6 +81,8 @@ export default function ComponentDetailScreen() {
         status: Boolean(d.status),
         template: d.template ?? '',
       });
+      setSelectedBannerIds((d.banners ?? []).map((b) => b.id));
+      setSelectedWidgetIds((d.widgets ?? []).map((w) => w.id));
     }
   }, [data, form]);
 
@@ -68,6 +95,9 @@ export default function ComponentDetailScreen() {
       orderIndex: values.orderIndex,
       status: values.status,
       template: values.template,
+      bannerIds: selectedBannerIds,
+      widgetIds: selectedWidgetIds,
+      formIds: selectedFormIds,
     };
   }
 
@@ -100,6 +130,15 @@ export default function ComponentDetailScreen() {
           form={form}
           isNew={isNew}
           isBusy={isBusy}
+          bannerItems={bannerItems}
+          widgetItems={widgetItems}
+          formItems={formItems}
+          selectedBannerIds={selectedBannerIds}
+          selectedWidgetIds={selectedWidgetIds}
+          selectedFormIds={selectedFormIds}
+          onBannerIdsChange={setSelectedBannerIds}
+          onWidgetIdsChange={setSelectedWidgetIds}
+          onFormIdsChange={setSelectedFormIds}
           onSubmit={onSubmit}
           onDelete={handleDelete}
         />

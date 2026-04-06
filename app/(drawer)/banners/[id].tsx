@@ -1,8 +1,9 @@
 // Elly Mobile App — Banner detail / edit screen
 // Handles both editing an existing banner (numeric id) and creating a new one (id="new").
 // Uses react-hook-form + zod for validation, React Query mutations for persistence.
+// Image files managed in local state; sent as multipart/form-data via useBanner mutations.
 
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -14,7 +15,8 @@ import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { ErrorView } from '../../../components/ui/ErrorView';
 import { showConfirmDialog } from '../../../components/forms/ConfirmDialog';
 import { BannerFormContent } from '../../../components/forms/BannerFormContent';
-import type { BannerFormData } from '../../../types/banner';
+import type { PickedImage } from '../../../components/forms/BannerImagePicker';
+import type { BannerFormData, BannerImageFiles } from '../../../types/banner';
 
 export const bannerSchema = z.object({
   title: z.string().min(1, 'Başlık zorunludur').max(100),
@@ -40,6 +42,8 @@ export default function BannerDetailScreen() {
   const { mutate: updateBanner, isPending: isUpdating } = useUpdateBanner();
   const { mutate: deleteBanner, isPending: isDeleting } = useDeleteBanner();
 
+  const [imageFiles, setImageFiles] = useState<BannerImageFiles>({});
+
   const form = useForm<BannerFormValues>({
     resolver: zodResolver(bannerSchema),
     defaultValues: { status: true, target: '_blank', orderIndex: 0 },
@@ -47,18 +51,33 @@ export default function BannerDetailScreen() {
 
   useEffect(() => {
     if (data) {
+      const d = data;
       form.reset({
-        title: data.title,
-        altText: data.altText ?? '',
-        link: data.link ?? '',
-        target: data.target,
-        type: data.type ?? '',
-        orderIndex: data.orderIndex,
-        status: Boolean(data.status),
-        subFolder: data.subFolder ?? '',
+        title: d.title,
+        altText: d.altText ?? '',
+        link: d.link ?? '',
+        target: d.target,
+        type: d.type ?? '',
+        orderIndex: d.orderIndex,
+        status: Boolean(d.status),
+        subFolder: d.subFolder ?? '',
       });
     }
   }, [data, form]);
+
+  const handleImageChange = useCallback(
+    (slot: keyof BannerImageFiles, file: PickedImage | null) => {
+      setImageFiles((prev) => {
+        if (file === null) {
+          const next = { ...prev };
+          delete next[slot];
+          return next;
+        }
+        return { ...prev, [slot]: file };
+      });
+    },
+    [],
+  );
 
   function buildPayload(values: BannerFormValues): BannerFormData {
     return {
@@ -75,10 +94,17 @@ export default function BannerDetailScreen() {
 
   function onSubmit(values: BannerFormValues) {
     const payload = buildPayload(values);
+    const hasImages = Object.keys(imageFiles).length > 0;
     if (isNew) {
-      createBanner({ data: payload }, { onSuccess: () => router.back() });
+      createBanner(
+        { data: payload, imageFiles: hasImages ? imageFiles : undefined },
+        { onSuccess: () => router.back() },
+      );
     } else {
-      updateBanner({ id: bannerId, data: payload }, { onSuccess: () => router.back() });
+      updateBanner(
+        { id: bannerId, data: payload, imageFiles: hasImages ? imageFiles : undefined },
+        { onSuccess: () => router.back() },
+      );
     }
   }
 
@@ -103,6 +129,8 @@ export default function BannerDetailScreen() {
           isNew={isNew}
           isBusy={isBusy}
           imageUrls={data?.images}
+          imageFiles={imageFiles}
+          onImageChange={handleImageChange}
           onSubmit={onSubmit}
           onDelete={handleDelete}
         />

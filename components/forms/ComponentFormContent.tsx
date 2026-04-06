@@ -7,6 +7,7 @@ import { Controller, UseFormReturn } from 'react-hook-form';
 import { FormField } from './FormField';
 import { StatusToggle } from './StatusToggle';
 import { Button } from '../ui/Button';
+import { RelationPicker, type RelationItem } from './RelationPicker';
 import type { ComponentFormValues } from '../../app/(drawer)/components/[id]';
 import type { ComponentType } from '../../types/component';
 
@@ -14,6 +15,15 @@ interface ComponentFormContentProps {
   form: UseFormReturn<ComponentFormValues>;
   isNew: boolean;
   isBusy: boolean;
+  bannerItems?: RelationItem[];
+  widgetItems?: RelationItem[];
+  formItems?: RelationItem[];
+  selectedBannerIds: number[];
+  selectedWidgetIds: number[];
+  selectedFormIds: number[];
+  onBannerIdsChange: (ids: number[]) => void;
+  onWidgetIdsChange: (ids: number[]) => void;
+  onFormIdsChange: (ids: number[]) => void;
   onSubmit: (values: ComponentFormValues) => void;
   onDelete: () => void;
 }
@@ -28,6 +38,15 @@ export function ComponentFormContent({
   form,
   isNew,
   isBusy,
+  bannerItems = [],
+  widgetItems = [],
+  formItems = [],
+  selectedBannerIds,
+  selectedWidgetIds,
+  selectedFormIds,
+  onBannerIdsChange,
+  onWidgetIdsChange,
+  onFormIdsChange,
   onSubmit,
   onDelete,
 }: ComponentFormContentProps) {
@@ -96,9 +115,24 @@ export function ComponentFormContent({
       {/* Section: İlişkiler */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>İlişkiler</Text>
-        <View style={styles.infoBadge}>
-          <Text style={styles.infoBadgeText}>İlişki yönetimi yakında</Text>
-        </View>
+        <RelationPicker
+          label="Bannerlar"
+          items={bannerItems}
+          selectedIds={selectedBannerIds}
+          onChange={onBannerIdsChange}
+        />
+        <RelationPicker
+          label="Widgetlar"
+          items={widgetItems}
+          selectedIds={selectedWidgetIds}
+          onChange={onWidgetIdsChange}
+        />
+        <RelationPicker
+          label="Formlar"
+          items={formItems}
+          selectedIds={selectedFormIds}
+          onChange={onFormIdsChange}
+        />
       </View>
 
       {/* Action buttons */}

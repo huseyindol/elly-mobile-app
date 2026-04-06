@@ -6,6 +6,7 @@ import { Controller, type UseFormReturn } from 'react-hook-form';
 import { FormField } from './FormField';
 import { StatusToggle } from './StatusToggle';
 import { Button } from '../ui/Button';
+import { RelationPicker, type RelationItem } from './RelationPicker';
 import type { WidgetFormValues } from '../../app/(drawer)/widgets/[id]';
 import type { WidgetType } from '../../types/widget';
 
@@ -18,6 +19,12 @@ interface WidgetFormContentProps {
   form: UseFormReturn<WidgetFormValues>;
   isNew: boolean;
   isBusy: boolean;
+  bannerItems?: RelationItem[];
+  postItems?: RelationItem[];
+  selectedBannerIds: number[];
+  selectedPostIds: number[];
+  onBannerIdsChange: (ids: number[]) => void;
+  onPostIdsChange: (ids: number[]) => void;
   onSubmit: (values: WidgetFormValues) => void;
   onDelete: () => void;
 }
@@ -26,6 +33,12 @@ export function WidgetFormContent({
   form,
   isNew,
   isBusy,
+  bannerItems = [],
+  postItems = [],
+  selectedBannerIds,
+  selectedPostIds,
+  onBannerIdsChange,
+  onPostIdsChange,
   onSubmit,
   onDelete,
 }: WidgetFormContentProps) {
@@ -103,7 +116,18 @@ export function WidgetFormContent({
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>İlişkiler</Text>
-        <Text style={styles.relationHint}>Banner ve yazı bağlantısı yönetimi yakında eklenecek.</Text>
+        <RelationPicker
+          label="Bannerlar"
+          items={bannerItems}
+          selectedIds={selectedBannerIds}
+          onChange={onBannerIdsChange}
+        />
+        <RelationPicker
+          label="Yazılar"
+          items={postItems}
+          selectedIds={selectedPostIds}
+          onChange={onPostIdsChange}
+        />
       </View>
 
       <View style={styles.actions}>
@@ -140,6 +164,5 @@ const styles = StyleSheet.create({
   stepperRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   stepper: { fontSize: 20, fontWeight: '600', color: '#4F46E5', paddingHorizontal: 8 },
   stepperValue: { fontSize: 16, fontWeight: '600', color: '#111827', minWidth: 32, textAlign: 'center' },
-  relationHint: { fontSize: 14, color: '#9CA3AF', lineHeight: 20 },
   actions: { gap: 12 },
 });

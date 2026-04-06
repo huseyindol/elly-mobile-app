@@ -1,8 +1,8 @@
 // Elly Mobile App — Widget detail / edit screen
 // Handles both editing an existing widget (numeric id) and creating a new one (id="new").
-// Uses react-hook-form + zod for validation, React Query mutations for persistence.
+// Includes relation pickers for banners and posts.
 
-import { useEffect } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -10,6 +10,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useWidget, useCreateWidget, useUpdateWidget, useDeleteWidget } from '../../../hooks/useWidgets';
+import { useBannerList } from '../../../hooks/useBanners';
+import { usePostList } from '../../../hooks/usePosts';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { ErrorView } from '../../../components/ui/ErrorView';
 import { showConfirmDialog } from '../../../components/forms/ConfirmDialog';
@@ -39,6 +41,21 @@ export default function WidgetDetailScreen() {
   const { mutate: updateWidget, isPending: isUpdating } = useUpdateWidget();
   const { mutate: deleteWidget, isPending: isDeleting } = useDeleteWidget();
 
+  const { data: bannersData } = useBannerList();
+  const { data: postsData } = usePostList();
+
+  const [selectedBannerIds, setSelectedBannerIds] = useState<number[]>([]);
+  const [selectedPostIds, setSelectedPostIds] = useState<number[]>([]);
+
+  const bannerItems = useMemo(
+    () => (bannersData?.data ?? []).map((b) => ({ id: b.id, label: b.title, sublabel: b.subFolder })),
+    [bannersData],
+  );
+  const postItems = useMemo(
+    () => (postsData?.data ?? []).map((p) => ({ id: p.id, label: p.title, sublabel: p.slug })),
+    [postsData],
+  );
+
   const form = useForm<WidgetFormValues>({
     resolver: zodResolver(widgetSchema),
     defaultValues: { status: true, orderIndex: 0, type: 'BANNER' },
@@ -56,6 +73,8 @@ export default function WidgetDetailScreen() {
         status: Boolean(d.status),
         template: d.template ?? '',
       });
+      setSelectedBannerIds((d.banners ?? []).map((b) => b.id));
+      setSelectedPostIds((d.posts ?? []).map((p) => p.id));
     }
   }, [data, form]);
 
@@ -68,6 +87,8 @@ export default function WidgetDetailScreen() {
       orderIndex: values.orderIndex,
       status: values.status,
       template: values.template,
+      bannerIds: selectedBannerIds,
+      postIds: selectedPostIds,
     };
   }
 
@@ -100,6 +121,12 @@ export default function WidgetDetailScreen() {
           form={form}
           isNew={isNew}
           isBusy={isBusy}
+          bannerItems={bannerItems}
+          postItems={postItems}
+          selectedBannerIds={selectedBannerIds}
+          selectedPostIds={selectedPostIds}
+          onBannerIdsChange={setSelectedBannerIds}
+          onPostIdsChange={setSelectedPostIds}
           onSubmit={onSubmit}
           onDelete={handleDelete}
         />

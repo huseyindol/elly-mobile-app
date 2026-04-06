@@ -2,19 +2,22 @@
 // Extracted form body for the Banner create/edit screen.
 // Keeps the parent screen file under 150 lines.
 
-import { View, Text, Image, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Controller, UseFormReturn } from 'react-hook-form';
 import { FormField } from './FormField';
 import { StatusToggle } from './StatusToggle';
 import { Button } from '../ui/Button';
+import { BannerImagePicker, type PickedImage } from './BannerImagePicker';
 import type { BannerFormValues } from '../../app/(drawer)/banners/[id]';
-import type { BannerImages } from '../../types/banner';
+import type { BannerImages, BannerImageFiles } from '../../types/banner';
 
 interface BannerFormContentProps {
   form: UseFormReturn<BannerFormValues>;
   isNew: boolean;
   isBusy: boolean;
   imageUrls?: BannerImages;
+  imageFiles: BannerImageFiles;
+  onImageChange: (slot: keyof BannerImageFiles, file: PickedImage | null) => void;
   onSubmit: (values: BannerFormValues) => void;
   onDelete: () => void;
 }
@@ -24,7 +27,7 @@ const TARGET_OPTIONS: Array<{ value: BannerFormValues['target']; label: string }
   { value: '_self', label: 'Aynı sekme' },
 ];
 
-const IMAGE_SLOTS: Array<{ key: keyof BannerImages; label: string }> = [
+const IMAGE_SLOTS: Array<{ key: keyof BannerImageFiles; label: string }> = [
   { key: 'desktop', label: 'Masaüstü' },
   { key: 'tablet', label: 'Tablet' },
   { key: 'mobile', label: 'Mobil' },
@@ -35,6 +38,8 @@ export function BannerFormContent({
   isNew,
   isBusy,
   imageUrls,
+  imageFiles,
+  onImageChange,
   onSubmit,
   onDelete,
 }: BannerFormContentProps) {
@@ -90,25 +95,15 @@ export function BannerFormContent({
       {/* Section: Görseller */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Görseller</Text>
-
+        <Text style={styles.imageHint}>Seçilen resimler kaydet/güncelle butonuna basıldığında yüklenir.</Text>
         {IMAGE_SLOTS.map(({ key, label }) => (
-          <View key={key} style={styles.imageSlot}>
-            <Text style={styles.imageSlotLabel}>{label}</Text>
-            {imageUrls?.[key] ? (
-              <Image
-                source={{ uri: imageUrls[key] }}
-                style={styles.imagePreview}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={styles.imagePlaceholder}>
-                <Text style={styles.imagePlaceholderText}>Görsel yok</Text>
-              </View>
-            )}
-            <View style={styles.uploadPlaceholder}>
-              <Text style={styles.uploadPlaceholderText}>Resim yükleme yakında</Text>
-            </View>
-          </View>
+          <BannerImagePicker
+            key={key}
+            label={label}
+            existingUri={imageUrls?.[key]}
+            value={imageFiles[key] ?? null}
+            onChange={(file) => onImageChange(key, file)}
+          />
         ))}
       </View>
 
@@ -203,31 +198,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#F3F4F6',
   },
-  imagePlaceholder: {
-    width: '100%',
-    height: 100,
-    borderRadius: 8,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderStyle: 'dashed',
-  },
-  imagePlaceholderText: {
-    fontSize: 13,
+  imageHint: {
+    fontSize: 12,
     color: '#9CA3AF',
-  },
-  uploadPlaceholder: {
-    padding: 10,
-    borderRadius: 8,
-    backgroundColor: '#EEF2FF',
-    alignItems: 'center',
-  },
-  uploadPlaceholderText: {
-    fontSize: 13,
-    color: '#6366F1',
-    fontWeight: '500',
+    marginBottom: 12,
   },
   actions: {
     gap: 12,
