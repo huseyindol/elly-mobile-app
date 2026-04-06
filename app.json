@@ -30,7 +30,15 @@
     },
     "plugins": [
       "expo-router",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Elly Admin, banner ve varlık resimlerini yüklemek için fotoğraf kütüphanenize erişmek istiyor.",
+          "cameraPermission": "Elly Admin, fotoğraf çekerek yüklemek için kameraya erişmek istiyor."
+        }
+      ],
+      "expo-document-picker"
     ],
     "experiments": {
       "typedRoutes": true

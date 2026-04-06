@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { contentsService } from '../services/contents';
 import type { ContentInput } from '../types/content';
 import type { ListParams } from '../types/common';
@@ -74,3 +74,16 @@ export const useDeleteContent = () => {
     },
   });
 };
+
+export const useInfiniteContents = (search?: string) =>
+  useInfiniteQuery({
+    queryKey: [...CONTENT_KEYS.lists(), 'infinite', { search }] as const,
+    queryFn: ({ pageParam }) =>
+      contentsService.getListPaged({ page: pageParam as number, size: 20, search }).then((res) => res.data),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => {
+      const d = lastPage.data;
+      return d.last ? undefined : d.page + 1;
+    },
+    staleTime: STALE_TIME,
+  });

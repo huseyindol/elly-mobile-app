@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { formsService } from '../services/forms';
 import type { FormSchemaFormData } from '../types/form';
 import type { ListParams } from '../types/common';
@@ -82,4 +82,17 @@ export const useSubmissionCount = (formId: number) =>
     queryFn: () => formsService.getSubmissionCount(formId).then((res) => res.data),
     staleTime: STALE_TIME,
     enabled: formId > 0,
+  });
+
+export const useInfiniteForms = (search?: string) =>
+  useInfiniteQuery({
+    queryKey: [...FORM_KEYS.lists(), 'infinite', { search }] as const,
+    queryFn: ({ pageParam }) =>
+      formsService.getListPaged({ page: pageParam as number, size: 20, search }).then((res) => res.data),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => {
+      const d = lastPage.data;
+      return d.last ? undefined : d.page + 1;
+    },
+    staleTime: STALE_TIME,
   });

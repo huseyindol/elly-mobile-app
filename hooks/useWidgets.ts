@@ -3,7 +3,7 @@
 // with a 2-minute staleTime; writes use useMutation and invalidate the relevant
 // query keys on success so the UI stays in sync without a manual refetch.
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { widgetsService } from '../services/widgets';
 import type { WidgetFormData } from '../types/widget';
 import type { ListParams } from '../types/common';
@@ -69,3 +69,16 @@ export const useDeleteWidget = () => {
     },
   });
 };
+
+export const useInfiniteWidgets = (search?: string) =>
+  useInfiniteQuery({
+    queryKey: [...WIDGET_KEYS.lists(), 'infinite', { search }] as const,
+    queryFn: ({ pageParam }) =>
+      widgetsService.getListPaged({ page: pageParam as number, size: 20, search }).then((res) => res.data),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => {
+      const d = lastPage.data;
+      return d.last ? undefined : d.page + 1;
+    },
+    staleTime: STALE_TIME,
+  });

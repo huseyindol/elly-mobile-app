@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { assetsService } from '../services/assets';
 import type { ListParams } from '../types/common';
 
@@ -92,3 +92,22 @@ export const useDeleteAsset = () => {
     },
   });
 };
+
+export const useInfiniteAssets = (search?: string, subFolder?: string) =>
+  useInfiniteQuery({
+    queryKey: [...ASSET_KEYS.lists(), 'infinite', { search, subFolder }] as const,
+    queryFn: ({ pageParam }) => {
+      const base = subFolder && subFolder !== 'all'
+        ? assetsService.searchBySubFolderAndName(subFolder, search ?? '', { page: pageParam as number, size: 20 })
+        : search
+        ? assetsService.searchByName(search, { page: pageParam as number, size: 20 })
+        : assetsService.getListPaged({ page: pageParam as number, size: 20 });
+      return base.then((res) => res.data);
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => {
+      const d = lastPage.data;
+      return d.last ? undefined : d.page + 1;
+    },
+    staleTime: STALE_TIME,
+  });

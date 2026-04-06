@@ -2,45 +2,111 @@
 // Authorization headers are injected at request time via an interceptor so that
 // the token is always read from the latest Zustand store state.
 // tenantId is injected via the X-Tenant-ID header when present in auth store.
-// 401 responses clear auth state and redirect to the login screen via Expo Router.
+// 401 responses trigger a token refresh attempt using the stored refreshToken.
+// If the refresh succeeds, the original request is retried transparently.
+// If the refresh fails (or no refreshToken exists), auth state is cleared
+// and the user is redirected to the login screen.
 
-import axios, { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
+import axios, {
+  AxiosError,
+  type AxiosResponse,
+  type InternalAxiosRequestConfig,
+} from 'axios';
 import { router } from 'expo-router';
 import { ENV } from '../constants/env';
 import { useAuthStore } from '../store/authStore';
 
 export const apiClient = axios.create({
   baseURL: ENV.API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
   timeout: 15000,
 });
 
+// ── Request interceptor ────────────────────────────────────────────────────────
 // Attach the current auth token and optional tenant ID to every outgoing request.
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const { token, tenantId } = useAuthStore.getState();
-    if (token) {
-      config.headers.set('Authorization', `Bearer ${token}`);
-    }
-    if (tenantId) {
-      config.headers.set('X-Tenant-ID', tenantId);
-    }
+    if (token) config.headers.set('Authorization', `Bearer ${token}`);
+    if (tenantId) config.headers.set('X-Tenant-ID', tenantId);
     return config;
   },
   (error: AxiosError) => Promise.reject(error),
 );
 
-// On 401, clear auth state and redirect to login.
+// ── Token refresh state ────────────────────────────────────────────────────────
+// Prevents multiple simultaneous refresh requests when several requests 401 at once.
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (value: unknown) => void;
+  reject: (reason: unknown) => void;
+}> = [];
+
+function processQueue(error: unknown, token: string | null = null) {
+  failedQueue.forEach(({ resolve, reject }) => {
+    if (error) reject(error);
+    else resolve(token);
+  });
+  failedQueue = [];
+}
+
+function logoutAndRedirect() {
+  useAuthStore.getState().logout();
+  router.replace('/(auth)/login');
+}
+
+// ── Response interceptor ───────────────────────────────────────────────────────
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
-  (error: AxiosError) => {
-    if (error.response?.status === 401) {
-      useAuthStore.getState().logout();
-      // Navigate outside of the React render cycle using the imperative API.
-      router.replace('/(auth)/login');
+  async (error: AxiosError) => {
+    const originalRequest = error.config as InternalAxiosRequestConfig & {
+      _retry?: boolean;
+    };
+
+    if (error.response?.status !== 401 || originalRequest._retry) {
+      return Promise.reject(error);
     }
-    return Promise.reject(error);
+
+    const { refreshToken, updateTokens } = useAuthStore.getState();
+
+    // No refreshToken → cannot renew, log out immediately.
+    if (!refreshToken) {
+      logoutAndRedirect();
+      return Promise.reject(error);
+    }
+
+    // If a refresh is already in flight, queue this request until it resolves.
+    if (isRefreshing) {
+      return new Promise((resolve, reject) => {
+        failedQueue.push({ resolve, reject });
+      }).then((token) => {
+        originalRequest.headers.set('Authorization', `Bearer ${token as string}`);
+        return apiClient(originalRequest);
+      });
+    }
+
+    originalRequest._retry = true;
+    isRefreshing = true;
+
+    try {
+      // Use a plain axios call (not apiClient) to avoid interceptor loops.
+      const res = await axios.post<{
+        result: boolean;
+        data: { token: string; refreshToken: string };
+      }>(`${ENV.API_URL}/auth/refresh`, { refreshToken });
+
+      const { token: newToken, refreshToken: newRefresh } = res.data.data;
+      updateTokens(newToken, newRefresh, 0); // expiredDate decoded from new token if needed
+
+      processQueue(null, newToken);
+      originalRequest.headers.set('Authorization', `Bearer ${newToken}`);
+      return apiClient(originalRequest);
+    } catch (refreshError) {
+      processQueue(refreshError);
+      logoutAndRedirect();
+      return Promise.reject(refreshError);
+    } finally {
+      isRefreshing = false;
+    }
   },
 );
