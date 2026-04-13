@@ -22,9 +22,7 @@ export function ErrorView({ message, onRetry }: ErrorViewProps) {
         Something went wrong
       </Text>
 
-      <Text className="text-sm text-gray-500 text-center leading-5 mb-6">
-        {message}
-      </Text>
+      <Text className="text-sm text-gray-500 text-center leading-5 mb-6">{message}</Text>
 
       {onRetry ? (
         <Button label="Try again" onPress={onRetry} variant="primary" icon="refresh-outline" />

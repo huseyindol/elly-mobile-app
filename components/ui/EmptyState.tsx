@@ -18,14 +18,10 @@ export function EmptyState({ title, description, icon = 'file-tray-outline' }: E
         <Ionicons name={icon} size={40} color="#9ca3af" />
       </View>
 
-      <Text className="text-lg font-semibold text-gray-800 text-center mb-2">
-        {title}
-      </Text>
+      <Text className="text-lg font-semibold text-gray-800 text-center mb-2">{title}</Text>
 
       {description ? (
-        <Text className="text-sm text-gray-500 text-center leading-5">
-          {description}
-        </Text>
+        <Text className="text-sm text-gray-500 text-center leading-5">{description}</Text>
       ) : null}
     </View>
   );

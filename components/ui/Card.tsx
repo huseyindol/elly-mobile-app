@@ -2,13 +2,7 @@
 // White, rounded card with subtle shadow. Becomes touchable when onPress is supplied.
 
 import React from 'react';
-import {
-  StyleSheet,
-  TouchableOpacity,
-  View,
-  type StyleProp,
-  type ViewStyle,
-} from 'react-native';
+import { StyleSheet, TouchableOpacity, View, type StyleProp, type ViewStyle } from 'react-native';
 
 export interface CardProps {
   children: React.ReactNode;
@@ -19,11 +13,7 @@ export interface CardProps {
 export function Card({ children, style, onPress }: CardProps) {
   if (onPress) {
     return (
-      <TouchableOpacity
-        style={[styles.card, style]}
-        onPress={onPress}
-        activeOpacity={0.8}
-      >
+      <TouchableOpacity style={[styles.card, style]} onPress={onPress} activeOpacity={0.8}>
         {children}
       </TouchableOpacity>
     );

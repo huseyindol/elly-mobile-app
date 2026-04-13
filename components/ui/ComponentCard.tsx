@@ -4,56 +4,61 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Badge } from './Badge';
+import { SwipeableListItem } from './SwipeableListItem';
+import { useThemeColor } from '../../hooks/useThemeColor';
 import { formatBooleanStatus } from '../../utils/formatStatus';
-import type { ComponentItem, ComponentType } from '../../types/component';
+import { getTypeColor } from '../../utils/colorUtils';
+import type { ComponentItem } from '../../types/component';
 
 interface ComponentCardProps {
   component: ComponentItem;
   onPress: () => void;
+  onDelete?: () => void;
 }
 
-function getTypeBadgeVariant(type: ComponentType): 'info' | 'warning' | 'success' {
-  if (type === 'BANNER') return 'info';
-  if (type === 'WIDGET') return 'warning';
-  return 'success';
-}
+export function ComponentCard({ component, onPress, onDelete }: ComponentCardProps) {
+  const { colors } = useThemeColor();
 
-export function ComponentCard({ component, onPress }: ComponentCardProps) {
   const status = formatBooleanStatus(component.status);
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
-      <View style={styles.row}>
-        <View style={styles.icon}>
-          <Ionicons name="cube-outline" size={20} color="#7C3AED" />
-        </View>
-        <View style={styles.info}>
-          <Text style={styles.name} numberOfLines={1}>{component.name}</Text>
-          {component.description ? (
-            <Text style={styles.desc} numberOfLines={1}>{component.description}</Text>
-          ) : null}
-          <View style={styles.badges}>
-            <Badge label={component.type} variant={getTypeBadgeVariant(component.type)} />
-            <Badge label={status.label} variant={status.variant} />
+    <SwipeableListItem onView={onPress} onDelete={onDelete || (() => {})}>
+      <TouchableOpacity
+        style={[styles.card, { backgroundColor: colors.surface }]}
+        onPress={onPress}
+        activeOpacity={0.7}
+      >
+        <View style={styles.row}>
+          <View style={styles.icon}>
+            <Ionicons name="cube-outline" size={20} color="#7C3AED" />
           </View>
+          <View style={styles.info}>
+            <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
+              {component.name}
+            </Text>
+            {component.description ? (
+              <Text style={[styles.desc, { color: colors.textSubtle }]} numberOfLines={1}>
+                {component.description}
+              </Text>
+            ) : null}
+            <View style={styles.badges}>
+              <Text style={[styles.typeText, { color: getTypeColor(component.type) }]}>
+                {component.type}
+              </Text>
+              <Badge label={status.label} variant={status.variant} />
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />
         </View>
-        <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </SwipeableListItem>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
     backgroundColor: '#fff',
-    borderRadius: 12,
     padding: 14,
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   icon: {
@@ -67,5 +72,6 @@ const styles = StyleSheet.create({
   info: { flex: 1 },
   name: { fontSize: 14, fontWeight: '600', color: '#111827', marginBottom: 2 },
   desc: { fontSize: 12, color: '#9CA3AF', marginBottom: 6 },
-  badges: { flexDirection: 'row', gap: 6 },
+  badges: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  typeText: { fontSize: 11, fontWeight: '700' },
 });

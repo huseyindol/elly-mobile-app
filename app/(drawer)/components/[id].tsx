@@ -9,7 +9,13 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useComponent, useCreateComponent, useUpdateComponent, useDeleteComponent } from '../../../hooks/useComponents';
+import {
+  useComponent,
+  useCreateComponent,
+  useUpdateComponent,
+  useDeleteComponent,
+} from '../../../hooks/useComponents';
+import { useThemeColor } from '../../../hooks/useThemeColor';
 import { useBannerList } from '../../../hooks/useBanners';
 import { useWidgetList } from '../../../hooks/useWidgets';
 import { useFormList } from '../../../hooks/useForms';
@@ -32,6 +38,8 @@ export const componentSchema = z.object({
 export type ComponentFormValues = z.infer<typeof componentSchema>;
 
 export default function ComponentDetailScreen() {
+  const { colors } = useThemeColor();
+
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const isNew = id === 'new';
@@ -52,16 +60,18 @@ export default function ComponentDetailScreen() {
   const [selectedFormIds, setSelectedFormIds] = useState<number[]>([]);
 
   const bannerItems = useMemo(
-    () => (bannersData?.data ?? []).map((b) => ({ id: b.id, label: b.title, sublabel: b.subFolder })),
-    [bannersData],
+    () =>
+      (bannersData?.data ?? []).map((b) => ({ id: b.id, label: b.title, sublabel: b.subFolder })),
+    [bannersData]
   );
   const widgetItems = useMemo(
     () => (widgetsData?.data ?? []).map((w) => ({ id: w.id, label: w.name, sublabel: w.type })),
-    [widgetsData],
+    [widgetsData]
   );
   const formItems = useMemo(
-    () => (formsData?.data ?? []).map((f) => ({ id: f.id, label: f.title, sublabel: `v${f.version}` })),
-    [formsData],
+    () =>
+      (formsData?.data ?? []).map((f) => ({ id: f.id, label: f.title, sublabel: `v${f.version}` })),
+    [formsData]
   );
 
   const form = useForm<ComponentFormValues>({
@@ -124,7 +134,7 @@ export default function ComponentDetailScreen() {
   const isBusy = isCreating || isUpdating || isDeleting;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <ComponentFormContent
           form={form}

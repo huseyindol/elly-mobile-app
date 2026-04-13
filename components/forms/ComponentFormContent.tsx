@@ -3,10 +3,13 @@
 // Keeps the parent screen file under 150 lines.
 
 import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { useThemeColor } from '../../hooks/useThemeColor';
 import { Controller, UseFormReturn } from 'react-hook-form';
 import { FormField } from './FormField';
 import { StatusToggle } from './StatusToggle';
 import { Button } from '../ui/Button';
+import { AiFieldButton } from '../ui/AiFieldButton';
+import { useAiGenerate } from '../../hooks/useAiGenerate';
 import { RelationPicker, type RelationItem } from './RelationPicker';
 import type { ComponentFormValues } from '../../app/(drawer)/components/[id]';
 import type { ComponentType } from '../../types/component';
@@ -28,7 +31,7 @@ interface ComponentFormContentProps {
   onDelete: () => void;
 }
 
-const TYPE_OPTIONS: Array<{ value: ComponentType; label: string }> = [
+const TYPE_OPTIONS: { value: ComponentType; label: string }[] = [
   { value: 'BANNER', label: 'Banner' },
   { value: 'WIDGET', label: 'Widget' },
   { value: 'FORM', label: 'Form' },
@@ -50,14 +53,22 @@ export function ComponentFormContent({
   onSubmit,
   onDelete,
 }: ComponentFormContentProps) {
+  const { colors, isDark } = useThemeColor();
   const { control, handleSubmit, watch, setValue } = form;
   const currentType = watch('type');
+  const name = watch('name');
+  const { descriptionLoading, handleAiDescription } = useAiGenerate();
 
   return (
     <>
       {/* Section: Bileşen Bilgileri */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Bileşen Bilgileri</Text>
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: colors.surface, borderColor: isDark ? '#374151' : '#E5E7EB' },
+        ]}
+      >
+        <Text style={[styles.cardTitle, { color: colors.text }]}>Bileşen Bilgileri</Text>
 
         <FormField control={control} name="name" label="Ad" placeholder="Bileşen adı" />
         <FormField
@@ -67,6 +78,15 @@ export function ComponentFormContent({
           placeholder="Kısa açıklama (opsiyonel)"
           multiline
           numberOfLines={3}
+          rightElement={
+            <AiFieldButton
+              onClick={() =>
+                handleAiDescription(name ?? '', 'bileşen', (desc) => setValue('description', desc))
+              }
+              isLoading={descriptionLoading}
+              disabled={!name}
+            />
+          }
         />
 
         {/* Type selector */}
@@ -101,7 +121,12 @@ export function ComponentFormContent({
           numberOfLines={4}
         />
         <FormField control={control} name="orderIndex" label="Sıra" placeholder="0" />
-        <FormField control={control} name="template" label="Şablon" placeholder="Şablon adı (opsiyonel)" />
+        <FormField
+          control={control}
+          name="template"
+          label="Şablon"
+          placeholder="Şablon adı (opsiyonel)"
+        />
 
         <Controller
           control={control}
@@ -113,8 +138,13 @@ export function ComponentFormContent({
       </View>
 
       {/* Section: İlişkiler */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>İlişkiler</Text>
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: colors.surface, borderColor: isDark ? '#374151' : '#E5E7EB' },
+        ]}
+      >
+        <Text style={[styles.cardTitle, { color: colors.text }]}>İlişkiler</Text>
         <RelationPicker
           label="Bannerlar"
           items={bannerItems}
@@ -187,29 +217,33 @@ const styles = StyleSheet.create({
   },
   typeRow: {
     flexDirection: 'row',
-    gap: 8,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 10,
+    padding: 4,
   },
   typeBtn: {
     flex: 1,
     paddingVertical: 8,
-    paddingHorizontal: 4,
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
     alignItems: 'center',
-    backgroundColor: '#F9FAFB',
+    justifyContent: 'center',
   },
   typeBtnActive: {
-    backgroundColor: '#4F46E5',
-    borderColor: '#4F46E5',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   typeBtnText: {
     fontSize: 13,
-    color: '#374151',
+    color: '#6B7280',
     fontWeight: '500',
   },
   typeBtnTextActive: {
-    color: '#fff',
+    color: '#111827',
+    fontWeight: '600',
   },
   infoBadge: {
     padding: 12,
