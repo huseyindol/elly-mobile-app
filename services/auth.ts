@@ -9,16 +9,12 @@ import type {
 import type { BaseApiResponse } from '../types/common';
 
 export const authService = {
-  login: (
-    credentials: LoginCredentials,
-  ): Promise<AxiosResponse<BaseApiResponse<LoginResponse>>> =>
+  login: (credentials: LoginCredentials): Promise<AxiosResponse<BaseApiResponse<LoginResponse>>> =>
     apiClient.post<BaseApiResponse<LoginResponse>>('/auth/login', credentials),
 
   logout: (): Promise<AxiosResponse<void>> => apiClient.post<void>('/auth/logout'),
 
-  refreshToken: (
-    token: string,
-  ): Promise<AxiosResponse<BaseApiResponse<RefreshTokenResponse>>> =>
+  refreshToken: (token: string): Promise<AxiosResponse<BaseApiResponse<RefreshTokenResponse>>> =>
     apiClient.post<BaseApiResponse<RefreshTokenResponse>>('/auth/refresh', {
       refreshToken: token,
     }),

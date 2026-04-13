@@ -1,9 +1,7 @@
-// Login screen — full multi-tenant support.
+// Login screen — tenant-only entry.
 // Architectural decisions:
-//   1. react-hook-form + zod handles all validation, including the conditional
-//      tenantId requirement when loginType === 'tenant'.
-//   2. loginType toggle is local UI state mirrored into the form via setValue
-//      so zod refinement runs with the correct type on each submission.
+//   1. react-hook-form + zod validates username/email, password, and required tenantId.
+//   2. loginType is fixed to 'tenant' in the schema and payload; no admin path on this screen.
 //   3. The useLogin mutation from hooks/useAuth drives the API call; this screen
 //      only handles the UI and delegates async state to React Query.
 
@@ -26,31 +24,23 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Ionicons } from '@expo/vector-icons';
 import { useLogin } from '../../hooks/useAuth';
-import type { LoginType } from '../../types/auth';
 
-const loginSchema = z
-  .object({
-    usernameOrEmail: z.string().min(3, 'En az 3 karakter giriniz'),
-    password: z.string().min(6, 'Şifre en az 6 karakter olmalıdır'),
-    tenantId: z.string().optional(),
-    loginType: z.enum(['admin', 'tenant']),
-  })
-  .refine(
-    (data) => data.loginType === 'admin' || (data.tenantId && data.tenantId.length > 0),
-    { message: 'Tenant ID zorunludur', path: ['tenantId'] }
-  );
+const loginSchema = z.object({
+  usernameOrEmail: z.string().min(3, 'En az 3 karakter giriniz'),
+  password: z.string().min(6, 'Şifre en az 6 karakter olmalıdır'),
+  tenantId: z.string().min(1, 'Tenant ID zorunludur'),
+  loginType: z.literal('tenant'),
+});
 
 type LoginFormData = z.infer<typeof loginSchema>;
 
 export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
-  const [loginType, setLoginType] = useState<LoginType>('admin');
   const { mutate: login, isPending } = useLogin();
 
   const {
     control,
     handleSubmit,
-    setValue,
     formState: { errors },
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -58,23 +48,17 @@ export default function LoginScreen() {
       usernameOrEmail: '',
       password: '',
       tenantId: '',
-      loginType: 'admin',
+      loginType: 'tenant',
     },
   });
-
-  const handleLoginTypeChange = (type: LoginType) => {
-    setLoginType(type);
-    setValue('loginType', type);
-    if (type === 'admin') setValue('tenantId', '');
-  };
 
   const onSubmit = (data: LoginFormData) => {
     login(
       {
         usernameOrEmail: data.usernameOrEmail,
         password: data.password,
-        tenantId: data.loginType === 'tenant' ? data.tenantId : undefined,
-        loginType: data.loginType,
+        tenantId: data.tenantId,
+        loginType: 'tenant',
       },
       {
         onError: () => {
@@ -102,28 +86,6 @@ export default function LoginScreen() {
 
           {/* Card */}
           <View style={styles.card}>
-            {/* Login Type Toggle */}
-            <View style={styles.toggleRow}>
-              <TouchableOpacity
-                style={[styles.toggleBtn, loginType === 'admin' && styles.toggleBtnActive]}
-                onPress={() => handleLoginTypeChange('admin')}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.toggleText, loginType === 'admin' && styles.toggleTextActive]}>
-                  Admin Girişi
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.toggleBtn, loginType === 'tenant' && styles.toggleBtnActive]}
-                onPress={() => handleLoginTypeChange('tenant')}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.toggleText, loginType === 'tenant' && styles.toggleTextActive]}>
-                  Tenant Girişi
-                </Text>
-              </TouchableOpacity>
-            </View>
-
             {/* Username/Email */}
             <View style={styles.fieldGroup}>
               <Text style={styles.label}>E-posta veya kullanıcı adı</Text>
@@ -153,41 +115,47 @@ export default function LoginScreen() {
               )}
             </View>
 
-            {/* Tenant ID (only for tenant login) */}
-            {loginType === 'tenant' && (
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>Tenant ID</Text>
-                <View style={[styles.inputRow, errors.tenantId && styles.inputError]}>
-                  <Ionicons name="business-outline" size={18} color="#9CA3AF" style={styles.inputIcon} />
-                  <Controller
-                    control={control}
-                    name="tenantId"
-                    render={({ field: { onChange, onBlur, value } }) => (
-                      <TextInput
-                        style={styles.input}
-                        placeholder="Tenant ID"
-                        placeholderTextColor="#9CA3AF"
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        onBlur={onBlur}
-                        onChangeText={onChange}
-                        value={value}
-                        editable={!isPending}
-                      />
-                    )}
-                  />
-                </View>
-                {errors.tenantId && (
-                  <Text style={styles.errorText}>{errors.tenantId.message}</Text>
-                )}
+            {/* Tenant ID */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Tenant ID</Text>
+              <View style={[styles.inputRow, errors.tenantId && styles.inputError]}>
+                <Ionicons
+                  name="business-outline"
+                  size={18}
+                  color="#9CA3AF"
+                  style={styles.inputIcon}
+                />
+                <Controller
+                  control={control}
+                  name="tenantId"
+                  render={({ field: { onChange, onBlur, value } }) => (
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Tenant ID"
+                      placeholderTextColor="#9CA3AF"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      onBlur={onBlur}
+                      onChangeText={onChange}
+                      value={value}
+                      editable={!isPending}
+                    />
+                  )}
+                />
               </View>
-            )}
+              {errors.tenantId && <Text style={styles.errorText}>{errors.tenantId.message}</Text>}
+            </View>
 
             {/* Password */}
             <View style={styles.fieldGroup}>
               <Text style={styles.label}>Şifre</Text>
               <View style={[styles.inputRow, errors.password && styles.inputError]}>
-                <Ionicons name="lock-closed-outline" size={18} color="#9CA3AF" style={styles.inputIcon} />
+                <Ionicons
+                  name="lock-closed-outline"
+                  size={18}
+                  color="#9CA3AF"
+                  style={styles.inputIcon}
+                />
                 <Controller
                   control={control}
                   name="password"
@@ -204,13 +172,18 @@ export default function LoginScreen() {
                     />
                   )}
                 />
-                <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
-                  <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color="#9CA3AF" />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeBtn}
+                >
+                  <Ionicons
+                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={18}
+                    color="#9CA3AF"
+                  />
                 </TouchableOpacity>
               </View>
-              {errors.password && (
-                <Text style={styles.errorText}>{errors.password.message}</Text>
-              )}
+              {errors.password && <Text style={styles.errorText}>{errors.password.message}</Text>}
             </View>
 
             {/* Submit */}
@@ -259,24 +232,6 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  toggleRow: {
-    flexDirection: 'row',
-    borderRadius: 10,
-    backgroundColor: '#F3F4F6',
-    padding: 4,
-    marginBottom: 24,
-  },
-  toggleBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
-  toggleBtnActive: {
-    backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  toggleText: { fontSize: 13, fontWeight: '500', color: '#6B7280' },
-  toggleTextActive: { color: '#4F46E5', fontWeight: '600' },
   fieldGroup: { marginBottom: 16 },
   label: { fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 6 },
   inputRow: {

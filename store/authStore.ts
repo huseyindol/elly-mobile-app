@@ -65,8 +65,7 @@ export const useAuthStore = create<AuthState>()(
           tenantId: null,
         }),
       setTenant: (tenantId) => set({ tenantId }),
-      updateTokens: (token, refreshToken, expiredDate) =>
-        set({ token, refreshToken, expiredDate }),
+      updateTokens: (token, refreshToken, expiredDate) => set({ token, refreshToken, expiredDate }),
       setHydrated: () => set({ hydrated: true }),
     }),
     {
@@ -81,11 +80,18 @@ export const useAuthStore = create<AuthState>()(
         tenantId: state.tenantId,
         loginType: state.loginType,
       }),
-      onRehydrateStorage: () => (state) => {
-        state?.setHydrated();
+      onRehydrateStorage: () => (state, error) => {
+        if (!error) {
+          state?.setHydrated();
+        }
       },
     }
   )
 );
+
+const unsub = useAuthStore.persist.onFinishHydration(() => {
+  useAuthStore.getState().setHydrated();
+  unsub();
+});
 
 export type { AuthUser, LoginType };
