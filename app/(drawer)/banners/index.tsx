@@ -6,7 +6,6 @@ import {
   FlatList,
   TextInput,
   TouchableOpacity,
-  Text,
   ScrollView,
   StyleSheet,
   RefreshControl,
@@ -14,15 +13,19 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useThemeColor } from '../../../hooks/useThemeColor';
 import { Ionicons } from '@expo/vector-icons';
 import { useInfiniteBanners } from '../../../hooks/useBanners';
 import { BannerCard } from '../../../components/ui/BannerCard';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { ErrorView } from '../../../components/ui/ErrorView';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import { AnimatedFilterChip } from '../../../components/ui/AnimatedFilterChip';
 import type { BannerItem } from '../../../types/banner';
 
 export default function BannersScreen() {
+  const { colors } = useThemeColor();
+
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [selectedFolder, setSelectedFolder] = useState<string>('all');
@@ -54,7 +57,7 @@ export default function BannersScreen() {
     (id: number) => {
       router.push(`/(drawer)/banners/${id}` as `/${string}`);
     },
-    [router],
+    [router]
   );
 
   const handleEndReached = useCallback(() => {
@@ -67,7 +70,7 @@ export default function BannersScreen() {
   if (isError) return <ErrorView message="Bannerlar yüklenemedi." onRetry={() => void refetch()} />;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
       {/* Search */}
       <View style={styles.searchRow}>
         <Ionicons name="search-outline" size={18} color="#9CA3AF" style={styles.searchIcon} />
@@ -89,31 +92,28 @@ export default function BannersScreen() {
 
       {/* Folder filter chips */}
       {folders.length > 1 ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chips}
-        >
-          {folders.map((folder) => (
-            <TouchableOpacity
-              key={folder}
-              style={[styles.chip, selectedFolder === folder && styles.chipActive]}
-              onPress={() => setSelectedFolder(folder)}
-            >
-              <Text style={[styles.chipText, selectedFolder === folder && styles.chipTextActive]}>
-                {folder === 'all' ? 'Tümü' : folder}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        <View style={{ flexGrow: 0, flexShrink: 0, marginBottom: 8 }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chips}
+          >
+            {folders.map((folder) => (
+              <AnimatedFilterChip
+                key={folder}
+                label={folder === 'all' ? 'Tümü' : folder}
+                isActive={selectedFolder === folder}
+                onPress={() => setSelectedFolder(folder)}
+              />
+            ))}
+          </ScrollView>
+        </View>
       ) : null}
 
       <FlatList
         data={filtered}
         keyExtractor={(item) => String(item.id)}
-        renderItem={({ item }) => (
-          <BannerCard banner={item} onPress={() => handlePress(item.id)} />
-        )}
+        renderItem={({ item }) => <BannerCard banner={item} onPress={() => handlePress(item.id)} />}
         contentContainerStyle={[styles.list, filtered.length === 0 && styles.listEmpty]}
         ListEmptyComponent={
           <EmptyState
@@ -169,24 +169,13 @@ const styles = StyleSheet.create({
   },
   searchIcon: { marginRight: 8 },
   searchInput: { flex: 1, height: 44, fontSize: 15, color: '#111827' },
-  chips: { paddingHorizontal: 16, paddingBottom: 8, gap: 8 },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  chipActive: { backgroundColor: '#EEF2FF', borderColor: '#4F46E5' },
-  chipText: { fontSize: 13, color: '#6B7280', fontWeight: '500' },
-  chipTextActive: { color: '#4F46E5', fontWeight: '600' },
-  list: { paddingHorizontal: 16, paddingBottom: 100 },
+  chips: { paddingHorizontal: 16, gap: 12, alignItems: 'center', paddingVertical: 8 },
+  list: { paddingHorizontal: 16, paddingBottom: 160 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
   footer: { paddingVertical: 16 },
   fab: {
     position: 'absolute',
-    bottom: 24,
+    bottom: 130,
     right: 24,
     width: 56,
     height: 56,

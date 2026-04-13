@@ -10,7 +10,13 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useBanner, useCreateBanner, useUpdateBanner, useDeleteBanner } from '../../../hooks/useBanners';
+import {
+  useBanner,
+  useCreateBanner,
+  useUpdateBanner,
+  useDeleteBanner,
+} from '../../../hooks/useBanners';
+import { useThemeColor } from '../../../hooks/useThemeColor';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { ErrorView } from '../../../components/ui/ErrorView';
 import { showConfirmDialog } from '../../../components/forms/ConfirmDialog';
@@ -32,6 +38,8 @@ export const bannerSchema = z.object({
 export type BannerFormValues = z.infer<typeof bannerSchema>;
 
 export default function BannerDetailScreen() {
+  const { colors } = useThemeColor();
+
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const isNew = id === 'new';
@@ -76,7 +84,7 @@ export default function BannerDetailScreen() {
         return { ...prev, [slot]: file };
       });
     },
-    [],
+    []
   );
 
   function buildPayload(values: BannerFormValues): BannerFormData {
@@ -98,12 +106,12 @@ export default function BannerDetailScreen() {
     if (isNew) {
       createBanner(
         { data: payload, imageFiles: hasImages ? imageFiles : undefined },
-        { onSuccess: () => router.back() },
+        { onSuccess: () => router.back() }
       );
     } else {
       updateBanner(
         { id: bannerId, data: payload, imageFiles: hasImages ? imageFiles : undefined },
-        { onSuccess: () => router.back() },
+        { onSuccess: () => router.back() }
       );
     }
   }
@@ -122,7 +130,7 @@ export default function BannerDetailScreen() {
   const isBusy = isCreating || isUpdating || isDeleting;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <BannerFormContent
           form={form}

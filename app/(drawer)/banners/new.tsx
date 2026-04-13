@@ -5,6 +5,7 @@ import { useState, useCallback } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useThemeColor } from '../../../hooks/useThemeColor';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useCreateBanner } from '../../../hooks/useBanners';
@@ -15,6 +16,8 @@ import type { BannerFormValues } from './[id]';
 import type { BannerFormData, BannerImageFiles } from '../../../types/banner';
 
 export default function NewBannerScreen() {
+  const { colors } = useThemeColor();
+
   const router = useRouter();
   const { mutate: createBanner, isPending } = useCreateBanner();
   const [imageFiles, setImageFiles] = useState<BannerImageFiles>({});
@@ -27,28 +30,37 @@ export default function NewBannerScreen() {
   const handleImageChange = useCallback(
     (slot: keyof BannerImageFiles, file: PickedImage | null) => {
       setImageFiles((prev) => {
-        if (file === null) { const next = { ...prev }; delete next[slot]; return next; }
+        if (file === null) {
+          const next = { ...prev };
+          delete next[slot];
+          return next;
+        }
         return { ...prev, [slot]: file };
       });
     },
-    [],
+    []
   );
 
   function onSubmit(values: BannerFormValues) {
     const payload: BannerFormData = {
-      title: values.title, altText: values.altText, link: values.link,
-      target: values.target, type: values.type, orderIndex: values.orderIndex,
-      status: values.status, subFolder: values.subFolder,
+      title: values.title,
+      altText: values.altText,
+      link: values.link,
+      target: values.target,
+      type: values.type,
+      orderIndex: values.orderIndex,
+      status: values.status,
+      subFolder: values.subFolder,
     };
     const hasImages = Object.keys(imageFiles).length > 0;
     createBanner(
       { data: payload, imageFiles: hasImages ? imageFiles : undefined },
-      { onSuccess: () => router.back() },
+      { onSuccess: () => router.back() }
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <BannerFormContent
           form={form}

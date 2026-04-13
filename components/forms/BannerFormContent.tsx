@@ -3,10 +3,13 @@
 // Keeps the parent screen file under 150 lines.
 
 import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { useThemeColor } from '../../hooks/useThemeColor';
 import { Controller, UseFormReturn } from 'react-hook-form';
 import { FormField } from './FormField';
 import { StatusToggle } from './StatusToggle';
 import { Button } from '../ui/Button';
+import { AiFieldButton } from '../ui/AiFieldButton';
+import { useAiGenerate } from '../../hooks/useAiGenerate';
 import { BannerImagePicker, type PickedImage } from './BannerImagePicker';
 import type { BannerFormValues } from '../../app/(drawer)/banners/[id]';
 import type { BannerImages, BannerImageFiles } from '../../types/banner';
@@ -22,12 +25,12 @@ interface BannerFormContentProps {
   onDelete: () => void;
 }
 
-const TARGET_OPTIONS: Array<{ value: BannerFormValues['target']; label: string }> = [
+const TARGET_OPTIONS: { value: BannerFormValues['target']; label: string }[] = [
   { value: '_blank', label: 'Yeni sekme' },
   { value: '_self', label: 'Aynı sekme' },
 ];
 
-const IMAGE_SLOTS: Array<{ key: keyof BannerImageFiles; label: string }> = [
+const IMAGE_SLOTS: { key: keyof BannerImageFiles; label: string }[] = [
   { key: 'desktop', label: 'Masaüstü' },
   { key: 'tablet', label: 'Tablet' },
   { key: 'mobile', label: 'Mobil' },
@@ -43,18 +46,43 @@ export function BannerFormContent({
   onSubmit,
   onDelete,
 }: BannerFormContentProps) {
+  const { colors, isDark } = useThemeColor();
   const { control, handleSubmit, watch, setValue } = form;
   const currentTarget = watch('target');
+  const title = watch('title');
+  const { altTextLoading, handleAiAltText } = useAiGenerate();
 
   return (
     <>
       {/* Section: Banner Bilgileri */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Banner Bilgileri</Text>
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: colors.surface, borderColor: isDark ? '#374151' : '#E5E7EB' },
+        ]}
+      >
+        <Text style={[styles.cardTitle, { color: colors.text }]}>Banner Bilgileri</Text>
 
         <FormField control={control} name="title" label="Başlık" placeholder="Banner başlığı" />
-        <FormField control={control} name="altText" label="Alt Metin" placeholder="Resim alt metni (opsiyonel)" />
-        <FormField control={control} name="link" label="Bağlantı URL" placeholder="https://ornek.com" />
+        <FormField
+          control={control}
+          name="altText"
+          label="Alt Metin"
+          placeholder="Resim alt metni (opsiyonel)"
+          rightElement={
+            <AiFieldButton
+              onClick={() => handleAiAltText(title ?? '', (alt) => setValue('altText', alt))}
+              isLoading={altTextLoading}
+              disabled={!title}
+            />
+          }
+        />
+        <FormField
+          control={control}
+          name="link"
+          label="Bağlantı URL"
+          placeholder="https://ornek.com"
+        />
 
         {/* Target toggle */}
         <View style={styles.fieldGroup}>
@@ -79,9 +107,19 @@ export function BannerFormContent({
           </View>
         </View>
 
-        <FormField control={control} name="type" label="Tür" placeholder="Banner türü (opsiyonel)" />
+        <FormField
+          control={control}
+          name="type"
+          label="Tür"
+          placeholder="Banner türü (opsiyonel)"
+        />
         <FormField control={control} name="orderIndex" label="Sıra" placeholder="0" />
-        <FormField control={control} name="subFolder" label="Alt Klasör" placeholder="Alt klasör (opsiyonel)" />
+        <FormField
+          control={control}
+          name="subFolder"
+          label="Alt Klasör"
+          placeholder="Alt klasör (opsiyonel)"
+        />
 
         <Controller
           control={control}
@@ -93,9 +131,16 @@ export function BannerFormContent({
       </View>
 
       {/* Section: Görseller */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Görseller</Text>
-        <Text style={styles.imageHint}>Seçilen resimler kaydet/güncelle butonuna basıldığında yüklenir.</Text>
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: colors.surface, borderColor: isDark ? '#374151' : '#E5E7EB' },
+        ]}
+      >
+        <Text style={[styles.cardTitle, { color: colors.text }]}>Görseller</Text>
+        <Text style={styles.imageHint}>
+          Seçilen resimler kaydet/güncelle butonuna basıldığında yüklenir.
+        </Text>
         {IMAGE_SLOTS.map(({ key, label }) => (
           <BannerImagePicker
             key={key}
@@ -159,29 +204,33 @@ const styles = StyleSheet.create({
   },
   toggleRow: {
     flexDirection: 'row',
-    gap: 8,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 10,
+    padding: 4,
   },
   toggleBtn: {
     flex: 1,
     paddingVertical: 8,
-    paddingHorizontal: 12,
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
     alignItems: 'center',
-    backgroundColor: '#F9FAFB',
+    justifyContent: 'center',
   },
   toggleBtnActive: {
-    backgroundColor: '#4F46E5',
-    borderColor: '#4F46E5',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   toggleBtnText: {
     fontSize: 14,
-    color: '#374151',
+    color: '#6B7280',
     fontWeight: '500',
   },
   toggleBtnTextActive: {
-    color: '#fff',
+    color: '#111827',
+    fontWeight: '600',
   },
   imageSlot: {
     marginBottom: 16,

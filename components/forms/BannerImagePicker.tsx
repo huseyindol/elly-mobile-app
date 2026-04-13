@@ -3,7 +3,16 @@
 // Shows existing URL or locally picked image; triggers expo-image-picker on press.
 
 import { useState } from 'react';
-import { View, Text, Image, TouchableOpacity, ActivityIndicator, Alert, StyleSheet } from 'react-native';
+import {
+  View,
+  Text,
+  Image,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+  StyleSheet,
+} from 'react-native';
+import { useThemeColor } from '../../hooks/useThemeColor';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -21,6 +30,8 @@ interface BannerImagePickerProps {
 }
 
 export function BannerImagePicker({ label, existingUri, value, onChange }: BannerImagePickerProps) {
+  const { colors, isDark } = useThemeColor();
+
   const [loading, setLoading] = useState(false);
   const displayUri = value?.uri ?? existingUri;
 
@@ -53,15 +64,29 @@ export function BannerImagePicker({ label, existingUri, value, onChange }: Banne
   return (
     <View style={styles.slot}>
       <View style={styles.slotHeader}>
-        <Text style={styles.slotLabel}>{label}</Text>
+        <Text style={[styles.slotLabel, { color: colors.text }]}>{label}</Text>
         {value && (
-          <TouchableOpacity onPress={() => onChange(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity
+            onPress={() => onChange(null)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
             <Text style={styles.clearBtn}>Kaldır</Text>
           </TouchableOpacity>
         )}
       </View>
 
-      <TouchableOpacity style={styles.imageArea} onPress={pick} activeOpacity={0.85} disabled={loading}>
+      <TouchableOpacity
+        style={[
+          styles.imageArea,
+          {
+            backgroundColor: isDark ? '#1F2937' : '#F9FAFB',
+            borderColor: isDark ? '#374151' : '#E5E7EB',
+          },
+        ]}
+        onPress={pick}
+        activeOpacity={0.85}
+        disabled={loading}
+      >
         {loading ? (
           <ActivityIndicator color="#4F46E5" />
         ) : displayUri ? (
@@ -81,7 +106,9 @@ export function BannerImagePicker({ label, existingUri, value, onChange }: Banne
       </TouchableOpacity>
 
       {value && (
-        <Text style={styles.pickedName} numberOfLines={1}>{value.name}</Text>
+        <Text style={styles.pickedName} numberOfLines={1}>
+          {value.name}
+        </Text>
       )}
     </View>
   );
@@ -89,19 +116,33 @@ export function BannerImagePicker({ label, existingUri, value, onChange }: Banne
 
 const styles = StyleSheet.create({
   slot: { marginBottom: 16 },
-  slotHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  slotHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
   slotLabel: { fontSize: 13, fontWeight: '600', color: '#374151' },
   clearBtn: { fontSize: 13, color: '#EF4444', fontWeight: '500' },
   imageArea: {
-    width: '100%', height: 120, borderRadius: 10, overflow: 'hidden',
-    borderWidth: 1, borderColor: '#E5E7EB',
-    backgroundColor: '#F9FAFB',
+    width: '100%',
+    height: 120,
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
   },
   preview: { width: '100%', height: '100%' },
   changeOverlay: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    backgroundColor: 'rgba(0,0,0,0.45)', flexDirection: 'row',
-    alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 6,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 6,
   },
   changeText: { fontSize: 13, color: '#fff', fontWeight: '600' },
   emptySlot: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6 },

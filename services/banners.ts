@@ -11,7 +11,7 @@ import type { BaseApiResponse, ListParams } from '../types/common';
 
 const buildBannerFormData = (
   data: BannerFormData | Partial<BannerFormData>,
-  imageFiles?: BannerImageFiles,
+  imageFiles?: BannerImageFiles
 ): FormData => {
   const formData = new FormData();
   formData.append('data', JSON.stringify(data));
@@ -48,7 +48,7 @@ export const bannersService = {
 
   create: (
     data: BannerFormData,
-    imageFiles?: BannerImageFiles,
+    imageFiles?: BannerImageFiles
   ): Promise<AxiosResponse<BannerResponse>> =>
     apiClient.post<BannerResponse>('/banners', buildBannerFormData(data, imageFiles), {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -57,12 +57,11 @@ export const bannersService = {
   update: (
     id: number,
     data: Partial<BannerFormData>,
-    imageFiles?: BannerImageFiles,
+    imageFiles?: BannerImageFiles
   ): Promise<AxiosResponse<BannerResponse>> =>
     apiClient.put<BannerResponse>(`/banners/${id}`, buildBannerFormData(data, imageFiles), {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
 
-  remove: (id: number): Promise<AxiosResponse<void>> =>
-    apiClient.delete<void>(`/banners/${id}`),
+  remove: (id: number): Promise<AxiosResponse<void>> => apiClient.delete<void>(`/banners/${id}`),
 };

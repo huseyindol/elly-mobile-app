@@ -3,11 +3,13 @@
 
 import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useThemeColor } from '../../hooks/useThemeColor';
 import type { AssetItem } from '../../types/asset';
 
 interface AssetCardProps {
   asset: AssetItem;
   onPress: () => void;
+  onDelete?: () => void;
 }
 
 function getFileIcon(mimeType: string): keyof typeof Ionicons.glyphMap {
@@ -18,11 +20,18 @@ function getFileIcon(mimeType: string): keyof typeof Ionicons.glyphMap {
   return 'document-attach-outline';
 }
 
-export function AssetCard({ asset, onPress }: AssetCardProps) {
+export function AssetCard({ asset, onPress, onDelete }: AssetCardProps) {
+  const { colors } = useThemeColor();
+
   const isImage = asset.type.startsWith('image/');
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity
+      style={[styles.card, { backgroundColor: colors.surface }]}
+      onPress={onPress}
+      onLongPress={onDelete}
+      activeOpacity={0.7}
+    >
       <View style={styles.preview}>
         {isImage ? (
           <Image source={{ uri: asset.path }} style={styles.image} resizeMode="cover" />
@@ -31,12 +40,14 @@ export function AssetCard({ asset, onPress }: AssetCardProps) {
         )}
       </View>
       <View style={styles.info}>
-        <Text style={styles.name} numberOfLines={2}>{asset.name}</Text>
-        <Text style={styles.ext}>.{asset.extension}</Text>
+        <Text style={[styles.name, { color: colors.text }]} numberOfLines={2}>
+          {asset.name}
+        </Text>
+        <Text style={[styles.ext, { color: colors.textSubtle }]}>.{asset.extension}</Text>
         {asset.subFolder && (
           <View style={styles.folderRow}>
             <Ionicons name="folder-outline" size={11} color="#9CA3AF" />
-            <Text style={styles.folder}>{asset.subFolder}</Text>
+            <Text style={[styles.folder, { color: colors.textSubtle }]}>{asset.subFolder}</Text>
           </View>
         )}
       </View>
@@ -45,12 +56,28 @@ export function AssetCard({ asset, onPress }: AssetCardProps) {
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: '#fff', borderRadius: 12, overflow: 'hidden', width: '48%', marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
-  preview: { width: '100%', height: 100, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center' },
+  card: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    width: '48%',
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  preview: {
+    width: '100%',
+    height: 100,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   image: { width: '100%', height: 100 },
   info: { padding: 8 },
-  name: { fontSize: 12, fontWeight: '600', color: '#111827', marginBottom: 2 },
-  ext: { fontSize: 11, color: '#9CA3AF', marginBottom: 2 },
+  name: { fontSize: 13, fontWeight: '600', marginBottom: 2 },
+  ext: { fontSize: 11, marginBottom: 2 },
   folderRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  folder: { fontSize: 10, color: '#9CA3AF' },
+  folder: { fontSize: 11 },
 });

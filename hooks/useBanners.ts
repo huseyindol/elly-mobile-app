@@ -18,6 +18,13 @@ export const useBannerList = (params?: ListParams) =>
     staleTime: STALE_TIME,
   });
 
+export const useBannerListSummary = () =>
+  useQuery({
+    queryKey: [...BANNER_KEYS.lists(), 'summary'] as const,
+    queryFn: () => bannersService.getSummary().then((res) => res.data),
+    staleTime: STALE_TIME,
+  });
+
 export const useBannersPaged = (params?: ListParams) =>
   useQuery({
     queryKey: [...BANNER_KEYS.lists(), 'paged', params] as const,
@@ -77,7 +84,9 @@ export const useInfiniteBanners = (search?: string) =>
   useInfiniteQuery({
     queryKey: [...BANNER_KEYS.lists(), 'infinite', { search }] as const,
     queryFn: ({ pageParam }) =>
-      bannersService.getListPaged({ page: pageParam as number, size: 20, search }).then((res) => res.data),
+      bannersService
+        .getListPaged({ page: pageParam as number, size: 20, search })
+        .then((res) => res.data),
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {
       const d = lastPage.data;
