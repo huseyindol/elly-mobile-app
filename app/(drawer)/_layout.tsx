@@ -3,45 +3,47 @@
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Drawer } from 'expo-router/drawer';
 import { DrawerContent } from '../../components/layout/DrawerContent';
+import { BottomMenu } from '../../components/layout/BottomMenu';
+import { useThemeColor } from '../../hooks/useThemeColor';
 
 export default function DrawerLayout() {
+  const { colors } = useThemeColor();
+
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
       <Drawer
         drawerContent={(props) => <DrawerContent {...props} />}
         screenOptions={{
-          headerStyle: { backgroundColor: '#fff' },
-          headerTintColor: '#111827',
+          headerStyle: { backgroundColor: colors.surface },
+          headerTintColor: colors.text,
           headerTitleStyle: { fontWeight: '600', fontSize: 18 },
-          drawerStyle: { backgroundColor: '#fff', width: 280 },
+          drawerStyle: { backgroundColor: colors.surface, width: 280 },
         }}
       >
-        <Drawer.Screen name="dashboard/index" options={{ title: 'Dashboard', drawerLabel: 'Dashboard' }} />
-        <Drawer.Screen name="pages/index" options={{ title: 'Sayfalar', drawerLabel: 'Sayfalar' }} />
-        <Drawer.Screen name="pages/[id]" options={{ title: 'Sayfa Detay', drawerItemStyle: { display: 'none' } }} />
-        <Drawer.Screen name="pages/new" options={{ title: 'Yeni Sayfa', drawerItemStyle: { display: 'none' } }} />
-        <Drawer.Screen name="posts/index" options={{ title: 'Yazılar', drawerLabel: 'Yazılar' }} />
-        <Drawer.Screen name="posts/[id]" options={{ title: 'Yazı Detay', drawerItemStyle: { display: 'none' } }} />
-        <Drawer.Screen name="posts/new" options={{ title: 'Yeni Yazı', drawerItemStyle: { display: 'none' } }} />
-        <Drawer.Screen name="banners/index" options={{ title: 'Bannerlar', drawerLabel: 'Bannerlar' }} />
-        <Drawer.Screen name="banners/[id]" options={{ title: 'Banner Detay', drawerItemStyle: { display: 'none' } }} />
-        <Drawer.Screen name="banners/new" options={{ title: 'Yeni Banner', drawerItemStyle: { display: 'none' } }} />
-        <Drawer.Screen name="components/index" options={{ title: 'Bileşenler', drawerLabel: 'Bileşenler' }} />
-        <Drawer.Screen name="components/[id]" options={{ title: 'Bileşen Detay', drawerItemStyle: { display: 'none' } }} />
-        <Drawer.Screen name="components/new" options={{ title: 'Yeni Bileşen', drawerItemStyle: { display: 'none' } }} />
-        <Drawer.Screen name="widgets/index" options={{ title: "Widget'lar", drawerLabel: "Widget'lar" }} />
-        <Drawer.Screen name="widgets/[id]" options={{ title: 'Widget Detay', drawerItemStyle: { display: 'none' } }} />
-        <Drawer.Screen name="widgets/new" options={{ title: 'Yeni Widget', drawerItemStyle: { display: 'none' } }} />
-        <Drawer.Screen name="assets/index" options={{ title: 'Dosyalar', drawerLabel: 'Dosyalar' }} />
-        <Drawer.Screen name="assets/[id]" options={{ title: 'Dosya Detay', drawerItemStyle: { display: 'none' } }} />
-        <Drawer.Screen name="forms/index" options={{ title: 'Formlar', drawerLabel: 'Formlar' }} />
-        <Drawer.Screen name="forms/[id]" options={{ title: 'Form Detay', drawerItemStyle: { display: 'none' } }} />
-        <Drawer.Screen name="forms/new" options={{ title: 'Yeni Form', drawerItemStyle: { display: 'none' } }} />
-        <Drawer.Screen name="contents/index" options={{ title: 'İçerikler', drawerLabel: 'İçerikler' }} />
-        <Drawer.Screen name="contents/[id]" options={{ title: 'İçerik Detay', drawerItemStyle: { display: 'none' } }} />
-        <Drawer.Screen name="contents/new" options={{ title: 'Yeni İçerik', drawerItemStyle: { display: 'none' } }} />
-        <Drawer.Screen name="settings/index" options={{ title: 'Ayarlar', drawerLabel: 'Ayarlar' }} />
+        <Drawer.Screen
+          name="dashboard/index"
+          options={{ title: 'Elly Panel', drawerLabel: 'Elly Panel' }}
+        />
+        <Drawer.Screen name="pages" options={{ title: 'Sayfalar', drawerLabel: 'Sayfalar' }} />
+        <Drawer.Screen name="posts" options={{ title: 'Yazılar', drawerLabel: 'Yazılar' }} />
+        <Drawer.Screen name="banners" options={{ title: 'Bannerlar', drawerLabel: 'Bannerlar' }} />
+        <Drawer.Screen
+          name="components"
+          options={{ title: 'Bileşenler', drawerLabel: 'Bileşenler' }}
+        />
+        <Drawer.Screen
+          name="widgets"
+          options={{ title: "Widget'lar", drawerLabel: "Widget'lar" }}
+        />
+        <Drawer.Screen name="assets" options={{ title: 'Dosyalar', drawerLabel: 'Dosyalar' }} />
+        <Drawer.Screen name="forms" options={{ title: 'Formlar', drawerLabel: 'Formlar' }} />
+        <Drawer.Screen name="contents" options={{ title: 'İçerikler', drawerLabel: 'İçerikler' }} />
+        <Drawer.Screen
+          name="settings/index"
+          options={{ title: 'Ayarlar', drawerLabel: 'Ayarlar' }}
+        />
       </Drawer>
+      <BottomMenu />
     </GestureHandlerRootView>
   );
 }

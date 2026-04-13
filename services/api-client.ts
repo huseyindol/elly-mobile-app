@@ -7,11 +7,7 @@
 // If the refresh fails (or no refreshToken exists), auth state is cleared
 // and the user is redirected to the login screen.
 
-import axios, {
-  AxiosError,
-  type AxiosResponse,
-  type InternalAxiosRequestConfig,
-} from 'axios';
+import axios, { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 import { router } from 'expo-router';
 import { ENV } from '../constants/env';
 import { useAuthStore } from '../store/authStore';
@@ -23,24 +19,49 @@ export const apiClient = axios.create({
 });
 
 // ── Request interceptor ────────────────────────────────────────────────────────
-// Attach the current auth token and optional tenant ID to every outgoing request.
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const { token, tenantId } = useAuthStore.getState();
     if (token) config.headers.set('Authorization', `Bearer ${token}`);
     if (tenantId) config.headers.set('X-Tenant-ID', tenantId);
+
+    if (__DEV__) {
+      console.warn(
+        `🔵 ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`,
+        config.data ?? ''
+      );
+    }
     return config;
   },
-  (error: AxiosError) => Promise.reject(error),
+  (error: AxiosError) => Promise.reject(error)
+);
+
+// ── Response logger (dev only) ──────────────────────────────────────────────
+apiClient.interceptors.response.use(
+  (response: AxiosResponse) => {
+    if (__DEV__) {
+      console.warn(`🟢 ${response.status} ${response.config.url}`, response.data);
+    }
+    return response;
+  },
+  (error: AxiosError) => {
+    if (__DEV__) {
+      console.warn(
+        `🔴 ${error.response?.status ?? 'NETWORK'} ${error.config?.url}`,
+        error.response?.data ?? error.message
+      );
+    }
+    return Promise.reject(error);
+  }
 );
 
 // ── Token refresh state ────────────────────────────────────────────────────────
 // Prevents multiple simultaneous refresh requests when several requests 401 at once.
 let isRefreshing = false;
-let failedQueue: Array<{
+let failedQueue: {
   resolve: (value: unknown) => void;
   reject: (reason: unknown) => void;
-}> = [];
+}[] = [];
 
 function processQueue(error: unknown, token: string | null = null) {
   failedQueue.forEach(({ resolve, reject }) => {
@@ -108,5 +129,5 @@ apiClient.interceptors.response.use(
     } finally {
       isRefreshing = false;
     }
-  },
+  }
 );

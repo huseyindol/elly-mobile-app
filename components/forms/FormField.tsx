@@ -23,6 +23,7 @@ export interface FormFieldProps<T extends FieldValues> {
   secureTextEntry?: boolean;
   multiline?: boolean;
   numberOfLines?: number;
+  rightElement?: React.ReactNode;
 }
 
 export function FormField<T extends FieldValues>({
@@ -34,13 +35,20 @@ export function FormField<T extends FieldValues>({
   secureTextEntry,
   multiline,
   numberOfLines,
+  rightElement,
 }: FormFieldProps<T>) {
   return (
     <Controller
       control={control}
       name={name}
       rules={rules}
-      render={({ field, fieldState }: { field: ControllerRenderProps<T, Path<T>>; fieldState: ControllerFieldState }) => (
+      render={({
+        field,
+        fieldState,
+      }: {
+        field: ControllerRenderProps<T, Path<T>>;
+        fieldState: ControllerFieldState;
+      }) => (
         <Input
           label={label}
           placeholder={placeholder}
@@ -50,6 +58,7 @@ export function FormField<T extends FieldValues>({
           secureTextEntry={secureTextEntry}
           multiline={multiline}
           numberOfLines={numberOfLines}
+          rightElement={rightElement}
         />
       )}
     />

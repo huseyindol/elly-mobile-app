@@ -7,18 +7,17 @@ export const contentsService = {
   getBySection: (sectionKey: string) =>
     apiClient.get<ContentListResponse>(`/contents/section/${encodeURIComponent(sectionKey)}`),
 
-  getById: (id: string) =>
-    apiClient.get<ContentResponse>(`/contents/${id}`),
+  getById: (id: string) => apiClient.get<ContentResponse>(`/contents/${id}`),
+
+  getList: () => apiClient.get<ContentListResponse>(`/contents/list`),
 
   getListPaged: (params?: ListParams) =>
     apiClient.get<ContentPagedResponse>('/contents/list/paged', { params }),
 
-  create: (data: ContentInput) =>
-    apiClient.post<ContentResponse>('/contents', data),
+  create: (data: ContentInput) => apiClient.post<ContentResponse>('/contents', data),
 
   update: (id: string, data: Partial<ContentInput>) =>
     apiClient.put<ContentResponse>(`/contents/${id}`, data),
 
-  remove: (id: string) =>
-    apiClient.delete<void>(`/contents/${id}`),
+  remove: (id: string) => apiClient.delete<void>(`/contents/${id}`),
 };

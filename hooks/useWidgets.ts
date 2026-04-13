@@ -23,6 +23,13 @@ export const useWidgetList = (params?: ListParams) =>
     staleTime: STALE_TIME,
   });
 
+export const useWidgetListSummary = () =>
+  useQuery({
+    queryKey: [...WIDGET_KEYS.lists(), 'summary'] as const,
+    queryFn: () => widgetsService.getSummary().then((res) => res.data),
+    staleTime: STALE_TIME,
+  });
+
 export const useWidgetsPaged = (params?: ListParams) =>
   useQuery({
     queryKey: [...WIDGET_KEYS.lists(), 'paged', params] as const,
@@ -74,7 +81,9 @@ export const useInfiniteWidgets = (search?: string) =>
   useInfiniteQuery({
     queryKey: [...WIDGET_KEYS.lists(), 'infinite', { search }] as const,
     queryFn: ({ pageParam }) =>
-      widgetsService.getListPaged({ page: pageParam as number, size: 20, search }).then((res) => res.data),
+      widgetsService
+        .getListPaged({ page: pageParam as number, size: 20, search })
+        .then((res) => res.data),
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {
       const d = lastPage.data;

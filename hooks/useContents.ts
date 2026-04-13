@@ -15,14 +15,18 @@ export const CONTENT_KEYS = {
 export const useContentList = () =>
   useQuery({
     queryKey: CONTENT_KEYS.lists(),
-    queryFn: () => contentsService.getListPaged().then((res) => res.data),
+    queryFn: () =>
+      contentsService.getList({ sort: 'basicInfo.sortOrder,asc' }).then((res) => res.data),
     staleTime: STALE_TIME,
   });
 
 export const useContentsPaged = (params?: ListParams) =>
   useQuery({
     queryKey: [...CONTENT_KEYS.lists(), 'paged', params] as const,
-    queryFn: () => contentsService.getListPaged(params).then((res) => res.data),
+    queryFn: () =>
+      contentsService
+        .getList({ sort: 'basicInfo.sortOrder,asc', ...params })
+        .then((res) => res.data),
     staleTime: STALE_TIME,
   });
 
@@ -45,8 +49,7 @@ export const useContent = (id: string) =>
 export const useCreateContent = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: ContentInput) =>
-      contentsService.create(data).then((res) => res.data),
+    mutationFn: (data: ContentInput) => contentsService.create(data).then((res) => res.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: CONTENT_KEYS.lists() });
     },
@@ -78,12 +81,8 @@ export const useDeleteContent = () => {
 export const useInfiniteContents = (search?: string) =>
   useInfiniteQuery({
     queryKey: [...CONTENT_KEYS.lists(), 'infinite', { search }] as const,
-    queryFn: ({ pageParam }) =>
-      contentsService.getListPaged({ page: pageParam as number, size: 20, search }).then((res) => res.data),
+    queryFn: ({ pageParam }) => contentsService.getList().then((res) => res.data),
     initialPageParam: 0,
-    getNextPageParam: (lastPage) => {
-      const d = lastPage.data;
-      return d.last ? undefined : d.page + 1;
-    },
+    getNextPageParam: () => undefined,
     staleTime: STALE_TIME,
   });

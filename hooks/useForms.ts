@@ -38,8 +38,7 @@ export const useForm = (id: number) =>
 export const useCreateForm = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: FormSchemaFormData) =>
-      formsService.create(data).then((res) => res.data),
+    mutationFn: (data: FormSchemaFormData) => formsService.create(data).then((res) => res.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: FORM_KEYS.lists() });
     },
@@ -88,7 +87,9 @@ export const useInfiniteForms = (search?: string) =>
   useInfiniteQuery({
     queryKey: [...FORM_KEYS.lists(), 'infinite', { search }] as const,
     queryFn: ({ pageParam }) =>
-      formsService.getListPaged({ page: pageParam as number, size: 20, search }).then((res) => res.data),
+      formsService
+        .getListPaged({ page: pageParam as number, size: 20, search })
+        .then((res) => res.data),
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {
       const d = lastPage.data;

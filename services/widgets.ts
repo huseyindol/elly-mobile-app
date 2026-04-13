@@ -28,6 +28,5 @@ export const widgetsService = {
   update: (id: number, data: Partial<WidgetFormData>): Promise<AxiosResponse<WidgetResponse>> =>
     apiClient.put<WidgetResponse>(`/widgets/${id}`, data),
 
-  remove: (id: number): Promise<AxiosResponse<void>> =>
-    apiClient.delete<void>(`/widgets/${id}`),
+  remove: (id: number): Promise<AxiosResponse<void>> => apiClient.delete<void>(`/widgets/${id}`),
 };

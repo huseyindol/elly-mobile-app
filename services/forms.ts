@@ -10,26 +10,21 @@ import type {
 import type { BaseApiResponse, ListParams } from '../types/common';
 
 export const formsService = {
-  getList: () =>
-    apiClient.get<FormSchemaListResponse>('/forms/list'),
+  getList: () => apiClient.get<FormSchemaListResponse>('/forms/list'),
 
   getListPaged: (params?: ListParams) =>
     apiClient.get<FormSchemaPagedResponse>('/forms/list/paged', { params }),
 
-  getActive: () =>
-    apiClient.get<FormSchemaListResponse>('/forms/list/active'),
+  getActive: () => apiClient.get<FormSchemaListResponse>('/forms/list/active'),
 
-  getById: (id: number) =>
-    apiClient.get<FormSchemaResponse>(`/forms/${id}`),
+  getById: (id: number) => apiClient.get<FormSchemaResponse>(`/forms/${id}`),
 
-  create: (data: FormSchemaFormData) =>
-    apiClient.post<FormSchemaResponse>('/forms', data),
+  create: (data: FormSchemaFormData) => apiClient.post<FormSchemaResponse>('/forms', data),
 
   update: (id: number, data: Partial<FormSchemaFormData>) =>
     apiClient.put<FormSchemaResponse>(`/forms/${id}`, data),
 
-  remove: (id: number) =>
-    apiClient.delete<void>(`/forms/${id}`),
+  remove: (id: number) => apiClient.delete<void>(`/forms/${id}`),
 
   getSubmissionsPaged: (formId: number, params?: ListParams) =>
     apiClient.get<FormSubmissionPagedResponse>(`/forms/${formId}/submissions/paged`, { params }),

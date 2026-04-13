@@ -1,43 +1,41 @@
-// Root layout — application entry point.
-// Architectural decisions:
-//   1. QueryClientProvider wraps the entire app for React Query server state.
-//   2. SafeAreaProvider wraps the entire app for safe area insets on all screens.
-//   3. Auth guard uses Zustand useAuthStore; unauthenticated users are redirected
-//      to /(auth)/login before any tabs render.
-//   4. SplashScreen is kept visible until the layout is ready to avoid flash.
-//   5. AuthGuard waits for Zustand AsyncStorage rehydration ('hydrated' flag)
-//      before performing any redirects to prevent spurious login redirects on launch.
-
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, View } from 'react-native';
 import { Slot, useRouter, useSegments } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import * as SplashScreen from 'expo-splash-screen';
 import { useAuthStore } from '@/store/authStore';
-
-SplashScreen.preventAutoHideAsync();
+import { useThemeStore } from '../store/themeStore';
+import { useThemeColor } from '../hooks/useThemeColor';
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 2,
-      staleTime: 1000 * 60 * 5, // 5 minutes
+      staleTime: 1000 * 60 * 5,
     },
   },
 });
 
 function AuthGuard() {
-  const { isAuthenticated, hydrated } = useAuthStore();
+  const { isAuthenticated, hydrated: authHydrated } = useAuthStore();
+  const { hydrated: themeHydrated } = useThemeStore();
+  const { colors } = useThemeColor();
   const segments = useSegments();
   const router = useRouter();
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (!hydrated) return; // Wait for rehydration
-    SplashScreen.hideAsync();
-  }, [hydrated]);
+    if (authHydrated && themeHydrated) {
+      setReady(true);
+      return;
+    }
+    const timeout = setTimeout(() => setReady(true), 1500);
+    return () => clearTimeout(timeout);
+  }, [authHydrated, themeHydrated]);
 
   useEffect(() => {
-    if (!hydrated) return; // Wait for rehydration
+    if (!ready) return;
 
     const inAuthGroup = segments[0] === '(auth)';
     if (!isAuthenticated && !inAuthGroup) {
@@ -45,19 +43,33 @@ function AuthGuard() {
     } else if (isAuthenticated && inAuthGroup) {
       router.replace('/(drawer)/dashboard');
     }
-  }, [isAuthenticated, hydrated, segments]);
+  }, [isAuthenticated, ready, segments, router]);
 
-  if (!hydrated) {
-    return null; // Keep splash screen visible during rehydration
+  if (!authHydrated || !themeHydrated || !ready) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: colors.background,
+        }}
+      >
+        <ActivityIndicator size="large" color={colors.primary[600]} />
+      </View>
+    );
   }
 
   return <Slot />;
 }
 
 export default function RootLayout() {
+  const { isDark } = useThemeColor();
+
   return (
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
         <AuthGuard />
       </SafeAreaProvider>
     </QueryClientProvider>

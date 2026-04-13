@@ -28,9 +28,7 @@ export function StatusToggle({ value, onChange, label = 'Durum' }: StatusToggleP
       >
         <View style={[styles.thumb, value && styles.thumbActive]} />
       </TouchableOpacity>
-      <Text style={[styles.status, value && styles.statusActive]}>
-        {value ? 'Aktif' : 'Pasif'}
-      </Text>
+      <Text style={[styles.status, value && styles.statusActive]}>{value ? 'Aktif' : 'Pasif'}</Text>
     </View>
   );
 }

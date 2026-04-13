@@ -4,10 +4,18 @@
 
 import { useState, useMemo } from 'react';
 import {
-  Modal, View, Text, FlatList, TouchableOpacity,
-  TextInput, StyleSheet, KeyboardAvoidingView, Platform,
+  Modal,
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  TextInput,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useThemeColor } from '../../hooks/useThemeColor';
 
 export interface RelationItem {
   id: number;
@@ -32,44 +40,43 @@ export function RelationPicker({
 }: RelationPickerProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const { colors, isDark } = useThemeColor();
 
   const filtered = useMemo(
     () =>
       search.trim()
-        ? items.filter((i) =>
-            i.label.toLowerCase().includes(search.toLowerCase()),
-          )
+        ? items.filter((i) => i.label.toLowerCase().includes(search.toLowerCase()))
         : items,
-    [items, search],
+    [items, search]
   );
 
   function toggle(id: number) {
-    onChange(
-      selectedIds.includes(id)
-        ? selectedIds.filter((s) => s !== id)
-        : [...selectedIds, id],
-    );
+    onChange(selectedIds.includes(id) ? selectedIds.filter((s) => s !== id) : [...selectedIds, id]);
   }
 
-  const selectedLabels = items
-    .filter((i) => selectedIds.includes(i.id))
-    .map((i) => i.label);
+  const selectedLabels = items.filter((i) => selectedIds.includes(i.id)).map((i) => i.label);
 
   return (
     <View style={styles.wrapper}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={[styles.label, { color: colors.text }]}>{label}</Text>
 
       <TouchableOpacity
-        style={styles.trigger}
+        style={[
+          styles.trigger,
+          {
+            backgroundColor: isDark ? '#1F2937' : '#FAFAFA',
+            borderColor: isDark ? '#374151' : '#D1D5DB',
+          },
+        ]}
         onPress={() => setOpen(true)}
         disabled={isLoading}
       >
-        <Text style={styles.triggerText} numberOfLines={2}>
+        <Text style={[styles.triggerText, { color: colors.text }]} numberOfLines={2}>
           {isLoading
             ? 'Yükleniyor...'
             : selectedLabels.length === 0
-            ? 'Seçmek için dokunun'
-            : selectedLabels.join(', ')}
+              ? 'Seçmek için dokunun'
+              : selectedLabels.join(', ')}
         </Text>
         <View style={styles.triggerRight}>
           {selectedLabels.length > 0 && (
@@ -83,11 +90,17 @@ export function RelationPicker({
 
       <Modal visible={open} animationType="slide" transparent onRequestClose={() => setOpen(false)}>
         <View style={styles.overlay}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.sheet}>
-            <View style={styles.header}>
-              <Text style={styles.headerTitle}>{label} Seç</Text>
-              <TouchableOpacity onPress={() => setOpen(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close" size={22} color="#374151" />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={[styles.sheet, { backgroundColor: colors.background }]}
+          >
+            <View style={[styles.header, { borderBottomColor: isDark ? '#374151' : '#E5E7EB' }]}>
+              <Text style={[styles.headerTitle, { color: colors.text }]}>{label} Seç</Text>
+              <TouchableOpacity
+                onPress={() => setOpen(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={22} color={colors.text} />
               </TouchableOpacity>
             </View>
 
@@ -109,12 +122,13 @@ export function RelationPicker({
               renderItem={({ item }) => {
                 const selected = selectedIds.includes(item.id);
                 return (
-                  <TouchableOpacity style={styles.row} onPress={() => toggle(item.id)}>
+                  <TouchableOpacity
+                    style={[styles.row, { borderBottomColor: isDark ? '#374151' : '#F3F4F6' }]}
+                    onPress={() => toggle(item.id)}
+                  >
                     <View style={styles.rowInfo}>
-                      <Text style={styles.rowLabel}>{item.label}</Text>
-                      {item.sublabel && (
-                        <Text style={styles.rowSublabel}>{item.sublabel}</Text>
-                      )}
+                      <Text style={[styles.rowLabel, { color: colors.text }]}>{item.label}</Text>
+                      {item.sublabel && <Text style={styles.rowSublabel}>{item.sublabel}</Text>}
                     </View>
                     <View style={[styles.check, selected && styles.checkSelected]}>
                       {selected && <Ionicons name="checkmark" size={14} color="#fff" />}
@@ -129,9 +143,12 @@ export function RelationPicker({
               }
             />
 
-            <View style={styles.footer}>
-              <TouchableOpacity style={styles.clearBtn} onPress={() => onChange([])}>
-                <Text style={styles.clearBtnText}>Temizle</Text>
+            <View style={[styles.footer, { borderTopColor: isDark ? '#374151' : '#E5E7EB' }]}>
+              <TouchableOpacity
+                style={[styles.clearBtn, { borderColor: isDark ? '#374151' : '#D1D5DB' }]}
+                onPress={() => onChange([])}
+              >
+                <Text style={[styles.clearBtnText, { color: colors.text }]}>Temizle</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.doneBtn} onPress={() => setOpen(false)}>
                 <Text style={styles.doneBtnText}>Tamam ({selectedIds.length})</Text>
@@ -148,55 +165,97 @@ const styles = StyleSheet.create({
   wrapper: { marginBottom: 12 },
   label: { fontSize: 14, fontWeight: '500', color: '#374151', marginBottom: 6 },
   trigger: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#FAFAFA',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#FAFAFA',
   },
   triggerText: { fontSize: 14, color: '#374151', flex: 1, marginRight: 8 },
   triggerRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   badge: {
-    minWidth: 20, height: 20, borderRadius: 10, backgroundColor: '#4F46E5',
-    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#4F46E5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
   },
   badgeText: { fontSize: 11, fontWeight: '700', color: '#fff' },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '75%' },
+  sheet: { borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '75%' },
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    padding: 16, borderBottomWidth: 1, borderBottomColor: '#E5E7EB',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
   headerTitle: { fontSize: 16, fontWeight: '600', color: '#111827' },
   searchRow: {
-    flexDirection: 'row', alignItems: 'center',
-    margin: 12, borderWidth: 1, borderColor: '#E5E7EB',
-    borderRadius: 10, paddingHorizontal: 10, backgroundColor: '#F9FAFB',
+    flexDirection: 'row',
+    alignItems: 'center',
+    margin: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    backgroundColor: '#F9FAFB',
   },
   searchIcon: { marginRight: 6 },
   searchInput: { flex: 1, fontSize: 14, color: '#111827', paddingVertical: 8 },
   list: { flex: 1 },
   row: {
-    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16,
-    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
   },
   rowInfo: { flex: 1 },
   rowLabel: { fontSize: 14, color: '#111827', fontWeight: '500' },
   rowSublabel: { fontSize: 12, color: '#6B7280', marginTop: 2 },
   check: {
-    width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: '#D1D5DB',
-    alignItems: 'center', justifyContent: 'center',
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   checkSelected: { backgroundColor: '#4F46E5', borderColor: '#4F46E5' },
   empty: { padding: 24, alignItems: 'center' },
   emptyText: { fontSize: 14, color: '#9CA3AF' },
   footer: {
-    flexDirection: 'row', gap: 12, padding: 16,
-    borderTopWidth: 1, borderTopColor: '#E5E7EB',
+    flexDirection: 'row',
+    gap: 12,
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
   },
   clearBtn: {
-    flex: 1, paddingVertical: 12, borderRadius: 10,
-    borderWidth: 1, borderColor: '#D1D5DB', alignItems: 'center',
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
   },
   clearBtnText: { fontSize: 15, fontWeight: '600', color: '#374151' },
-  doneBtn: { flex: 2, paddingVertical: 12, borderRadius: 10, backgroundColor: '#4F46E5', alignItems: 'center' },
+  doneBtn: {
+    flex: 2,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#4F46E5',
+    alignItems: 'center',
+  },
   doneBtnText: { fontSize: 15, fontWeight: '600', color: '#fff' },
 });

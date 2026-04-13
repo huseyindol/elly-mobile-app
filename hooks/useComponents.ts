@@ -18,6 +18,13 @@ export const useComponentList = (params?: ListParams) =>
     staleTime: STALE_TIME,
   });
 
+export const useComponentListSummary = () =>
+  useQuery({
+    queryKey: [...COMPONENT_KEYS.lists(), 'summary'] as const,
+    queryFn: () => componentsService.getSummary().then((res) => res.data),
+    staleTime: STALE_TIME,
+  });
+
 export const useComponentsPaged = (params?: ListParams) =>
   useQuery({
     queryKey: [...COMPONENT_KEYS.lists(), 'paged', params] as const,
@@ -36,8 +43,7 @@ export const useComponent = (id: number) =>
 export const useCreateComponent = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: ComponentFormData) =>
-      componentsService.create(data).then((res) => res.data),
+    mutationFn: (data: ComponentFormData) => componentsService.create(data).then((res) => res.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: COMPONENT_KEYS.lists() });
     },
@@ -70,7 +76,9 @@ export const useInfiniteComponents = (search?: string) =>
   useInfiniteQuery({
     queryKey: [...COMPONENT_KEYS.lists(), 'infinite', { search }] as const,
     queryFn: ({ pageParam }) =>
-      componentsService.getListPaged({ page: pageParam as number, size: 20, search }).then((res) => res.data),
+      componentsService
+        .getListPaged({ page: pageParam as number, size: 20, search })
+        .then((res) => res.data),
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {
       const d = lastPage.data;

@@ -45,7 +45,12 @@ function generateId(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
-export function FormBuilderFieldModal({ visible, field, onSave, onClose }: FormBuilderFieldModalProps) {
+export function FormBuilderFieldModal({
+  visible,
+  field,
+  onSave,
+  onClose,
+}: FormBuilderFieldModalProps) {
   const [type, setType] = useState<FieldType>('text');
   const [label, setLabel] = useState('');
   const [placeholder, setPlaceholder] = useState('');
@@ -73,7 +78,10 @@ export function FormBuilderFieldModal({ visible, field, onSave, onClose }: FormB
   function addOption() {
     const trimmed = newOption.trim();
     if (!trimmed) return;
-    setOptions((prev) => [...prev, { label: trimmed, value: trimmed.toLowerCase().replace(/\s+/g, '_') }]);
+    setOptions((prev) => [
+      ...prev,
+      { label: trimmed, value: trimmed.toLowerCase().replace(/\s+/g, '_') },
+    ]);
     setNewOption('');
   }
 
@@ -97,7 +105,10 @@ export function FormBuilderFieldModal({ visible, field, onSave, onClose }: FormB
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.sheet}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.sheet}
+        >
           <View style={styles.header}>
             <Text style={styles.headerTitle}>{field ? 'Alanı Düzenle' : 'Alan Ekle'}</Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -115,7 +126,9 @@ export function FormBuilderFieldModal({ visible, field, onSave, onClose }: FormB
                   style={[styles.typeChip, type === ft.type && styles.typeChipActive]}
                   onPress={() => setType(ft.type)}
                 >
-                  <Text style={[styles.typeChipText, type === ft.type && styles.typeChipTextActive]}>
+                  <Text
+                    style={[styles.typeChipText, type === ft.type && styles.typeChipTextActive]}
+                  >
                     {ft.label}
                   </Text>
                 </TouchableOpacity>
@@ -145,7 +158,11 @@ export function FormBuilderFieldModal({ visible, field, onSave, onClose }: FormB
             {/* Required toggle */}
             <View style={styles.switchRow}>
               <Text style={styles.fieldLabel}>Zorunlu</Text>
-              <Switch value={required} onValueChange={setRequired} trackColor={{ true: '#4F46E5' }} />
+              <Switch
+                value={required}
+                onValueChange={setRequired}
+                trackColor={{ true: '#4F46E5' }}
+              />
             </View>
 
             {/* Options — only for select / radio / multi_checkbox */}
@@ -154,7 +171,9 @@ export function FormBuilderFieldModal({ visible, field, onSave, onClose }: FormB
                 <Text style={styles.sectionLabel}>Seçenekler</Text>
                 {options.map((opt, idx) => (
                   <View key={idx} style={styles.optionRow}>
-                    <Text style={styles.optionLabel} numberOfLines={1}>{opt.label}</Text>
+                    <Text style={styles.optionLabel} numberOfLines={1}>
+                      {opt.label}
+                    </Text>
                     <TouchableOpacity onPress={() => removeOption(idx)}>
                       <Ionicons name="trash-outline" size={16} color="#EF4444" />
                     </TouchableOpacity>
@@ -219,7 +238,15 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 16, fontWeight: '600', color: '#111827' },
   body: { padding: 16, gap: 4 },
-  sectionLabel: { fontSize: 13, fontWeight: '600', color: '#6B7280', marginBottom: 8, marginTop: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 8,
+    marginTop: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   fieldLabel: { fontSize: 14, fontWeight: '500', color: '#374151', marginBottom: 4, marginTop: 8 },
   input: {
     borderWidth: 1,
@@ -233,7 +260,13 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   inputError: { borderColor: '#EF4444' },
-  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, marginBottom: 4 },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    marginBottom: 4,
+  },
   typeScroll: { marginBottom: 8 },
   typeChip: {
     paddingHorizontal: 12,

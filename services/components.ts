@@ -27,10 +27,9 @@ export const componentsService = {
 
   update: (
     id: number,
-    data: Partial<ComponentFormData>,
+    data: Partial<ComponentFormData>
   ): Promise<AxiosResponse<ComponentResponse>> =>
     apiClient.put<ComponentResponse>(`/components/${id}`, data),
 
-  remove: (id: number): Promise<AxiosResponse<void>> =>
-    apiClient.delete<void>(`/components/${id}`),
+  remove: (id: number): Promise<AxiosResponse<void>> => apiClient.delete<void>(`/components/${id}`),
 };
