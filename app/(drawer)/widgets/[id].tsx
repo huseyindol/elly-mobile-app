@@ -9,7 +9,13 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useWidget, useCreateWidget, useUpdateWidget, useDeleteWidget } from '../../../hooks/useWidgets';
+import {
+  useWidget,
+  useCreateWidget,
+  useUpdateWidget,
+  useDeleteWidget,
+} from '../../../hooks/useWidgets';
+import { useThemeColor } from '../../../hooks/useThemeColor';
 import { useBannerList } from '../../../hooks/useBanners';
 import { usePostList } from '../../../hooks/usePosts';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
@@ -31,6 +37,8 @@ export const widgetSchema = z.object({
 export type WidgetFormValues = z.infer<typeof widgetSchema>;
 
 export default function WidgetDetailScreen() {
+  const { colors } = useThemeColor();
+
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const isNew = id === 'new';
@@ -48,12 +56,13 @@ export default function WidgetDetailScreen() {
   const [selectedPostIds, setSelectedPostIds] = useState<number[]>([]);
 
   const bannerItems = useMemo(
-    () => (bannersData?.data ?? []).map((b) => ({ id: b.id, label: b.title, sublabel: b.subFolder })),
-    [bannersData],
+    () =>
+      (bannersData?.data ?? []).map((b) => ({ id: b.id, label: b.title, sublabel: b.subFolder })),
+    [bannersData]
   );
   const postItems = useMemo(
     () => (postsData?.data ?? []).map((p) => ({ id: p.id, label: p.title, sublabel: p.slug })),
-    [postsData],
+    [postsData]
   );
 
   const form = useForm<WidgetFormValues>({
@@ -115,7 +124,7 @@ export default function WidgetDetailScreen() {
   const isBusy = isCreating || isUpdating || isDeleting;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <WidgetFormContent
           form={form}

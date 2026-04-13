@@ -5,6 +5,7 @@ import { useState, useMemo } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useThemeColor } from '../../../hooks/useThemeColor';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useCreateWidget } from '../../../hooks/useWidgets';
@@ -16,6 +17,8 @@ import type { WidgetFormValues } from './[id]';
 import type { WidgetFormData } from '../../../types/widget';
 
 export default function NewWidgetScreen() {
+  const { colors } = useThemeColor();
+
   const router = useRouter();
   const { mutate: createWidget, isPending } = useCreateWidget();
 
@@ -26,12 +29,13 @@ export default function NewWidgetScreen() {
   const [selectedPostIds, setSelectedPostIds] = useState<number[]>([]);
 
   const bannerItems = useMemo(
-    () => (bannersData?.data ?? []).map((b) => ({ id: b.id, label: b.title, sublabel: b.subFolder })),
-    [bannersData],
+    () =>
+      (bannersData?.data ?? []).map((b) => ({ id: b.id, label: b.title, sublabel: b.subFolder })),
+    [bannersData]
   );
   const postItems = useMemo(
     () => (postsData?.data ?? []).map((p) => ({ id: p.id, label: p.title, sublabel: p.slug })),
-    [postsData],
+    [postsData]
   );
 
   const form = useForm<WidgetFormValues>({
@@ -41,15 +45,21 @@ export default function NewWidgetScreen() {
 
   function onSubmit(values: WidgetFormValues) {
     const payload: WidgetFormData = {
-      name: values.name, description: values.description, type: values.type,
-      content: values.content, orderIndex: values.orderIndex, status: values.status,
-      template: values.template, bannerIds: selectedBannerIds, postIds: selectedPostIds,
+      name: values.name,
+      description: values.description,
+      type: values.type,
+      content: values.content,
+      orderIndex: values.orderIndex,
+      status: values.status,
+      template: values.template,
+      bannerIds: selectedBannerIds,
+      postIds: selectedPostIds,
     };
     createWidget(payload, { onSuccess: () => router.back() });
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <WidgetFormContent
           form={form}

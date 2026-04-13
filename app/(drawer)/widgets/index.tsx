@@ -6,7 +6,6 @@ import {
   FlatList,
   TextInput,
   TouchableOpacity,
-  Text,
   ScrollView,
   StyleSheet,
   RefreshControl,
@@ -14,12 +13,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useThemeColor } from '../../../hooks/useThemeColor';
 import { Ionicons } from '@expo/vector-icons';
 import { useInfiniteWidgets } from '../../../hooks/useWidgets';
 import { WidgetCard } from '../../../components/ui/WidgetCard';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { ErrorView } from '../../../components/ui/ErrorView';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import { AnimatedFilterChip } from '../../../components/ui/AnimatedFilterChip';
 import type { WidgetItem, WidgetType } from '../../../types/widget';
 
 type FilterType = 'all' | WidgetType;
@@ -32,6 +33,8 @@ const TYPE_LABELS: Record<FilterType, string> = {
 };
 
 export default function WidgetsScreen() {
+  const { colors } = useThemeColor();
+
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [selectedType, setSelectedType] = useState<FilterType>('all');
@@ -50,15 +53,13 @@ export default function WidgetsScreen() {
   const allWidgets: WidgetItem[] = data?.pages.flatMap((p) => p.data.content) ?? [];
 
   const filtered =
-    selectedType === 'all'
-      ? allWidgets
-      : allWidgets.filter((w) => w.type === selectedType);
+    selectedType === 'all' ? allWidgets : allWidgets.filter((w) => w.type === selectedType);
 
   const handlePress = useCallback(
     (id: number) => {
       router.push(`/(drawer)/widgets/${id}` as `/${string}`);
     },
-    [router],
+    [router]
   );
 
   const handleEndReached = useCallback(() => {
@@ -68,10 +69,11 @@ export default function WidgetsScreen() {
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   if (isLoading) return <LoadingSpinner />;
-  if (isError) return <ErrorView message="Widget'lar yüklenemedi." onRetry={() => void refetch()} />;
+  if (isError)
+    return <ErrorView message="Widget'lar yüklenemedi." onRetry={() => void refetch()} />;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
       {/* Search */}
       <View style={styles.searchRow}>
         <Ionicons name="search-outline" size={18} color="#9CA3AF" style={styles.searchIcon} />
@@ -92,30 +94,27 @@ export default function WidgetsScreen() {
       </View>
 
       {/* Type filter chips */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chips}
-      >
-        {TYPE_FILTERS.map((type) => (
-          <TouchableOpacity
-            key={type}
-            style={[styles.chip, selectedType === type && styles.chipActive]}
-            onPress={() => setSelectedType(type)}
-          >
-            <Text style={[styles.chipText, selectedType === type && styles.chipTextActive]}>
-              {TYPE_LABELS[type]}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <View style={{ flexGrow: 0, flexShrink: 0, marginBottom: 8 }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chips}
+        >
+          {TYPE_FILTERS.map((type) => (
+            <AnimatedFilterChip
+              key={type}
+              label={TYPE_LABELS[type]}
+              isActive={selectedType === type}
+              onPress={() => setSelectedType(type)}
+            />
+          ))}
+        </ScrollView>
+      </View>
 
       <FlatList
         data={filtered}
         keyExtractor={(item) => String(item.id)}
-        renderItem={({ item }) => (
-          <WidgetCard widget={item} onPress={() => handlePress(item.id)} />
-        )}
+        renderItem={({ item }) => <WidgetCard widget={item} onPress={() => handlePress(item.id)} />}
         contentContainerStyle={[styles.list, filtered.length === 0 && styles.listEmpty]}
         ListEmptyComponent={
           <EmptyState
@@ -123,7 +122,7 @@ export default function WidgetsScreen() {
             description={
               search || selectedType !== 'all'
                 ? 'Seçilen kriterlere uyan widget yok.'
-                : "Henüz widget oluşturulmamış."
+                : 'Henüz widget oluşturulmamış.'
             }
             icon="apps-outline"
           />
@@ -171,24 +170,13 @@ const styles = StyleSheet.create({
   },
   searchIcon: { marginRight: 8 },
   searchInput: { flex: 1, height: 44, fontSize: 15, color: '#111827' },
-  chips: { paddingHorizontal: 16, paddingBottom: 8, gap: 8 },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  chipActive: { backgroundColor: '#EEF2FF', borderColor: '#4F46E5' },
-  chipText: { fontSize: 13, color: '#6B7280', fontWeight: '500' },
-  chipTextActive: { color: '#4F46E5', fontWeight: '600' },
-  list: { paddingHorizontal: 16, paddingBottom: 100 },
+  chips: { paddingHorizontal: 16, gap: 12, alignItems: 'center', paddingVertical: 8 },
+  list: { paddingHorizontal: 16, paddingBottom: 160 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
   footer: { paddingVertical: 16 },
   fab: {
     position: 'absolute',
-    bottom: 24,
+    bottom: 130,
     right: 24,
     width: 56,
     height: 56,
