@@ -1,10 +1,21 @@
 // Elly Mobile App — Contents list screen
 // Server-side search, client-side contentType chips, infinite scroll, pull-to-refresh, FAB.
 
-import { useState, useCallback, useMemo } from 'react';
-import { View, FlatList, TextInput, TouchableOpacity, Text, ScrollView, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import {
+  View,
+  FlatList,
+  TextInput,
+  TouchableOpacity,
+  Text,
+  ScrollView,
+  StyleSheet,
+  RefreshControl,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useThemeColor } from '../../../hooks/useThemeColor';
 import { Ionicons } from '@expo/vector-icons';
 import { useInfiniteContents } from '../../../hooks/useContents';
 import { ContentCard } from '../../../components/ui/ContentCard';
@@ -14,6 +25,8 @@ import { EmptyState } from '../../../components/ui/EmptyState';
 import type { ContentItem } from '../../../types/content';
 
 export default function ContentsScreen() {
+  const { colors } = useThemeColor();
+
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [selectedType, setSelectedType] = useState('all');
@@ -29,11 +42,23 @@ export default function ContentsScreen() {
     isFetching,
   } = useInfiniteContents(search || undefined);
 
-  const allContents: ContentItem[] = data?.pages.flatMap((p) => p.data.content) ?? [];
+  const allContents: ContentItem[] = useMemo(
+    () => data?.pages.flatMap((p) => p.data) ?? [],
+    [data]
+  );
+
+  // Akumule edilen tab listesi — sayfa yuklenince yeni type'lar eklenir ama eskiler silinmez.
+  // Bu sayede scroll sirasinda tab degerleri degismez.
+  const knownTypesRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    allContents.forEach((c) => {
+      if (c.contentType) knownTypesRef.current.add(c.contentType);
+    });
+  }, [allContents]);
 
   const contentTypes = useMemo(() => {
-    const types = Array.from(new Set(allContents.map((c) => c.contentType)));
-    return ['all', ...types];
+    return ['all', ...Array.from(knownTypesRef.current).sort()];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allContents]);
 
   const filtered =
@@ -41,9 +66,12 @@ export default function ContentsScreen() {
       ? allContents
       : allContents.filter((c) => c.contentType === selectedType);
 
-  const handlePress = useCallback((id: string) => {
-    router.push(`/(drawer)/contents/${id}` as `/${string}`);
-  }, [router]);
+  const handlePress = useCallback(
+    (id: string) => {
+      router.push(`/(drawer)/contents/${id}` as `/${string}`);
+    },
+    [router]
+  );
 
   const handleEndReached = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -55,7 +83,7 @@ export default function ContentsScreen() {
   if (isError) return <ErrorView message="İçerikler yüklenemedi." onRetry={() => void refetch()} />;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
       <View style={styles.searchRow}>
         <Ionicons name="search-outline" size={18} color="#9CA3AF" style={styles.searchIcon} />
         <TextInput
@@ -74,7 +102,11 @@ export default function ContentsScreen() {
       </View>
 
       {contentTypes.length > 1 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chips}
+        >
           {contentTypes.map((type) => (
             <TouchableOpacity
               key={type}
@@ -99,7 +131,11 @@ export default function ContentsScreen() {
         ListEmptyComponent={
           <EmptyState
             title="İçerik bulunamadı"
-            description={search || selectedType !== 'all' ? 'Seçilen kriterlere uyan içerik yok.' : 'Henüz içerik oluşturulmamış.'}
+            description={
+              search || selectedType !== 'all'
+                ? 'Seçilen kriterlere uyan içerik yok.'
+                : 'Henüz içerik oluşturulmamış.'
+            }
             icon="reader-outline"
           />
         }
@@ -133,16 +169,41 @@ export default function ContentsScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F9FAFB' },
-  searchRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, margin: 16, marginBottom: 8, paddingHorizontal: 12, borderWidth: 1, borderColor: '#E5E7EB' },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    margin: 16,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
   searchIcon: { marginRight: 8 },
   searchInput: { flex: 1, height: 44, fontSize: 15, color: '#111827' },
-  chips: { paddingHorizontal: 16, paddingBottom: 8, gap: 8 },
-  chip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, backgroundColor: '#F3F4F6' },
+  chips: { paddingHorizontal: 16, paddingBottom: 8, gap: 8, alignItems: 'center' },
+  chip: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20, backgroundColor: '#F3F4F6' },
   chipActive: { backgroundColor: '#ECFDF5', borderColor: '#059669', borderWidth: 1 },
   chipText: { fontSize: 13, color: '#6B7280', fontWeight: '500' },
   chipTextActive: { color: '#059669', fontWeight: '600' },
-  list: { paddingHorizontal: 16, paddingBottom: 100, paddingTop: 4 },
+  list: { paddingHorizontal: 16, paddingBottom: 160, paddingTop: 4 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
   footer: { paddingVertical: 16 },
-  fab: { position: 'absolute', bottom: 24, right: 24, width: 56, height: 56, borderRadius: 28, backgroundColor: '#059669', justifyContent: 'center', alignItems: 'center', shadowColor: '#059669', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 8 },
+  fab: {
+    position: 'absolute',
+    bottom: 130,
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#059669',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#059669',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 8,
+  },
 });

@@ -9,7 +9,13 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useContent, useCreateContent, useUpdateContent, useDeleteContent } from '../../../hooks/useContents';
+import {
+  useContent,
+  useCreateContent,
+  useUpdateContent,
+  useDeleteContent,
+} from '../../../hooks/useContents';
+import { useThemeColor } from '../../../hooks/useThemeColor';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { ErrorView } from '../../../components/ui/ErrorView';
 import { showConfirmDialog } from '../../../components/forms/ConfirmDialog';
@@ -23,12 +29,27 @@ export const contentSchema = z.object({
   isActive: z.boolean().default(true),
   sortOrder: z.coerce.number().int().min(0).default(0),
   contentType: z.string().min(1, 'İçerik türü zorunludur').max(50),
-  metadata: z.string().refine((v) => { try { JSON.parse(v); return true; } catch { return false; } }, { message: 'Geçerli JSON girin' }).default('{}'),
+  metadata: z
+    .string()
+    .refine(
+      (v) => {
+        try {
+          JSON.parse(v);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      { message: 'Geçerli JSON girin' }
+    )
+    .default('{}'),
 });
 
 export type ContentFormValues = z.infer<typeof contentSchema>;
 
 export default function ContentDetailScreen() {
+  const { colors } = useThemeColor();
+
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const isNew = id === 'new';
@@ -96,7 +117,7 @@ export default function ContentDetailScreen() {
   const isBusy = isCreating || isUpdating || isDeleting;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <ContentFormContent
           form={form}

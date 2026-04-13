@@ -4,6 +4,7 @@
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useThemeColor } from '../../../hooks/useThemeColor';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useCreateContent } from '../../../hooks/useContents';
@@ -13,6 +14,8 @@ import type { ContentFormValues } from './[id]';
 import type { ContentInput } from '../../../types/content';
 
 export default function NewContentScreen() {
+  const { colors } = useThemeColor();
+
   const router = useRouter();
   const { mutate: createContent, isPending } = useCreateContent();
 
@@ -37,7 +40,7 @@ export default function NewContentScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <ContentFormContent
           form={form}
