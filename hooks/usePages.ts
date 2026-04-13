@@ -18,6 +18,13 @@ export const usePageList = (params?: ListParams) =>
     staleTime: STALE_TIME,
   });
 
+export const usePageListSummary = () =>
+  useQuery({
+    queryKey: [...PAGE_KEYS.lists(), 'summary'] as const,
+    queryFn: () => pagesService.getListSummary().then((res) => res.data),
+    staleTime: STALE_TIME,
+  });
+
 export const usePagesPaged = (params?: ListParams) =>
   useQuery({
     queryKey: [...PAGE_KEYS.lists(), 'paged', params] as const,
@@ -25,12 +32,12 @@ export const usePagesPaged = (params?: ListParams) =>
     staleTime: STALE_TIME,
   });
 
-export const usePage = (id: number) =>
+export const usePageBySlug = (slug: string) =>
   useQuery({
-    queryKey: PAGE_KEYS.detail(id),
-    queryFn: () => pagesService.getBySlug(String(id)).then((res) => res.data.data),
+    queryKey: [...PAGE_KEYS.all, 'slug', slug] as const,
+    queryFn: () => pagesService.getBySlug(slug).then((res) => res.data.data),
     staleTime: STALE_TIME,
-    enabled: id > 0,
+    enabled: slug.length > 0,
   });
 
 export const useCreatePage = () => {
@@ -69,7 +76,9 @@ export const useInfinitePages = (search?: string) =>
   useInfiniteQuery({
     queryKey: [...PAGE_KEYS.lists(), 'infinite', { search }] as const,
     queryFn: ({ pageParam }) =>
-      pagesService.getListPaged({ page: pageParam as number, size: 20, search }).then((res) => res.data),
+      pagesService
+        .getListPaged({ page: pageParam as number, size: 20, search })
+        .then((res) => res.data),
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {
       const d = lastPage.data;

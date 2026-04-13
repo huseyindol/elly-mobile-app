@@ -6,10 +6,16 @@ import { useEffect } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { usePage, useCreatePage, useUpdatePage, useDeletePage } from '../../../hooks/usePages';
+import {
+  usePageBySlug,
+  useCreatePage,
+  useUpdatePage,
+  useDeletePage,
+} from '../../../hooks/usePages';
+import { useThemeColor } from '../../../hooks/useThemeColor';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { ErrorView } from '../../../components/ui/ErrorView';
 import { showConfirmDialog } from '../../../components/forms/ConfirmDialog';
@@ -35,12 +41,15 @@ export const pageSchema = z.object({
 export type PageFormValues = z.infer<typeof pageSchema>;
 
 export default function PageDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { colors } = useThemeColor();
+
+  const { id, slug } = useLocalSearchParams<{ id: string; slug?: string }>();
   const router = useRouter();
   const isNew = id === 'new';
   const pageId = isNew ? 0 : Number(id);
+  const pageSlug = slug ?? '';
 
-  const { data, isLoading, isError, refetch } = usePage(pageId);
+  const { data, isLoading, isError, refetch } = usePageBySlug(pageSlug);
   const { mutate: createPage, isPending: isCreating } = useCreatePage();
   const { mutate: updatePage, isPending: isUpdating } = useUpdatePage();
   const { mutate: deletePage, isPending: isDeleting } = useDeletePage();
@@ -107,7 +116,7 @@ export default function PageDetailScreen() {
   const isBusy = isCreating || isUpdating || isDeleting;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <PageFormContent
           form={form}

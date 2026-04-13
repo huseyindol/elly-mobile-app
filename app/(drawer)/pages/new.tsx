@@ -5,7 +5,8 @@
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useForm, Controller } from 'react-hook-form';
+import { useThemeColor } from '../../../hooks/useThemeColor';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useCreatePage } from '../../../hooks/usePages';
 import { PageFormContent } from '../../../components/forms/PageFormContent';
@@ -14,6 +15,8 @@ import type { PageFormValues } from './[id]';
 import type { PageFormData } from '../../../types/page';
 
 export default function NewPageScreen() {
+  const { colors } = useThemeColor();
+
   const router = useRouter();
   const { mutate: createPage, isPending } = useCreatePage();
 
@@ -41,7 +44,7 @@ export default function NewPageScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <PageFormContent
           form={form}

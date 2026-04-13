@@ -3,11 +3,15 @@
 // Keeps the parent screen file under 150 lines.
 
 import { View, Text, StyleSheet } from 'react-native';
+import { useThemeColor } from '../../hooks/useThemeColor';
 import { Controller, UseFormReturn } from 'react-hook-form';
 import { FormField } from './FormField';
 import { StatusToggle } from './StatusToggle';
+import { ModernSwitch } from './ModernSwitch';
 import { SeoInfoSection } from './SeoInfoForm';
 import { Button } from '../ui/Button';
+import { AiFieldButton } from '../ui/AiFieldButton';
+import { useAiGenerate } from '../../hooks/useAiGenerate';
 import type { PageFormValues } from '../../app/(drawer)/pages/[id]';
 
 interface PageFormContentProps {
@@ -19,13 +23,29 @@ interface PageFormContentProps {
 }
 
 export function PageFormContent({ form, isNew, isBusy, onSubmit, onDelete }: PageFormContentProps) {
-  const { control, handleSubmit } = form;
+  const { colors, isDark } = useThemeColor();
+
+  const { control, handleSubmit, watch, setValue } = form;
+  const title = watch('title');
+  const {
+    slugLoading,
+    descriptionLoading,
+    seoLoading,
+    handleAiSlug,
+    handleAiDescription,
+    handleAiSeo,
+  } = useAiGenerate();
 
   return (
     <>
       {/* Section: Sayfa Bilgileri */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Sayfa Bilgileri</Text>
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: colors.surface, borderColor: isDark ? '#374151' : '#E5E7EB' },
+        ]}
+      >
+        <Text style={[styles.cardTitle, { color: colors.text }]}>Sayfa Bilgileri</Text>
 
         <FormField control={control} name="title" label="Başlık" placeholder="Sayfa başlığı" />
         <FormField
@@ -35,9 +55,35 @@ export function PageFormContent({ form, isNew, isBusy, onSubmit, onDelete }: Pag
           placeholder="Kısa açıklama"
           multiline
           numberOfLines={3}
+          rightElement={
+            <AiFieldButton
+              onClick={() =>
+                handleAiDescription(title ?? '', 'sayfa', (desc) => setValue('description', desc))
+              }
+              isLoading={descriptionLoading}
+              disabled={!title}
+            />
+          }
         />
-        <FormField control={control} name="slug" label="Slug" placeholder="ornek-sayfa-slug" />
-        <FormField control={control} name="template" label="Şablon" placeholder="Şablon adı (opsiyonel)" />
+        <FormField
+          control={control}
+          name="slug"
+          label="Slug"
+          placeholder="ornek-sayfa-slug"
+          rightElement={
+            <AiFieldButton
+              onClick={() => handleAiSlug(title ?? '', (slug) => setValue('slug', slug))}
+              isLoading={slugLoading}
+              disabled={!title}
+            />
+          }
+        />
+        <FormField
+          control={control}
+          name="template"
+          label="Şablon"
+          placeholder="Şablon adı (opsiyonel)"
+        />
 
         <Controller
           control={control}
@@ -49,8 +95,28 @@ export function PageFormContent({ form, isNew, isBusy, onSubmit, onDelete }: Pag
       </View>
 
       {/* Section: SEO Ayarları */}
-      <SeoInfoSection>
-        <FormField control={control} name="seoTitle" label="SEO Başlığı" placeholder="60 karakter maks." />
+      <SeoInfoSection
+        rightElement={
+          <AiFieldButton
+            label="AI ile doldur"
+            onClick={() =>
+              handleAiSeo(title ?? '', (seo) => {
+                setValue('seoTitle', seo.seoTitle);
+                setValue('seoDescription', seo.seoDescription);
+                setValue('seoKeywords', seo.seoKeywords);
+              })
+            }
+            isLoading={seoLoading}
+            disabled={!title}
+          />
+        }
+      >
+        <FormField
+          control={control}
+          name="seoTitle"
+          label="SEO Başlığı"
+          placeholder="60 karakter maks."
+        />
         <FormField
           control={control}
           name="seoDescription"
@@ -59,20 +125,35 @@ export function PageFormContent({ form, isNew, isBusy, onSubmit, onDelete }: Pag
           multiline
           numberOfLines={3}
         />
-        <FormField control={control} name="seoKeywords" label="Anahtar Kelimeler" placeholder="kelime1, kelime2" />
+        <FormField
+          control={control}
+          name="seoKeywords"
+          label="Anahtar Kelimeler"
+          placeholder="kelime1, kelime2"
+        />
 
         <Controller
           control={control}
           name="noIndex"
           render={({ field }) => (
-            <StatusToggle value={field.value} onChange={field.onChange} label="No Index" />
+            <ModernSwitch
+              value={field.value}
+              onChange={field.onChange}
+              label="No Index"
+              description="Arama motorlarında indekslenmeyi engeller."
+            />
           )}
         />
         <Controller
           control={control}
           name="noFollow"
           render={({ field }) => (
-            <StatusToggle value={field.value} onChange={field.onChange} label="No Follow" />
+            <ModernSwitch
+              value={field.value}
+              onChange={field.onChange}
+              label="No Follow"
+              description="Sayfadaki linklerin takip edilmesini engeller."
+            />
           )}
         />
       </SeoInfoSection>
