@@ -2,9 +2,18 @@
 // Server-side search, infinite scroll, pull-to-refresh, FAB.
 
 import { useState, useCallback } from 'react';
-import { View, FlatList, TextInput, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
+import {
+  View,
+  FlatList,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  RefreshControl,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useThemeColor } from '../../../hooks/useThemeColor';
 import { Ionicons } from '@expo/vector-icons';
 import { useInfiniteForms } from '../../../hooks/useForms';
 import { FormCard } from '../../../components/ui/FormCard';
@@ -14,6 +23,8 @@ import { EmptyState } from '../../../components/ui/EmptyState';
 import type { FormSchema } from '../../../types/form';
 
 export default function FormsScreen() {
+  const { colors } = useThemeColor();
+
   const router = useRouter();
   const [search, setSearch] = useState('');
 
@@ -30,9 +41,12 @@ export default function FormsScreen() {
 
   const forms: FormSchema[] = data?.pages.flatMap((p) => p.data.content) ?? [];
 
-  const handlePress = useCallback((id: number) => {
-    router.push(`/(drawer)/forms/${id}` as `/${string}`);
-  }, [router]);
+  const handlePress = useCallback(
+    (id: number) => {
+      router.push(`/(drawer)/forms/${id}` as `/${string}`);
+    },
+    [router]
+  );
 
   const handleEndReached = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -44,7 +58,7 @@ export default function FormsScreen() {
   if (isError) return <ErrorView message="Formlar yüklenemedi." onRetry={() => void refetch()} />;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
       <View style={styles.searchRow}>
         <Ionicons name="search-outline" size={18} color="#9CA3AF" style={styles.searchIcon} />
         <TextInput
@@ -65,14 +79,14 @@ export default function FormsScreen() {
       <FlatList
         data={forms}
         keyExtractor={(item) => String(item.id)}
-        renderItem={({ item }) => (
-          <FormCard form={item} onPress={() => handlePress(item.id)} />
-        )}
+        renderItem={({ item }) => <FormCard form={item} onPress={() => handlePress(item.id)} />}
         contentContainerStyle={[styles.list, forms.length === 0 && styles.listEmpty]}
         ListEmptyComponent={
           <EmptyState
             title="Form bulunamadı"
-            description={search ? 'Arama kriterlerine uyan form yok.' : 'Henüz form oluşturulmamış.'}
+            description={
+              search ? 'Arama kriterlerine uyan form yok.' : 'Henüz form oluşturulmamış.'
+            }
             icon="list-outline"
           />
         }
@@ -106,11 +120,36 @@ export default function FormsScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F9FAFB' },
-  searchRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, margin: 16, marginBottom: 12, paddingHorizontal: 12, borderWidth: 1, borderColor: '#E5E7EB' },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    margin: 16,
+    marginBottom: 12,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
   searchIcon: { marginRight: 8 },
   searchInput: { flex: 1, height: 44, fontSize: 15, color: '#111827' },
-  list: { paddingHorizontal: 16, paddingBottom: 100 },
+  list: { paddingHorizontal: 16, paddingBottom: 160 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
   footer: { paddingVertical: 16 },
-  fab: { position: 'absolute', bottom: 24, right: 24, width: 56, height: 56, borderRadius: 28, backgroundColor: '#4F46E5', justifyContent: 'center', alignItems: 'center', shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 8 },
+  fab: {
+    position: 'absolute',
+    bottom: 130,
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#4F46E5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#4F46E5',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 8,
+  },
 });

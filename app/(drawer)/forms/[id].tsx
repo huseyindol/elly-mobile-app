@@ -7,10 +7,16 @@ import { useState, useEffect, useCallback } from 'react';
 import { ScrollView, View, Text, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useThemeColor } from '../../../hooks/useThemeColor';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useForm as useFormQuery, useCreateForm, useUpdateForm, useDeleteForm } from '../../../hooks/useForms';
+import {
+  useForm as useFormQuery,
+  useCreateForm,
+  useUpdateForm,
+  useDeleteForm,
+} from '../../../hooks/useForms';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { ErrorView } from '../../../components/ui/ErrorView';
 import { FormField as FormFieldComp } from '../../../components/forms/FormField';
@@ -29,6 +35,8 @@ export const formMetaSchema = z.object({
 export type FormMetaValues = z.infer<typeof formMetaSchema>;
 
 export default function FormDetailScreen() {
+  const { colors, isDark } = useThemeColor();
+
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const isNew = id === 'new';
@@ -69,7 +77,11 @@ export default function FormDetailScreen() {
   const handleDeleteField = useCallback((fieldId: string) => {
     Alert.alert('Alanı Sil', 'Bu alanı silmek istediğinize emin misiniz?', [
       { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: () => setFields((prev) => prev.filter((f) => f.id !== fieldId)) },
+      {
+        text: 'Sil',
+        style: 'destructive',
+        onPress: () => setFields((prev) => prev.filter((f) => f.id !== fieldId)),
+      },
     ]);
   }, []);
 
@@ -110,11 +122,21 @@ export default function FormDetailScreen() {
   const isBusy = isCreating || isUpdating || isDeleting;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Form Bilgileri</Text>
-          <FormFieldComp control={form.control} name="title" label="Başlık" placeholder="Form başlığı" />
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: colors.surface, borderColor: isDark ? '#374151' : '#E5E7EB' },
+          ]}
+        >
+          <Text style={[styles.cardTitle, { color: colors.text }]}>Form Bilgileri</Text>
+          <FormFieldComp
+            control={form.control}
+            name="title"
+            label="Başlık"
+            placeholder="Form başlığı"
+          />
           <Controller
             control={form.control}
             name="active"
@@ -158,9 +180,15 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F9FAFB' },
   scroll: { padding: 16 },
   card: {
-    backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 16,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   cardTitle: { fontSize: 15, fontWeight: '600', color: '#111827', marginBottom: 12 },
   actions: { gap: 12 },

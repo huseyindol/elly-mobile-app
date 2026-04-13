@@ -5,6 +5,7 @@ import { useState, useCallback } from 'react';
 import { ScrollView, View, Text, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useThemeColor } from '../../../hooks/useThemeColor';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useCreateForm } from '../../../hooks/useForms';
@@ -18,6 +19,8 @@ import type { FormMetaValues } from './[id]';
 import type { FormField, FormSchemaDefinition, FormSchemaFormData } from '../../../types/form';
 
 export default function NewFormScreen() {
+  const { colors, isDark } = useThemeColor();
+
   const router = useRouter();
   const { mutate: createForm, isPending } = useCreateForm();
   const [fields, setFields] = useState<FormField[]>([]);
@@ -29,18 +32,32 @@ export default function NewFormScreen() {
     defaultValues: { active: true },
   });
 
-  const handleAddField = useCallback(() => { setEditingField(null); setModalVisible(true); }, []);
-  const handleEditField = useCallback((f: FormField) => { setEditingField(f); setModalVisible(true); }, []);
+  const handleAddField = useCallback(() => {
+    setEditingField(null);
+    setModalVisible(true);
+  }, []);
+  const handleEditField = useCallback((f: FormField) => {
+    setEditingField(f);
+    setModalVisible(true);
+  }, []);
   const handleDeleteField = useCallback((fieldId: string) => {
     Alert.alert('Alanı Sil', 'Bu alanı silmek istediğinize emin misiniz?', [
       { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: () => setFields((prev) => prev.filter((f) => f.id !== fieldId)) },
+      {
+        text: 'Sil',
+        style: 'destructive',
+        onPress: () => setFields((prev) => prev.filter((f) => f.id !== fieldId)),
+      },
     ]);
   }, []);
   const handleSaveField = useCallback((saved: FormField) => {
     setFields((prev) => {
       const idx = prev.findIndex((f) => f.id === saved.id);
-      if (idx >= 0) { const next = [...prev]; next[idx] = saved; return next; }
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = saved;
+        return next;
+      }
       return [...prev, saved];
     });
     setModalVisible(false);
@@ -53,11 +70,21 @@ export default function NewFormScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Form Bilgileri</Text>
-          <FormFieldComp control={form.control} name="title" label="Başlık" placeholder="Form başlığı" />
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: colors.surface, borderColor: isDark ? '#374151' : '#E5E7EB' },
+          ]}
+        >
+          <Text style={[styles.cardTitle, { color: colors.text }]}>Form Bilgileri</Text>
+          <FormFieldComp
+            control={form.control}
+            name="title"
+            label="Başlık"
+            placeholder="Form başlığı"
+          />
           <Controller
             control={form.control}
             name="active"
@@ -66,11 +93,21 @@ export default function NewFormScreen() {
             )}
           />
         </View>
-        <FormBuilderFieldList fields={fields} onEdit={handleEditField} onDelete={handleDeleteField} onAdd={handleAddField} />
+        <FormBuilderFieldList
+          fields={fields}
+          onEdit={handleEditField}
+          onDelete={handleDeleteField}
+          onAdd={handleAddField}
+        />
         <Button label="Oluştur" onPress={form.handleSubmit(onSubmit)} loading={isPending} />
         <View style={styles.bottomSpacer} />
       </ScrollView>
-      <FormBuilderFieldModal visible={modalVisible} field={editingField} onSave={handleSaveField} onClose={() => setModalVisible(false)} />
+      <FormBuilderFieldModal
+        visible={modalVisible}
+        field={editingField}
+        onSave={handleSaveField}
+        onClose={() => setModalVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -79,9 +116,15 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F9FAFB' },
   scroll: { padding: 16 },
   card: {
-    backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 16,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   cardTitle: { fontSize: 15, fontWeight: '600', color: '#111827', marginBottom: 12 },
   bottomSpacer: { height: 32 },
