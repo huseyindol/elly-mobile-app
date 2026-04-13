@@ -49,9 +49,13 @@ elly-mobile-app/
 ├── types/                  # TypeScript type definitions
 ├── utils/                  # Helper functions
 ├── constants/              # App constants, colors, theme
-└── .claude/                # Claude Code agent & skill configuration
-    ├── agents/             # Agent rule files
-    └── skills/             # Reusable skill scripts
+├── AGENTS.md               # Shared agent entry (Cursor + general); points here and to .agents/
+├── .claude/                # Claude Code agent & skill configuration
+│   ├── agents/             # Agent rule files
+│   └── skills/             # Reusable skill scripts
+└── .agents/                # Mirror of .claude/ for Cursor and other agent tools
+    ├── agents/
+    └── skills/
 ```
 
 ## Tech Stack
@@ -153,7 +157,7 @@ bun install
 
 ## Notes for Claude Agents
 
-- **Always read CLAUDE.md first** before starting any task
+- **Always read CLAUDE.md first** before starting any task; use **`AGENTS.md`** as the cross-tool index (Cursor and others load `.agents/` as a peer to `.claude/`)
 - **Team Lead** must claim ownership (create TodoWrite) before delegating
 - Use parallel agents for independent work (API layer + UI layer simultaneously)
 - When in doubt about design, follow the admin panel's existing patterns
