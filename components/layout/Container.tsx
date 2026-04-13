@@ -32,9 +32,7 @@ export function Container({ children, scroll = false, padding = true }: Containe
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50">
-      <View className={`flex-1 ${paddingClass}`}>
-        {children}
-      </View>
+      <View className={`flex-1 ${paddingClass}`}>{children}</View>
     </SafeAreaView>
   );
 }

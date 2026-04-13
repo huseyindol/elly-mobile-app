@@ -1,8 +1,12 @@
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/authStore';
-import type { DrawerContentComponentProps } from '@react-navigation/drawer';
+import { useThemeColor } from '../../hooks/useThemeColor';
+import {
+  DrawerContentScrollView,
+  type DrawerContentComponentProps,
+} from '@react-navigation/drawer';
 
 interface MenuItem {
   label: string;
@@ -11,7 +15,7 @@ interface MenuItem {
 }
 
 const menuItems: MenuItem[] = [
-  { label: 'Dashboard', icon: 'grid-outline', route: '/(drawer)/dashboard' },
+  { label: 'Elly Panel', icon: 'grid-outline', route: '/(drawer)/dashboard' },
   { label: 'Sayfalar', icon: 'document-text-outline', route: '/(drawer)/pages' },
   { label: 'Yazılar', icon: 'newspaper-outline', route: '/(drawer)/posts' },
   { label: 'Bannerlar', icon: 'image-outline', route: '/(drawer)/banners' },
@@ -22,104 +26,139 @@ const menuItems: MenuItem[] = [
   { label: 'İçerikler', icon: 'reader-outline', route: '/(drawer)/contents' },
 ];
 
-export function DrawerContent(_props: DrawerContentComponentProps) {
+export function DrawerContent(props: DrawerContentComponentProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, tenantId, loginType, logout } = useAuthStore();
-
-  const handleLogout = () => {
-    logout();
-    router.replace('/(auth)/login');
-  };
+  const { logout, user } = useAuthStore();
+  const { colors, isDark } = useThemeColor();
 
   return (
-    <View style={styles.container}>
-      {/* User Info Header */}
-      <View style={styles.userSection}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>
-            {user?.username?.charAt(0).toUpperCase() ?? 'A'}
-          </Text>
-        </View>
-        <View style={styles.userInfo}>
-          <Text style={styles.username} numberOfLines={1}>{user?.username ?? 'Kullanıcı'}</Text>
-          <Text style={styles.email} numberOfLines={1}>{user?.email ?? ''}</Text>
-          {tenantId && (
-            <View style={styles.tenantBadge}>
-              <Ionicons name="business-outline" size={10} color="#6366F1" />
-              <Text style={styles.tenantText}>{tenantId}</Text>
-            </View>
-          )}
-          <Text style={styles.loginTypeBadge}>
-            {loginType === 'admin' ? '🔑 Admin' : '🏢 Tenant'}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.divider} />
-
-      {/* Menu Items */}
-      <ScrollView style={styles.menuList} showsVerticalScrollIndicator={false}>
-        {menuItems.map((item) => {
-          const isActive = pathname.startsWith(item.route.replace('/(drawer)', ''));
-          return (
-            <TouchableOpacity
-              key={item.route}
-              style={[styles.menuItem, isActive && styles.menuItemActive]}
-              onPress={() => router.push(item.route as `/${string}`)}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name={isActive ? (item.icon.replace('-outline', '') as keyof typeof Ionicons.glyphMap) : item.icon}
-                size={20}
-                color={isActive ? '#4F46E5' : '#6B7280'}
-              />
-              <Text style={[styles.menuLabel, isActive && styles.menuLabelActive]}>
-                {item.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-
-        <View style={styles.divider} />
-
-        {/* Settings */}
-        <TouchableOpacity
-          style={[styles.menuItem, pathname.includes('settings') && styles.menuItemActive]}
-          onPress={() => router.push('/(drawer)/settings')}
-          activeOpacity={0.7}
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <DrawerContentScrollView
+        {...props}
+        contentContainerStyle={{ backgroundColor: colors.background }}
+      >
+        {/* User Info Header */}
+        <View
+          style={[styles.userSection, { backgroundColor: isDark ? colors.surface : '#F9FAFB' }]}
         >
-          <Ionicons name="settings-outline" size={20} color="#6B7280" />
-          <Text style={styles.menuLabel}>Ayarlar</Text>
-        </TouchableOpacity>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{user?.username?.charAt(0).toUpperCase() ?? 'A'}</Text>
+          </View>
+          <View style={styles.userInfo}>
+            <Text style={[styles.username, { color: colors.text }]} numberOfLines={1}>
+              {user?.username ?? 'Kullanıcı'}
+            </Text>
+            <Text style={[styles.email, { color: colors.textSubtle }]} numberOfLines={1}>
+              {user?.email ?? ''}
+            </Text>
+          </View>
+        </View>
 
-        {/* Logout */}
-        <TouchableOpacity style={[styles.menuItem, styles.logoutItem]} onPress={handleLogout} activeOpacity={0.7}>
-          <Ionicons name="log-out-outline" size={20} color="#EF4444" />
-          <Text style={[styles.menuLabel, styles.logoutText]}>Çıkış Yap</Text>
+        <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+        {/* Menu Items */}
+        <View style={styles.menuList}>
+          {menuItems.map((item) => {
+            const isActive = pathname.startsWith(item.route.replace('/(drawer)', ''));
+            return (
+              <TouchableOpacity
+                key={item.route}
+                style={[
+                  styles.menuItem,
+                  isActive && [
+                    styles.menuItemActive,
+                    { backgroundColor: isDark ? colors.surface : '#EEF2FF' },
+                  ],
+                ]}
+                onPress={() => router.push(item.route as `/${string}`)}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name={item.icon}
+                  size={22}
+                  color={isActive ? colors.primary[600] : colors.icon}
+                  style={styles.menuIcon}
+                />
+                <Text
+                  style={[
+                    styles.menuLabel,
+                    { color: colors.text },
+                    isActive && [styles.menuLabelActive, { color: colors.primary[600] }],
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          {/* Settings */}
+          <TouchableOpacity
+            style={[
+              styles.menuItem,
+              pathname.includes('settings') && {
+                backgroundColor: isDark ? colors.surface : '#EEF2FF',
+              },
+            ]}
+            onPress={() => router.push('/(drawer)/settings')}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="settings-outline"
+              size={22}
+              color={colors.icon}
+              style={styles.menuIcon}
+            />
+            <Text style={[styles.menuLabel, { color: colors.text }]}>Ayarlar</Text>
+          </TouchableOpacity>
+        </View>
+      </DrawerContentScrollView>
+
+      {/* Logout */}
+      <View style={[styles.footer, { borderTopColor: colors.border }]}>
+        <TouchableOpacity style={styles.logoutButton} onPress={logout} activeOpacity={0.7}>
+          <Ionicons name="log-out-outline" size={22} color={colors.danger} />
+          <Text style={[styles.logoutText, { color: colors.danger }]}>Çıkış Yap</Text>
         </TouchableOpacity>
-      </ScrollView>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  userSection: { flexDirection: 'row', padding: 20, paddingTop: 60, alignItems: 'center', backgroundColor: '#F9FAFB' },
-  avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#4F46E5', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  container: { flex: 1 },
+  userSection: { flexDirection: 'row', padding: 20, alignItems: 'center' },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#4F46E5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
   avatarText: { color: '#fff', fontSize: 20, fontWeight: '700' },
   userInfo: { flex: 1 },
-  username: { fontSize: 15, fontWeight: '700', color: '#111827' },
-  email: { fontSize: 12, color: '#6B7280', marginTop: 1 },
-  tenantBadge: { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 4 },
-  tenantText: { fontSize: 11, color: '#6366F1', fontWeight: '500' },
-  loginTypeBadge: { fontSize: 11, color: '#9CA3AF', marginTop: 2 },
-  divider: { height: 1, backgroundColor: '#F3F4F6', marginVertical: 8 },
-  menuList: { flex: 1, paddingHorizontal: 12, paddingTop: 8 },
-  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10, marginBottom: 2, gap: 12 },
-  menuItemActive: { backgroundColor: '#EEF2FF' },
-  menuLabel: { fontSize: 14, fontWeight: '500', color: '#374151' },
-  menuLabelActive: { color: '#4F46E5', fontWeight: '600' },
-  logoutItem: { marginTop: 4 },
-  logoutText: { color: '#EF4444' },
+  username: { fontSize: 15, fontWeight: '700' },
+  email: { fontSize: 12, marginTop: 1 },
+  divider: { height: 1, marginVertical: 8 },
+  menuList: { paddingHorizontal: 12, paddingTop: 8 },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    marginBottom: 2,
+  },
+  menuItemActive: {},
+  menuIcon: { marginRight: 12 },
+  menuLabel: { fontSize: 14, fontWeight: '500' },
+  menuLabelActive: { fontWeight: '600' },
+  footer: { padding: 20, borderTopWidth: 1, paddingBottom: 40 },
+  logoutButton: { flexDirection: 'row', alignItems: 'center' },
+  logoutText: { fontSize: 15, fontWeight: '600', marginLeft: 12 },
 });
