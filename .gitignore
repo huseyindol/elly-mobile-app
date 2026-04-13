@@ -10,6 +10,7 @@ web-build/
 *.mobileprovision
 *.orig.*
 web-build/
+.env
 .env.local
 .env.*.local
 .DS_Store
