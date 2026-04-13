@@ -57,7 +57,7 @@ export const useUploadMultiAssets = () => {
       files,
       subFolder,
     }: {
-      files: Array<{ uri: string; type: string; name: string }>;
+      files: { uri: string; type: string; name: string }[];
       subFolder?: string;
     }) => assetsService.uploadMulti(files, subFolder).then((res) => res.data),
     onSuccess: () => {
@@ -97,11 +97,15 @@ export const useInfiniteAssets = (search?: string, subFolder?: string) =>
   useInfiniteQuery({
     queryKey: [...ASSET_KEYS.lists(), 'infinite', { search, subFolder }] as const,
     queryFn: ({ pageParam }) => {
-      const base = subFolder && subFolder !== 'all'
-        ? assetsService.searchBySubFolderAndName(subFolder, search ?? '', { page: pageParam as number, size: 20 })
-        : search
-        ? assetsService.searchByName(search, { page: pageParam as number, size: 20 })
-        : assetsService.getListPaged({ page: pageParam as number, size: 20 });
+      const base =
+        subFolder && subFolder !== 'all'
+          ? assetsService.searchBySubFolderAndName(subFolder, search ?? '', {
+              page: pageParam as number,
+              size: 20,
+            })
+          : search
+            ? assetsService.searchByName(search, { page: pageParam as number, size: 20 })
+            : assetsService.getListPaged({ page: pageParam as number, size: 20 });
       return base.then((res) => res.data);
     },
     initialPageParam: 0,

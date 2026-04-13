@@ -1,14 +1,17 @@
-// Elly Mobile App — PostFormContent
-// Extracted form body for the Post create/edit screen.
-// Keeps the parent screen file under 150 lines.
-
+import { useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { useThemeColor } from '../../hooks/useThemeColor';
 import { Controller, UseFormReturn } from 'react-hook-form';
 import { FormField } from './FormField';
 import { StatusToggle } from './StatusToggle';
+import { ModernSwitch } from './ModernSwitch';
 import { SeoInfoSection } from './SeoInfoForm';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
+import { AiFieldButton } from '../ui/AiFieldButton';
+import { AiArticlePanel } from '../posts/AiArticlePanel';
+import { RichTextEditor } from '../ui/RichTextEditor';
+import { useAiGenerate } from '../../hooks/useAiGenerate';
 import type { PostFormValues } from '../../app/(drawer)/posts/[id]';
 
 interface PostFormContentProps {
@@ -20,24 +23,58 @@ interface PostFormContentProps {
 }
 
 export function PostFormContent({ form, isNew, isBusy, onSubmit, onDelete }: PostFormContentProps) {
-  const { control, handleSubmit } = form;
+  const { colors, isDark } = useThemeColor();
+
+  const { control, handleSubmit, watch, setValue } = form;
+  const title = watch('title');
+  const [showAiPanel, setShowAiPanel] = useState(false);
+  const { slugLoading, seoLoading, handleAiSlug, handleAiSeo } = useAiGenerate();
 
   return (
     <>
-      {/* Section: Yazı Bilgileri */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Yazı Bilgileri</Text>
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: colors.surface, borderColor: isDark ? '#374151' : '#E5E7EB' },
+        ]}
+      >
+        <Text style={[styles.cardTitle, { color: colors.text }]}>Yazı Bilgileri</Text>
 
         <FormField control={control} name="title" label="Başlık" placeholder="Yazı başlığı" />
-        <FormField control={control} name="slug" label="Slug" placeholder="ornek-yazi-slug" />
         <FormField
           control={control}
-          name="content"
-          label="İçerik"
-          placeholder="Yazı içeriği..."
-          multiline
-          numberOfLines={6}
+          name="slug"
+          label="Slug"
+          placeholder="ornek-yazi-slug"
+          rightElement={
+            <AiFieldButton
+              onClick={() => handleAiSlug(title ?? '', (slug) => setValue('slug', slug))}
+              isLoading={slugLoading}
+              disabled={!title}
+            />
+          }
         />
+        <Controller
+          control={control}
+          name="content"
+          render={({ field, fieldState }) => (
+            <RichTextEditor
+              label="İçerik"
+              value={(field.value as string) ?? ''}
+              onChange={field.onChange}
+              error={fieldState.error?.message}
+              rightElement={
+                <AiFieldButton
+                  label={showAiPanel ? 'AI Panel (Gizle)' : 'AI Panel (Aç)'}
+                  onClick={() => setShowAiPanel(!showAiPanel)}
+                  isLoading={false}
+                />
+              }
+            />
+          )}
+        />
+        {showAiPanel && <AiArticlePanel onGenerated={(html) => setValue('content', html)} />}
+
         <Controller
           control={control}
           name="orderIndex"
@@ -51,7 +88,12 @@ export function PostFormContent({ form, isNew, isBusy, onSubmit, onDelete }: Pos
             />
           )}
         />
-        <FormField control={control} name="template" label="Şablon" placeholder="Şablon adı (opsiyonel)" />
+        <FormField
+          control={control}
+          name="template"
+          label="Şablon"
+          placeholder="Şablon adı (opsiyonel)"
+        />
 
         <Controller
           control={control}
@@ -62,9 +104,28 @@ export function PostFormContent({ form, isNew, isBusy, onSubmit, onDelete }: Pos
         />
       </View>
 
-      {/* Section: SEO Ayarları */}
-      <SeoInfoSection>
-        <FormField control={control} name="seoTitle" label="SEO Başlığı" placeholder="60 karakter maks." />
+      <SeoInfoSection
+        rightElement={
+          <AiFieldButton
+            label="AI ile doldur"
+            onClick={() =>
+              handleAiSeo(title ?? '', (seo) => {
+                setValue('seoTitle', seo.seoTitle);
+                setValue('seoDescription', seo.seoDescription);
+                setValue('seoKeywords', seo.seoKeywords);
+              })
+            }
+            isLoading={seoLoading}
+            disabled={!title}
+          />
+        }
+      >
+        <FormField
+          control={control}
+          name="seoTitle"
+          label="SEO Başlığı"
+          placeholder="60 karakter maks."
+        />
         <FormField
           control={control}
           name="seoDescription"
@@ -73,25 +134,39 @@ export function PostFormContent({ form, isNew, isBusy, onSubmit, onDelete }: Pos
           multiline
           numberOfLines={3}
         />
-        <FormField control={control} name="seoKeywords" label="Anahtar Kelimeler" placeholder="kelime1, kelime2" />
+        <FormField
+          control={control}
+          name="seoKeywords"
+          label="Anahtar Kelimeler"
+          placeholder="kelime1, kelime2"
+        />
 
         <Controller
           control={control}
           name="noIndex"
           render={({ field }) => (
-            <StatusToggle value={field.value} onChange={field.onChange} label="No Index" />
+            <ModernSwitch
+              value={field.value}
+              onChange={field.onChange}
+              label="No Index"
+              description="Arama motorlarında indekslenmeyi engeller."
+            />
           )}
         />
         <Controller
           control={control}
           name="noFollow"
           render={({ field }) => (
-            <StatusToggle value={field.value} onChange={field.onChange} label="No Follow" />
+            <ModernSwitch
+              value={field.value}
+              onChange={field.onChange}
+              label="No Follow"
+              description="Yazıdaki linklerin takip edilmesini engeller."
+            />
           )}
         />
       </SeoInfoSection>
 
-      {/* Action buttons */}
       <View style={styles.actions}>
         <View style={styles.saveBtn}>
           <Button

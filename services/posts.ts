@@ -12,6 +12,9 @@ export const postsService = {
   getList: (): Promise<AxiosResponse<PostListResponse>> =>
     apiClient.get<PostListResponse>('/posts/list'),
 
+  getListSummary: (): Promise<AxiosResponse<PostListResponse>> =>
+    apiClient.get<PostListResponse>('/posts/list/summary'),
+
   getListPaged: (params?: ListParams): Promise<AxiosResponse<PostPagedResponse>> =>
     apiClient.get<PostPagedResponse>('/posts/list/paged', { params }),
 
@@ -24,6 +27,5 @@ export const postsService = {
   update: (id: number, data: Partial<PostFormData>): Promise<AxiosResponse<PostResponse>> =>
     apiClient.put<PostResponse>(`/posts/${id}`, data),
 
-  remove: (id: number): Promise<AxiosResponse<void>> =>
-    apiClient.delete<void>(`/posts/${id}`),
+  remove: (id: number): Promise<AxiosResponse<void>> => apiClient.delete<void>(`/posts/${id}`),
 };

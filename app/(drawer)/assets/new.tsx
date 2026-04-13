@@ -4,11 +4,18 @@
 
 import { useState } from 'react';
 import {
-  View, Text, Image, ScrollView, TouchableOpacity,
-  ActivityIndicator, Alert, StyleSheet,
+  View,
+  Text,
+  Image,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+  StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useThemeColor } from '../../../hooks/useThemeColor';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -34,13 +41,17 @@ function FilePreview({ file }: { file: SelectedFile }) {
           <Text style={styles.fileExt}>.{file.name.split('.').pop()}</Text>
         </View>
       )}
-      <Text style={styles.fileName} numberOfLines={1}>{file.name}</Text>
+      <Text style={styles.fileName} numberOfLines={1}>
+        {file.name}
+      </Text>
       <Text style={styles.fileType}>{file.type}</Text>
     </View>
   );
 }
 
 export default function NewAssetScreen() {
+  const { colors } = useThemeColor();
+
   const router = useRouter();
   const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
   const [subFolder, setSubFolder] = useState('');
@@ -106,7 +117,7 @@ export default function NewAssetScreen() {
             ]);
           },
           onError: () => Alert.alert('Hata', 'Dosya yüklenemedi. Lütfen tekrar deneyin.'),
-        },
+        }
       );
     } else {
       uploadMulti(
@@ -118,13 +129,13 @@ export default function NewAssetScreen() {
             ]);
           },
           onError: () => Alert.alert('Hata', 'Dosyalar yüklenemedi. Lütfen tekrar deneyin.'),
-        },
+        }
       );
     }
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {/* Pick buttons */}
         <View style={styles.card}>
@@ -178,7 +189,11 @@ export default function NewAssetScreen() {
             </View>
           ) : (
             <Button
-              label={selectedFiles.length === 0 ? 'Dosya Seçilmedi' : `${selectedFiles.length} Dosyayı Yükle`}
+              label={
+                selectedFiles.length === 0
+                  ? 'Dosya Seçilmedi'
+                  : `${selectedFiles.length} Dosyayı Yükle`
+              }
               onPress={upload}
               disabled={selectedFiles.length === 0}
               icon="cloud-upload-outline"
@@ -200,16 +215,28 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F9FAFB' },
   scroll: { padding: 16 },
   card: {
-    backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 16,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   cardTitle: { fontSize: 15, fontWeight: '600', color: '#111827', marginBottom: 12 },
   pickRow: { flexDirection: 'row', gap: 12 },
   pickBtn: {
-    flex: 1, alignItems: 'center', paddingVertical: 20, borderRadius: 12,
-    borderWidth: 1.5, borderColor: '#E5E7EB', borderStyle: 'dashed',
-    backgroundColor: '#FAFAFA', gap: 4,
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 20,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    borderStyle: 'dashed',
+    backgroundColor: '#FAFAFA',
+    gap: 4,
   },
   pickBtnLabel: { fontSize: 14, fontWeight: '600', color: '#374151' },
   pickBtnSub: { fontSize: 12, color: '#9CA3AF' },
@@ -217,14 +244,26 @@ const styles = StyleSheet.create({
   previewWrapper: { flex: 1 },
   imagePreview: { width: '100%', height: 120, borderRadius: 8, backgroundColor: '#F3F4F6' },
   filePreview: {
-    width: '100%', height: 80, borderRadius: 8, backgroundColor: '#EEF2FF',
-    alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8,
+    width: '100%',
+    height: 80,
+    borderRadius: 8,
+    backgroundColor: '#EEF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
   },
   fileExt: { fontSize: 14, fontWeight: '700', color: '#4F46E5' },
   fileName: { fontSize: 13, color: '#374151', fontWeight: '500', marginTop: 6 },
   fileType: { fontSize: 11, color: '#9CA3AF', marginTop: 2 },
   removeBtn: { padding: 8, marginLeft: 8 },
   actions: { gap: 12 },
-  uploadingRow: { flexDirection: 'row', alignItems: 'center', gap: 12, justifyContent: 'center', paddingVertical: 14 },
+  uploadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    justifyContent: 'center',
+    paddingVertical: 14,
+  },
   uploadingText: { fontSize: 15, color: '#4F46E5', fontWeight: '500' },
 });

@@ -18,6 +18,13 @@ export const usePostList = (params?: ListParams) =>
     staleTime: STALE_TIME,
   });
 
+export const usePostListSummary = () =>
+  useQuery({
+    queryKey: [...POST_KEYS.lists(), 'summary'] as const,
+    queryFn: () => postsService.getListSummary().then((res) => res.data),
+    staleTime: STALE_TIME,
+  });
+
 export const usePostsPaged = (params?: ListParams) =>
   useQuery({
     queryKey: [...POST_KEYS.lists(), 'paged', params] as const,
@@ -69,7 +76,9 @@ export const useInfinitePosts = (search?: string) =>
   useInfiniteQuery({
     queryKey: [...POST_KEYS.lists(), 'infinite', { search }] as const,
     queryFn: ({ pageParam }) =>
-      postsService.getListPaged({ page: pageParam as number, size: 20, search }).then((res) => res.data),
+      postsService
+        .getListPaged({ page: pageParam as number, size: 20, search })
+        .then((res) => res.data),
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {
       const d = lastPage.data;

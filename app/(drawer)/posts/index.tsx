@@ -1,9 +1,18 @@
 // Posts list screen — server-side search, infinite scroll, pull-to-refresh, FAB.
 
 import { useState, useCallback } from 'react';
-import { View, FlatList, TextInput, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
+import {
+  View,
+  FlatList,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  RefreshControl,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useThemeColor } from '../../../hooks/useThemeColor';
 import { Ionicons } from '@expo/vector-icons';
 import { useInfinitePosts } from '../../../hooks/usePosts';
 import { PostCard } from '../../../components/ui/PostCard';
@@ -13,6 +22,8 @@ import { EmptyState } from '../../../components/ui/EmptyState';
 import type { PostItem } from '../../../types/post';
 
 export default function PostsScreen() {
+  const { colors } = useThemeColor();
+
   const router = useRouter();
   const [search, setSearch] = useState('');
 
@@ -33,7 +44,7 @@ export default function PostsScreen() {
     (id: number) => {
       router.push(`/(drawer)/posts/${id}` as `/${string}`);
     },
-    [router],
+    [router]
   );
 
   const handleEndReached = useCallback(() => {
@@ -46,7 +57,7 @@ export default function PostsScreen() {
   if (isError) return <ErrorView message="Yazılar yüklenemedi." onRetry={() => void refetch()} />;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
       <View style={styles.searchRow}>
         <Ionicons name="search-outline" size={18} color="#9CA3AF" style={styles.searchIcon} />
         <TextInput
@@ -68,14 +79,14 @@ export default function PostsScreen() {
       <FlatList
         data={posts}
         keyExtractor={(item) => String(item.id)}
-        renderItem={({ item }) => (
-          <PostCard post={item} onPress={() => handlePress(item.id)} />
-        )}
+        renderItem={({ item }) => <PostCard post={item} onPress={() => handlePress(item.id)} />}
         contentContainerStyle={[styles.list, posts.length === 0 && styles.listEmpty]}
         ListEmptyComponent={
           <EmptyState
             title="Yazı bulunamadı"
-            description={search ? 'Arama kriterlerine uyan yazı yok.' : 'Henüz yazı oluşturulmamış.'}
+            description={
+              search ? 'Arama kriterlerine uyan yazı yok.' : 'Henüz yazı oluşturulmamış.'
+            }
             icon="newspaper-outline"
           />
         }
@@ -122,12 +133,12 @@ const styles = StyleSheet.create({
   },
   searchIcon: { marginRight: 8 },
   searchInput: { flex: 1, height: 44, fontSize: 15, color: '#111827' },
-  list: { paddingHorizontal: 16, paddingBottom: 100 },
+  list: { paddingHorizontal: 16, paddingBottom: 160 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
   footer: { paddingVertical: 16 },
   fab: {
     position: 'absolute',
-    bottom: 24,
+    bottom: 130,
     right: 24,
     width: 56,
     height: 56,

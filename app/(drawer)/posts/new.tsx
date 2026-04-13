@@ -5,6 +5,7 @@
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useThemeColor } from '../../../hooks/useThemeColor';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useCreatePost } from '../../../hooks/usePosts';
@@ -14,6 +15,8 @@ import type { PostFormValues } from './[id]';
 import type { PostFormData } from '../../../types/post';
 
 export default function NewPostScreen() {
+  const { colors } = useThemeColor();
+
   const router = useRouter();
   const { mutate: createPost, isPending } = useCreatePost();
 
@@ -42,7 +45,7 @@ export default function NewPostScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <PostFormContent
           form={form}

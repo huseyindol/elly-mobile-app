@@ -10,6 +10,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { usePost, useCreatePost, useUpdatePost, useDeletePost } from '../../../hooks/usePosts';
+import { useThemeColor } from '../../../hooks/useThemeColor';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { ErrorView } from '../../../components/ui/ErrorView';
 import { showConfirmDialog } from '../../../components/forms/ConfirmDialog';
@@ -36,6 +37,8 @@ export const postSchema = z.object({
 export type PostFormValues = z.infer<typeof postSchema>;
 
 export default function PostDetailScreen() {
+  const { colors } = useThemeColor();
+
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const isNew = id === 'new';
@@ -110,7 +113,7 @@ export default function PostDetailScreen() {
   const isBusy = isCreating || isUpdating || isDeleting;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <PostFormContent
           form={form}

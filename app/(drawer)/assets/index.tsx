@@ -3,18 +3,31 @@
 // Pull-to-refresh resets all pages; infinite scroll loads more.
 
 import { useState, useCallback } from 'react';
-import { View, FlatList, TextInput, TouchableOpacity, Text, ScrollView, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
+import {
+  View,
+  FlatList,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  RefreshControl,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useThemeColor } from '../../../hooks/useThemeColor';
 import { Ionicons } from '@expo/vector-icons';
 import { useInfiniteAssets, useSubFolders } from '../../../hooks/useAssets';
 import { AssetCard } from '../../../components/ui/AssetCard';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { ErrorView } from '../../../components/ui/ErrorView';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import { AnimatedFilterChip } from '../../../components/ui/AnimatedFilterChip';
 import type { AssetItem } from '../../../types/asset';
 
 export default function AssetsScreen() {
+  const { colors } = useThemeColor();
+
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [selectedFolder, setSelectedFolder] = useState('all');
@@ -35,9 +48,12 @@ export default function AssetsScreen() {
 
   const assets: AssetItem[] = data?.pages.flatMap((p) => p.data.content) ?? [];
 
-  const handlePress = useCallback((id: number) => {
-    router.push(`/(drawer)/assets/${id}` as `/${string}`);
-  }, [router]);
+  const handlePress = useCallback(
+    (id: number) => {
+      router.push(`/(drawer)/assets/${id}` as `/${string}`);
+    },
+    [router]
+  );
 
   const handleEndReached = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -49,19 +65,37 @@ export default function AssetsScreen() {
   if (isError) return <ErrorView message="Dosyalar yüklenemedi." onRetry={() => void refetch()} />;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['bottom']}>
       <View style={styles.searchRow}>
         <Ionicons name="search-outline" size={18} color="#9CA3AF" style={styles.searchIcon} />
-        <TextInput style={styles.searchInput} placeholder="Dosya ara..." placeholderTextColor="#9CA3AF" value={search} onChangeText={setSearch} autoCapitalize="none" />
-        {search.length > 0 && <TouchableOpacity onPress={() => setSearch('')}><Ionicons name="close-circle" size={18} color="#9CA3AF" /></TouchableOpacity>}
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Dosya ara..."
+          placeholderTextColor="#9CA3AF"
+          value={search}
+          onChangeText={setSearch}
+          autoCapitalize="none"
+        />
+        {search.length > 0 && (
+          <TouchableOpacity onPress={() => setSearch('')}>
+            <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+          </TouchableOpacity>
+        )}
       </View>
 
       {folders.length > 1 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chips}
+        >
           {folders.map((folder) => (
-            <TouchableOpacity key={folder} style={[styles.chip, selectedFolder === folder && styles.chipActive]} onPress={() => setSelectedFolder(folder)}>
-              <Text style={[styles.chipText, selectedFolder === folder && styles.chipTextActive]}>{folder === 'all' ? 'Tümü' : folder}</Text>
-            </TouchableOpacity>
+            <AnimatedFilterChip
+              key={folder}
+              label={folder === 'all' ? 'Tümü' : folder}
+              isActive={selectedFolder === folder}
+              onPress={() => setSelectedFolder(folder)}
+            />
           ))}
         </ScrollView>
       )}
@@ -76,7 +110,11 @@ export default function AssetsScreen() {
         ListEmptyComponent={
           <EmptyState
             title="Dosya bulunamadı"
-            description={search || selectedFolder !== 'all' ? 'Seçilen kriterlere uyan dosya yok.' : 'Henüz dosya yüklenmemiş.'}
+            description={
+              search || selectedFolder !== 'all'
+                ? 'Seçilen kriterlere uyan dosya yok.'
+                : 'Henüz dosya yüklenmemiş.'
+            }
             icon="cloud-upload-outline"
           />
         }
@@ -85,13 +123,23 @@ export default function AssetsScreen() {
             <ActivityIndicator size="small" color="#4F46E5" style={styles.footer} />
           ) : null
         }
-        refreshControl={<RefreshControl refreshing={isFetching && !isLoading && !isFetchingNextPage} onRefresh={() => void refetch()} tintColor="#4F46E5" />}
+        refreshControl={
+          <RefreshControl
+            refreshing={isFetching && !isLoading && !isFetchingNextPage}
+            onRefresh={() => void refetch()}
+            tintColor="#4F46E5"
+          />
+        }
         onEndReached={handleEndReached}
         onEndReachedThreshold={0.3}
         showsVerticalScrollIndicator={false}
       />
 
-      <TouchableOpacity style={styles.fab} onPress={() => router.push('/(drawer)/assets/new' as `/${string}`)} activeOpacity={0.85}>
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => router.push('/(drawer)/assets/new' as `/${string}`)}
+        activeOpacity={0.85}
+      >
         <Ionicons name="cloud-upload-outline" size={24} color="#fff" />
       </TouchableOpacity>
     </SafeAreaView>
@@ -100,17 +148,38 @@ export default function AssetsScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F9FAFB' },
-  searchRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, margin: 16, marginBottom: 8, paddingHorizontal: 12, borderWidth: 1, borderColor: '#E5E7EB' },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    margin: 16,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
   searchIcon: { marginRight: 8 },
   searchInput: { flex: 1, height: 44, fontSize: 15, color: '#111827' },
-  chips: { paddingHorizontal: 16, paddingBottom: 8, gap: 8 },
-  chip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, backgroundColor: '#F3F4F6' },
-  chipActive: { backgroundColor: '#EEF2FF', borderColor: '#4F46E5', borderWidth: 1 },
-  chipText: { fontSize: 13, color: '#6B7280', fontWeight: '500' },
-  chipTextActive: { color: '#4F46E5', fontWeight: '600' },
+  chips: { paddingHorizontal: 16, paddingBottom: 8, gap: 12, alignItems: 'center' },
   columnWrapper: { gap: 12, paddingHorizontal: 16 },
-  list: { paddingBottom: 100, paddingTop: 4 },
+  list: { paddingBottom: 160, paddingTop: 4 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
   footer: { paddingVertical: 16 },
-  fab: { position: 'absolute', bottom: 24, right: 24, width: 56, height: 56, borderRadius: 28, backgroundColor: '#4F46E5', justifyContent: 'center', alignItems: 'center', shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 8 },
+  fab: {
+    position: 'absolute',
+    bottom: 130,
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#4F46E5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#4F46E5',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 8,
+  },
 });
