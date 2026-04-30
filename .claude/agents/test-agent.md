@@ -64,3 +64,13 @@ Report back to Team Lead with:
 - Test files created
 - Coverage report summary
 - Any gaps or risky untested areas
+
+## Karpathy Behavioral Guidelines
+
+In all tasks, adhere to these 4 principles (detailed in `@karpathy-guidelines`):
+
+1. **Think** — State assumptions explicitly, ask in ambiguity, surface tradeoffs.
+2. **Simple** — Minimum code requested, no speculative features, no single-use abstractions.
+3. **Surgical** — Touch only requested lines, no drive-by refactoring, maintain existing style.
+4. **Goal-driven** — Define success criteria, proceed with verifiable steps.
+
