@@ -47,6 +47,7 @@ Use these labels when splitting work across subtasks or sessions:
 | Commit & push | `skills/commit-and-push.md` | Pre-commit checks, semantic commit, branch push rules. |
 | New admin section | `skills/new-admin-section.md` | Scaffold list + detail for a resource across nav, API, UI. |
 | Review section | `skills/review-section.md` | Quality checklist before merge. |
+| Karpathy guidelines | `skills/karpathy-guidelines/SKILL.md` | Behavioral guidelines to reduce common LLM coding mistakes. |
 
 Paths above are relative to **either** `.claude/` or `.agents/` (content is mirrored).
 
