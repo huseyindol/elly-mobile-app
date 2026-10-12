@@ -23,6 +23,7 @@ class AuthProvider with ChangeNotifier {
   // null = not loaded yet (or failed before any load) → UI hides gated actions.
   Set<String>? _permissions;
   String? _permissionsError;
+  bool _permissionsLoading = false;
 
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _isAuthenticated;
@@ -49,14 +50,19 @@ class AuthProvider with ChangeNotifier {
   /// GET /users/me/permissions. On failure the last known set is kept (if any) and
   /// [permissionsError] is set so the UI can offer a retry.
   Future<void> loadPermissions() async {
+    if (_permissionsLoading) return;
+    _permissionsLoading = true;
+    _permissionsError = null; // back to the spinner while retrying
+    notifyListeners();
     try {
       final data = await _apiService.get('/users/me/permissions');
       final list = (data is Map ? data['permissions'] as List? : null) ?? const [];
       _permissions = list.map((e) => e.toString()).toSet();
       _permissionsError = null;
     } catch (e) {
-      if (_isAuthenticated) _permissionsError = e.toString();
+      if (_isAuthenticated) _permissionsError = e.toString().replaceAll('Exception: ', '');
     }
+    _permissionsLoading = false;
     notifyListeners();
   }
 

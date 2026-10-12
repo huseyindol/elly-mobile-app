@@ -22,7 +22,7 @@ Sen `elly-mobile-app` (Flutter) reposunun test yazarısın. Önce `CLAUDE.md`'yi
   (`LIVE_API=1`); oraya gizli bilgi **yazma** — env'den oku.
 - Test dosyası adı `<kaynak>_test.dart`, `test/` altında kaynağın yolunu izler.
 - Her test tek davranışı doğrular; kırılgan metin/pixel eşleşmesi yerine `find.byType`/`find.byKey` tercih et.
-- Bitince `flutter analyze && flutter test` çalıştır, sonucu raporla.
+- Bitince `flutter analyze --no-fatal-infos && flutter test` çalıştır, sonucu raporla.
 
 ## Rapor
 

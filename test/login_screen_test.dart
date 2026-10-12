@@ -93,7 +93,7 @@ void main() {
     expect(auth.isAuthenticated, isFalse);
   });
 
-  for (final bad in ['12345', '1234567', '12345a', '']) {
+  for (final bad in ['12345', '12345a', '']) {
     testWidgets('invalid code "$bad" is rejected locally and not sent', (tester) async {
       await pumpLogin(tester);
       await submitCredentials(tester);
@@ -105,6 +105,27 @@ void main() {
       expect(auth.mfaPending, isTrue);
     });
   }
+
+  for (final (input, sent) in [('123 456', '123456'), ('1234567', '123456'), ('12-34-56', '123456')]) {
+    testWidgets('code field keeps digits only, max 6: "$input" → "$sent"', (tester) async {
+      await pumpLogin(tester);
+      await submitCredentials(tester);
+      await submitCode(tester, input);
+
+      expect(jsonDecode(backend.requestsTo('/auth/mfa/verify').single.body)['code'], sent);
+    });
+  }
+
+  testWidgets('keyboard "done" on the code field submits', (tester) async {
+    await pumpLogin(tester);
+    await submitCredentials(tester);
+    await tester.enterText(find.byKey(_mfaField), '123456');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await settle(tester);
+
+    expect(backend.requestsTo('/auth/mfa/verify'), hasLength(1));
+    expect(auth.isAuthenticated, isTrue);
+  });
 
   testWidgets('API rejection of the code shows an error snackbar and keeps the code step', (tester) async {
     backend.routes['/auth/mfa/verify'] = (_) => jsonResponse({'message': 'Geçersiz kod'}, 401);

@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 
@@ -27,9 +28,9 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _handleLogin() async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    if (authProvider.isLoading) return;
     if (_formKey.currentState?.validate() ?? false) {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      
       final success = authProvider.mfaPending
           ? await authProvider.verifyMfa(_codeController.text.trim())
           : await authProvider.login(
@@ -150,7 +151,13 @@ class _LoginScreenState extends State<LoginScreen> {
                         controller: _codeController,
                         label: '2FA Kodu',
                         icon: Icons.verified_user_rounded,
+                        labelText: '2FA Kodu',
                         keyboardType: TextInputType.number,
+                        maxLength: 6,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        autofillHints: const [AutofillHints.oneTimeCode],
+                        autofocus: true,
+                        onSubmitted: (_) => _handleLogin(),
                         validator: (val) =>
                             RegExp(r'^\d{6}$').hasMatch(val?.trim() ?? '') ? null : '6 haneli kod girin',
                       ),
@@ -231,6 +238,12 @@ class _LoginScreenState extends State<LoginScreen> {
     required IconData icon,
     bool isPassword = false,
     TextInputType? keyboardType,
+    String? labelText,
+    int? maxLength,
+    List<TextInputFormatter>? inputFormatters,
+    Iterable<String>? autofillHints,
+    bool autofocus = false,
+    ValueChanged<String>? onSubmitted,
     String? Function(String?)? validator,
   }) {
     return Container(
@@ -244,9 +257,17 @@ class _LoginScreenState extends State<LoginScreen> {
         controller: controller,
         obscureText: isPassword,
         keyboardType: keyboardType,
+        maxLength: maxLength,
+        inputFormatters: inputFormatters,
+        autofillHints: autofillHints,
+        autofocus: autofocus,
+        textInputAction: onSubmitted != null ? TextInputAction.done : null,
+        onFieldSubmitted: onSubmitted,
         style: const TextStyle(color: Colors.white),
         decoration: InputDecoration(
           hintText: label,
+          labelText: labelText,
+          counterText: '',
           hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
           prefixIcon: Icon(icon, color: Colors.white.withOpacity(0.5)),
           border: InputBorder.none,

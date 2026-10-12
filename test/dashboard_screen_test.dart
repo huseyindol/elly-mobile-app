@@ -25,14 +25,6 @@ void main() {
   }
 
   Future<void> pumpDashboard(WidgetTester tester) async {
-    // The app bar avatar is a NetworkImage; flutter_test blocks real HTTP (400) and the image
-    // error would fail the test. Ignore only that error, everything else still fails.
-    final previous = FlutterError.onError;
-    FlutterError.onError = (details) {
-      if (details.exception is NetworkImageLoadException) return;
-      previous?.call(details);
-    };
-    addTearDown(() => FlutterError.onError = previous);
     // Tall surface so every module card is built by the lazy ListView.
     tester.view.physicalSize = const Size(800, 3000);
     tester.view.devicePixelRatio = 1.0;
@@ -84,6 +76,12 @@ void main() {
     for (final title in allTitles()) {
       expect(find.text(title), findsNothing);
     }
+
+    backend.permissions(['posts:read']);
+    await tester.tap(find.text('Yenile'));
+    await run(tester, () => Future<void>.delayed(const Duration(milliseconds: 50)));
+    expect(find.text('Posts'), findsOneWidget);
+    expect(find.text('Erişim yetkiniz olan modül yok.'), findsNothing);
   });
 
   testWidgets('permission load failure shows error + "Tekrar Dene"; retry reveals modules', (tester) async {
@@ -99,6 +97,9 @@ void main() {
 
     backend.permissions(['posts:read']);
     await tester.tap(find.text('Tekrar Dene'));
+    // Retry clears the error synchronously → the grid falls back to the spinner while loading.
+    expect(auth.permissionsError, isNull);
+    expect(auth.permissionsLoaded, isFalse);
     await run(tester, () => Future<void>.delayed(const Duration(milliseconds: 50)));
 
     expect(find.text('Tekrar Dene'), findsNothing);

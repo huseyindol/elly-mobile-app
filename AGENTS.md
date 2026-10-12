@@ -36,7 +36,7 @@ Tüm AI asistanları için ortak giriş noktası. Kanonik proje rehberi **`CLAUD
 ## Doğrulama
 
 ```bash
-flutter analyze && flutter test
+flutter analyze --no-fatal-infos && flutter test
 ```
 
 `main` üzerinde commit; **push yok**. Gizli bilgi commit edilmez (bkz. `CLAUDE.md` → Komutlar).

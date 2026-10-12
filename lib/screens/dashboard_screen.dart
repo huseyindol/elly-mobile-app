@@ -36,15 +36,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               actions: [
                 IconButton(
+                  tooltip: 'Çıkış yap',
                   icon: const Icon(Icons.logout_rounded),
                   onPressed: () {
                     authProvider.logout();
                   },
                 ),
                 const SizedBox(width: 10),
-                const CircleAvatar(
+                CircleAvatar(
                   radius: 16,
-                  backgroundImage: NetworkImage('https://github.com/huseyindol.png'),
+                  backgroundImage: const NetworkImage('https://github.com/huseyindol.png'),
+                  onBackgroundImageError: (_, _) {}, // offline: keep the plain avatar
                 ),
                 const SizedBox(width: 20),
               ],
@@ -227,7 +229,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     }
     final modules = ModulesConfig.allModules.where((m) => auth.can(m.permissionKey, 'read')).toList();
-    if (modules.isEmpty) return const Center(child: Text('Erişim yetkiniz olan modül yok.'));
+    if (modules.isEmpty) {
+      return Column(
+        children: [
+          const Text('Erişim yetkiniz olan modül yok.'),
+          const SizedBox(height: 12),
+          ElevatedButton(onPressed: auth.loadPermissions, child: const Text('Yenile')),
+        ],
+      );
+    }
     return GridView.builder(
       padding: EdgeInsets.zero,
       shrinkWrap: true,

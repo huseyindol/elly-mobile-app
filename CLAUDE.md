@@ -79,7 +79,7 @@ flutter pub get
 flutter run                       # bağlı cihaz / simülatör (API: prod)
 # Lokal backend (Android emülatör; debug build'de http açık). iOS simülatör: http://localhost:8080/api/v1
 flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080/api/v1
-flutter analyze                   # statik analiz (error/warning 0 olmalı)
+flutter analyze --no-fatal-infos  # statik analiz (error/warning 0 olmalı; info'lar exit'i bozmaz)
 flutter test                      # unit + widget testleri (canlı test atlanır)
 
 # Canlı sözleşme testi — gerçek backend'e yazar ve siler, opt-in:
@@ -96,7 +96,7 @@ flutter build appbundle           # Android release
 
 - `main` üzerinde çalış (feature branch açma), conventional commit + Türkçe açıklama
   (örn. `feat(crud): banner çoklu görsel desteği`).
-- Commit öncesi: `flutter analyze && flutter test`.
+- Commit öncesi: `flutter analyze --no-fatal-infos && flutter test`.
 - **Push yok** — push yalnız Orchestrator üzerinden kullanıcı onayıyla.
 
 ## Agent'lar ve skill'ler

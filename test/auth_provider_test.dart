@@ -120,4 +120,18 @@ void main() {
     expect(auth.isAuthenticated, isFalse);
     expect(auth.can('posts', 'read'), isFalse);
   });
+
+  test('permissions: concurrent loads share one request; error text has no "Exception: " prefix', () async {
+    FlutterSecureStorage.setMockInitialValues({'accessToken': 'a', 'tenantId': 't1'});
+    routes['/users/me/permissions'] = (_) => _json({'message': 'Exception: boom'}, 500);
+    final auth = build();
+    await auth.checkAuthStatus();
+    expect(auth.permissionsError, 'boom');
+
+    requests.clear();
+    routes['/users/me/permissions'] = (_) => _ok(_perms);
+    await Future.wait([auth.loadPermissions(), auth.loadPermissions()]);
+    expect(requests.where((r) => r.url.path.endsWith('/users/me/permissions')), hasLength(1));
+    expect(auth.can('posts', 'read'), isTrue);
+  });
 }

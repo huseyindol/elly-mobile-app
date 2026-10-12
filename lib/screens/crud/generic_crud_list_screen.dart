@@ -154,6 +154,7 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
               title: Text(widget.module.title, style: const TextStyle(fontWeight: FontWeight.bold)),
               actions: [
                 IconButton(
+                  tooltip: 'Yenile',
                   icon: const Icon(Icons.refresh_rounded),
                   onPressed: _fetchItems,
                 ),
@@ -236,12 +237,14 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
                                       if (canEdit)
                                         IconButton(
                                           key: ValueKey('edit_${item['id']}'),
+                                          tooltip: 'Düzenle',
                                           icon: const Icon(Icons.edit_rounded, color: Colors.white70),
                                           onPressed: () => _navigateToForm(item),
                                         ),
                                       if (canDelete)
                                         IconButton(
                                           key: ValueKey('delete_${item['id']}'),
+                                          tooltip: 'Sil',
                                           icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
                                           onPressed: () => _deleteItem(item),
                                         ),
