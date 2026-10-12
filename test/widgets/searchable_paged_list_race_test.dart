@@ -227,4 +227,21 @@ void main() {
     expect(find.text('A0'), findsNothing);
     expect(find.text('B0'), findsNothing);
   });
+
+  testWidgets('a thin progress bar shows while reload() runs over loaded items', (tester) async {
+    final key = await pumpList(tester);
+    await settle(tester);
+    take(0).respond('A', last: true);
+    await settle(tester);
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+
+    unawaited(key.currentState!.reload());
+    await settle(tester);
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(find.text('A0'), findsOneWidget);
+
+    take(0).respond('B', last: true);
+    await settle(tester);
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+  });
 }

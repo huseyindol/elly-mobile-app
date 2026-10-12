@@ -38,9 +38,6 @@ void main() {
 
     test(
       'a repeated param (Spring multi-sort) is not collapsed',
-      skip:
-          'BUG: pagedEndpoint uses uri.queryParameters, '
-          'which keeps only the last value of a repeated key (sort=id,desc&sort=name,asc → sort=name,asc)',
       () {
         final uri = Uri.parse(pagedEndpoint('/x/list/paged?sort=id,desc&sort=name,asc', 0, 20));
         expect(uri.queryParametersAll['sort'], ['id,desc', 'name,asc']);

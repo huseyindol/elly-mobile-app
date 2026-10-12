@@ -102,7 +102,8 @@ String? detailPath(CrudModule module, Map<String, dynamic> item) => module.detai
 /// `/assets/list/paged?sort=id,desc` + page/size → backend `PagedResponse` query.
 String pagedEndpoint(String endpoint, int page, int size) {
   final uri = Uri.parse(endpoint);
-  return uri.replace(queryParameters: {...uri.queryParameters, 'page': '$page', 'size': '$size'}).toString();
+  // queryParametersAll: Spring accepts repeated `sort` params; queryParameters would keep only the last.
+  return uri.replace(queryParameters: {...uri.queryParametersAll, 'page': '$page', 'size': '$size'}).toString();
 }
 
 /// Backend `PagedResponse.last`; falls back to "fewer items than requested" when absent.

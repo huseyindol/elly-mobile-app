@@ -174,4 +174,103 @@ void main() {
     expect(find.bySemanticsLabel('Yükleniyor'), findsOneWidget);
     await settle(tester);
   });
+
+  group('search', () {
+    setUp(() {
+      backend.ok('/things/list', [
+        {'id': 1, 'name': 'İstanbul'},
+        {'id': 2, 'name': 'Işık Sokak'},
+        {'id': 3, 'name': 'Çiçek'},
+      ]);
+    });
+
+    Finder field() => find.byKey(const ValueKey('list_search_field'));
+
+    testWidgets('is Turkish-insensitive (foldTr): istanbul / ISIK / cicek', (tester) async {
+      await pumpList(tester, endpoint: '/things/list');
+
+      for (final (query, match) in [('istanbul', 'İstanbul'), ('ISIK', 'Işık Sokak'), ('cicek', 'Çiçek')]) {
+        await tester.enterText(field(), query);
+        await tester.pump();
+        expect(find.text(match), findsOneWidget, reason: '"$query" → $match');
+      }
+    });
+
+    testWidgets('has a label and a clear button only while filled', (tester) async {
+      await pumpList(tester, endpoint: '/things/list');
+      expect(find.text('Ara'), findsOneWidget);
+      expect(find.byTooltip('Aramayı temizle'), findsNothing);
+
+      await tester.enterText(field(), 'çiçek');
+      await tester.pump();
+      expect(find.text('İstanbul'), findsNothing);
+
+      await tester.tap(find.byTooltip('Aramayı temizle'));
+      await tester.pump();
+      expect(find.text('İstanbul'), findsOneWidget);
+      expect(find.text('Çiçek'), findsOneWidget);
+      expect(find.byTooltip('Aramayı temizle'), findsNothing);
+    });
+  });
+
+  testWidgets('paged + search: no automatic paging; "Daha fazla ara" loads the next page on request', (tester) async {
+    // Page 0 is taller than the viewport, so its footer is off screen until the search shrinks the list.
+    backend.routes['/things/list/paged'] = (req) {
+      final page = int.parse(req.url.queryParameters['page']!);
+      return okData({
+        'content': page == 0
+            ? [
+                for (var i = 0; i < 30; i++) {'id': i, 'name': 'Elma $i'},
+              ]
+            : [
+                {'id': 100, 'name': 'Kiraz'},
+              ],
+        'last': page == 1,
+      });
+    };
+    await pumpList(tester, endpoint: '/things/list/paged', paged: true, pageSize: 30);
+    expect(backend.requestsTo('/things/list/paged'), hasLength(1));
+
+    await tester.enterText(find.byKey(const ValueKey('list_search_field')), 'kiraz');
+    await tester.pump();
+    await settle(tester);
+
+    expect(backend.requestsTo('/things/list/paged'), hasLength(1), reason: 'searching must not page automatically');
+    expect(find.text('Yüklenen kayıtlarda yok'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('list_search_more_button')));
+    await settle(tester);
+
+    expect(backend.requestsTo('/things/list/paged'), hasLength(2));
+    expect(find.text('Kiraz'), findsOneWidget);
+    expect(find.byKey(const ValueKey('list_search_more_button')), findsNothing, reason: 'last page reached');
+  });
+
+  testWidgets('a failed reload keeps the loaded items and shows a SnackBar', (tester) async {
+    backend.ok('/things/list', [
+      {'id': 1, 'name': 'Elma'},
+    ]);
+    final key = await pumpList(tester, endpoint: '/things/list');
+
+    backend.routes['/things/list'] = (_) => jsonResponse({'message': 'Bağlantı yok'}, 500);
+    await tester.runAsync(() => key.currentState!.reload());
+    await tester.pump();
+
+    expect(find.text('Elma'), findsOneWidget);
+    expect(find.text('Tekrar Dene'), findsNothing);
+    expect(
+      find.descendant(of: find.byType(SnackBar), matching: find.text('Yenilenemedi: Bağlantı yok')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('default padding leaves room for a FAB under the last row', (tester) async {
+    backend.ok('/things/list', [
+      {'id': 1, 'name': 'Elma'},
+    ]);
+    await pumpList(tester, endpoint: '/things/list');
+
+    final padding = tester.widget<ListView>(find.byType(ListView)).padding! as EdgeInsets;
+    expect(padding.bottom, greaterThanOrEqualTo(88));
+  });
 }

@@ -2,43 +2,93 @@ import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
 import '../services/crud_payload.dart';
+import '../services/text_format.dart';
 import 'state_views.dart';
 
-/// Form field for relation id lists (componentIds, widgetIds, bannerIds, ...): options come
-/// from a list endpoint, selected ones are chips, "Seç" opens a searchable checkbox sheet.
-/// Controlled: the parent owns [selectedIds] and updates it in [onChanged].
-class RelationMultiSelect extends StatefulWidget {
+/// Form field for relation id lists (componentIds, widgetIds, bannerIds, ...): options come from a
+/// list endpoint, the selection shows as chips (first [maxChips] + "+K daha"), "Seç" opens a
+/// searchable checkbox sheet. Works with `Form` validate / save / reset like any FormField.
+///
+/// Paged sources: with [paged] every page is fetched up front (not lazily in the sheet), so chips of
+/// already selected ids always have labels even when they are not on the first page.
+/// shortcut: fine for relation sources of up to a few thousand rows ([_maxPages] × [_pageSize]);
+/// for bigger sets switch the sheet to SearchablePagedList + a by-id label lookup.
+class RelationMultiSelect extends FormField<List<Object>> {
+  RelationMultiSelect({
+    super.key,
+    required ApiService api,
+    required String label,
+
+    /// Options source relative to `/api/v1`, e.g. `/components/list` or `/posts/list/paged`.
+    required String endpoint,
+    bool paged = false,
+    String valueKey = 'id',
+
+    /// Dot-path; `a|b` = first non-empty wins (see [resolveListText]).
+    String labelKey = 'title|name',
+    int maxChips = 6,
+    bool isRequired = false,
+    List<Object> initialValue = const [],
+    ValueChanged<List<Object>>? onChanged,
+    FormFieldValidator<List<Object>>? validator,
+    super.onSaved,
+    super.enabled,
+    super.autovalidateMode,
+  }) : super(
+         initialValue: initialValue,
+         validator: (value) {
+           if (isRequired && (value == null || value.isEmpty)) return 'En az bir $label seçin';
+           return validator?.call(value);
+         },
+         builder: (field) => _RelationInput(
+           field: field,
+           api: api,
+           label: label,
+           endpoint: endpoint,
+           paged: paged,
+           valueKey: valueKey,
+           labelKey: labelKey,
+           maxChips: maxChips,
+           onChanged: onChanged,
+         ),
+       );
+}
+
+const _pageSize = 100;
+const _maxPages = 50;
+
+class _RelationInput extends StatefulWidget {
+  final FormFieldState<List<Object>> field;
   final ApiService api;
   final String label;
-
-  /// Options source relative to `/api/v1`, e.g. `/components/list` (plain list or page).
   final String endpoint;
+  final bool paged;
   final String valueKey;
-
-  /// Dot-path; `a|b` = first non-empty wins (see [resolveListText]).
   final String labelKey;
+  final int maxChips;
+  final ValueChanged<List<Object>>? onChanged;
 
-  final List<Object> selectedIds;
-  final ValueChanged<List<Object>> onChanged;
-
-  const RelationMultiSelect({
-    super.key,
+  const _RelationInput({
+    required this.field,
     required this.api,
     required this.label,
     required this.endpoint,
-    required this.selectedIds,
+    required this.paged,
+    required this.valueKey,
+    required this.labelKey,
+    required this.maxChips,
     required this.onChanged,
-    this.valueKey = 'id',
-    this.labelKey = 'title|name',
   });
 
   @override
-  State<RelationMultiSelect> createState() => _RelationMultiSelectState();
+  State<_RelationInput> createState() => _RelationInputState();
 }
 
-class _RelationMultiSelectState extends State<RelationMultiSelect> {
-  List<Map<String, dynamic>>? _options;
+class _RelationInputState extends State<_RelationInput> {
+  /// id → label, in endpoint order (Dart maps keep insertion order).
+  Map<Object, String>? _options;
   String? _error;
+  int _generation = 0; // ignores a load superseded by an endpoint change
 
   @override
   void initState() {
@@ -46,46 +96,75 @@ class _RelationMultiSelectState extends State<RelationMultiSelect> {
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() => _error = null);
-    try {
-      final items = extractItems(await widget.api.get(widget.endpoint));
-      if (mounted) setState(() => _options = items);
-    } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+  @override
+  void didUpdateWidget(_RelationInput old) {
+    super.didUpdateWidget(old);
+    if (old.endpoint != widget.endpoint ||
+        old.paged != widget.paged ||
+        old.valueKey != widget.valueKey ||
+        old.labelKey != widget.labelKey) {
+      _load();
     }
   }
 
-  String _labelOf(Object id) {
-    final option = _options?.where((o) => o[widget.valueKey] == id).firstOrNull;
-    return (option == null ? null : resolveListText(option, widget.labelKey)) ?? '#$id';
+  Future<List<Map<String, dynamic>>> _fetchAll() async {
+    if (!widget.paged) return extractItems(await widget.api.get(widget.endpoint));
+    final items = <Map<String, dynamic>>[];
+    for (var page = 0; page < _maxPages; page++) {
+      final data = await widget.api.get(pagedEndpoint(widget.endpoint, page, _pageSize));
+      items.addAll(extractItems(data));
+      if (isLastPage(data, _pageSize)) break;
+    }
+    return items;
+  }
+
+  Future<void> _load() async {
+    final generation = ++_generation;
+    setState(() {
+      _options = null;
+      _error = null;
+    });
+    try {
+      final items = await _fetchAll();
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _options = {
+          for (final o in items)
+            if (o[widget.valueKey] != null)
+              o[widget.valueKey] as Object: resolveListText(o, widget.labelKey) ?? '#${o[widget.valueKey]}',
+        };
+      });
+    } catch (e) {
+      if (mounted && generation == _generation) setState(() => _error = e.toString());
+    }
+  }
+
+  List<Object> get _selected => widget.field.value ?? const [];
+
+  void _set(List<Object> ids) {
+    widget.field.didChange(ids);
+    widget.onChanged?.call(ids);
   }
 
   Future<void> _pick() async {
     final result = await showModalBottomSheet<List<Object>>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1C1C22),
-      builder: (_) => _RelationPickerSheet(
-        title: widget.label,
-        options: [
-          for (final o in _options!)
-            if (o[widget.valueKey] != null)
-              MapEntry(o[widget.valueKey] as Object, resolveListText(o, widget.labelKey) ?? '#${o[widget.valueKey]}'),
-        ],
-        selected: widget.selectedIds,
-      ),
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      builder: (_) => _RelationPickerSheet(title: widget.label, options: _options!, selected: _selected),
     );
-    if (result != null) widget.onChanged(result);
+    if (result != null) _set(result);
   }
 
   @override
   Widget build(BuildContext context) {
+    final enabled = widget.field.widget.enabled;
+    final scheme = Theme.of(context).colorScheme;
     final Widget trailing;
     if (_error != null) {
       trailing = IconButton(
         tooltip: '${widget.label} yüklenemedi, tekrar dene',
-        icon: const Icon(Icons.refresh_rounded, color: Colors.redAccent),
+        icon: Icon(Icons.refresh_rounded, color: scheme.onErrorContainer),
         onPressed: _load,
       );
     } else if (_options == null) {
@@ -93,33 +172,43 @@ class _RelationMultiSelectState extends State<RelationMultiSelect> {
     } else {
       trailing = TextButton.icon(
         key: ValueKey('relation_pick_${widget.label}'),
-        onPressed: _pick,
+        onPressed: enabled ? _pick : null,
         icon: const Icon(Icons.checklist_rounded),
         label: const Text('Seç'),
       );
     }
 
+    final selected = _selected;
+    final hidden = selected.length - widget.maxChips;
     return InputDecorator(
       decoration: InputDecoration(
         labelText: widget.label,
-        errorText: _error,
+        errorText: widget.field.errorText ?? _error,
+        enabled: enabled,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
       ),
       child: Row(
         children: [
           Expanded(
-            child: widget.selectedIds.isEmpty
-                ? Text('Seçili kayıt yok', style: TextStyle(color: Colors.white.withValues(alpha: 0.5)))
+            child: selected.isEmpty
+                ? Text('Seçili kayıt yok', style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.6)))
                 : Wrap(
                     spacing: 6,
                     runSpacing: 6,
                     children: [
-                      for (final id in widget.selectedIds)
+                      for (final id in selected.take(widget.maxChips))
                         InputChip(
                           key: ValueKey('relation_chip_$id'),
-                          label: Text(_labelOf(id)),
-                          onDeleted: () => widget.onChanged([...widget.selectedIds]..remove(id)),
+                          label: Text(_options?[id] ?? '#$id'),
+                          onDeleted: enabled ? () => _set([...selected]..remove(id)) : null,
                           deleteButtonTooltipMessage: 'Kaldır',
+                        ),
+                      if (hidden > 0)
+                        ActionChip(
+                          key: const ValueKey('relation_more_chip'),
+                          label: Text('+$hidden daha'),
+                          tooltip: 'Tüm seçimleri göster',
+                          onPressed: enabled && _options != null ? _pick : null,
                         ),
                     ],
                   ),
@@ -134,7 +223,7 @@ class _RelationMultiSelectState extends State<RelationMultiSelect> {
 /// Returns the new selection: previously selected order kept, new picks appended in list order.
 class _RelationPickerSheet extends StatefulWidget {
   final String title;
-  final List<MapEntry<Object, String>> options;
+  final Map<Object, String> options;
   final List<Object> selected;
 
   const _RelationPickerSheet({required this.title, required this.options, required this.selected});
@@ -145,19 +234,20 @@ class _RelationPickerSheet extends StatefulWidget {
 
 class _RelationPickerSheetState extends State<_RelationPickerSheet> {
   late final Set<Object> _checked = {...widget.selected};
-  String _query = '';
+  late final Set<Object> _initial = {...widget.selected};
+  String _query = ''; // foldTr'd
 
   List<Object> _result() => [
     ...widget.selected.where(_checked.contains),
-    for (final o in widget.options)
-      if (_checked.contains(o.key) && !widget.selected.contains(o.key)) o.key,
+    for (final id in widget.options.keys)
+      if (_checked.contains(id) && !_initial.contains(id)) id,
   ];
 
   @override
   Widget build(BuildContext context) {
     final visible = _query.isEmpty
-        ? widget.options
-        : widget.options.where((o) => o.value.toLowerCase().contains(_query)).toList();
+        ? widget.options.entries.toList()
+        : widget.options.entries.where((o) => foldTr(o.value).contains(_query)).toList();
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
@@ -177,8 +267,8 @@ class _RelationPickerSheetState extends State<_RelationPickerSheet> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: TextField(
                   key: const ValueKey('relation_search_field'),
-                  onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
-                  decoration: const InputDecoration(hintText: 'Ara', prefixIcon: Icon(Icons.search_rounded)),
+                  onChanged: (v) => setState(() => _query = foldTr(v.trim())),
+                  decoration: const InputDecoration(labelText: 'Ara', prefixIcon: Icon(Icons.search_rounded)),
                 ),
               ),
               Expanded(

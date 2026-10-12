@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
 import '../services/crud_payload.dart';
+import '../services/text_format.dart';
 import 'state_views.dart';
 
 /// List screen body for a backend list endpoint: loading / error / empty states,
@@ -15,17 +16,20 @@ class SearchablePagedList extends StatefulWidget {
   final String endpoint;
 
   /// [endpoint] returns a backend `PagedResponse`: `page`/`size` are appended and the
-  /// next page is fetched when the end of the list is reached.
+  /// next page is fetched when the end of the list is reached (while searching: on demand,
+  /// via the "Daha fazla ara" button, so a no-match query does not page through everything).
   final bool paged;
   final int pageSize;
 
-  /// Text the search box matches against; null hides the search box.
+  /// Text the search box matches against (compared with [foldTr]); null hides the search box.
   /// shortcut: client-side filter over loaded items (backend list endpoints have no search param);
   /// move to a query param if the backend adds one.
   final String Function(Map<String, dynamic> item)? searchText;
 
   final Widget Function(BuildContext context, Map<String, dynamic> item) itemBuilder;
   final String emptyMessage;
+
+  /// Default bottom inset keeps the last row clear of a FloatingActionButton.
   final EdgeInsetsGeometry padding;
 
   const SearchablePagedList({
@@ -37,7 +41,7 @@ class SearchablePagedList extends StatefulWidget {
     this.pageSize = 20,
     this.searchText,
     this.emptyMessage = 'Kayıt bulunamadı.',
-    this.padding = const EdgeInsets.all(16),
+    this.padding = const EdgeInsets.fromLTRB(16, 16, 16, 88),
   });
 
   @override
@@ -46,13 +50,14 @@ class SearchablePagedList extends StatefulWidget {
 
 class SearchablePagedListState extends State<SearchablePagedList> {
   final List<Map<String, dynamic>> _items = [];
+  final _searchController = TextEditingController();
   bool _loading = true;
   bool _loadingMore = false;
   bool _hasMore = false;
   int _page = 0;
   String? _error;
   String? _moreError;
-  String _query = '';
+  String _query = ''; // foldTr'd
 
   // Drops responses of a load that a newer reload() superseded.
   int _generation = 0;
@@ -63,9 +68,16 @@ class SearchablePagedListState extends State<SearchablePagedList> {
     reload();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   String _url(int page) => widget.paged ? pagedEndpoint(widget.endpoint, page, widget.pageSize) : widget.endpoint;
 
-  /// Reloads from the first page. Loaded items stay visible meanwhile (pull-to-refresh).
+  /// Reloads from the first page. Loaded items stay visible meanwhile (thin progress bar); if the
+  /// reload fails they stay too and the error is shown in a SnackBar.
   Future<void> reload() async {
     final generation = ++_generation;
     setState(() {
@@ -87,15 +99,21 @@ class SearchablePagedListState extends State<SearchablePagedList> {
       });
     } catch (e) {
       if (!mounted || generation != _generation) return;
+      final keepItems = _items.isNotEmpty;
       setState(() {
-        _error = e.toString();
+        if (!keepItems) _error = e.toString();
         _loading = false;
       });
+      if (keepItems) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(content: Text('Yenilenemedi: $e'), backgroundColor: Theme.of(context).colorScheme.error),
+        );
+      }
     }
   }
 
   Future<void> _loadMore() async {
-    if (_loading || _loadingMore || !_hasMore || _moreError != null) return;
+    if (!mounted || _loading || _loadingMore || !_hasMore || _moreError != null) return;
     final generation = _generation;
     setState(() => _loadingMore = true);
     try {
@@ -116,7 +134,10 @@ class SearchablePagedListState extends State<SearchablePagedList> {
     }
   }
 
-  Widget _footer() {
+  void _setQuery(String value) => setState(() => _query = foldTr(value.trim()));
+
+  Widget _footer(bool noVisibleMatch) {
+    final scheme = Theme.of(context).colorScheme;
     if (_moreError != null) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
@@ -125,7 +146,7 @@ class SearchablePagedListState extends State<SearchablePagedList> {
             Text(
               _moreError!,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.redAccent),
+              style: TextStyle(color: scheme.onErrorContainer),
             ),
             TextButton(
               onPressed: () {
@@ -133,6 +154,30 @@ class SearchablePagedListState extends State<SearchablePagedList> {
                 _loadMore();
               },
               child: const Text('Tekrar Dene'),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_loadingMore) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        child: LoadingView(label: 'Daha fazla yükleniyor'),
+      );
+    }
+    if (_query.isNotEmpty) {
+      // Searching: fetch further pages only on request.
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          children: [
+            if (noVisibleMatch)
+              Text('Yüklenen kayıtlarda yok', style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.75))),
+            TextButton.icon(
+              key: const ValueKey('list_search_more_button'),
+              onPressed: _loadMore,
+              icon: const Icon(Icons.manage_search_rounded),
+              label: const Text('Daha fazla ara'),
             ),
           ],
         ),
@@ -151,26 +196,40 @@ class SearchablePagedListState extends State<SearchablePagedList> {
     if (_loading && _items.isEmpty) return const LoadingView();
     if (_error != null) return ErrorView(message: _error!, onRetry: reload);
 
+    final scheme = Theme.of(context).colorScheme;
     final search = widget.searchText;
     final visible = search == null || _query.isEmpty
         ? _items
-        : _items.where((item) => search(item).toLowerCase().contains(_query)).toList();
+        : _items.where((item) => foldTr(search(item)).contains(_query)).toList();
     final showFooter = _hasMore;
 
     return Column(
       children: [
+        if (_loading) const LinearProgressIndicator(minHeight: 2, semanticsLabel: 'Yenileniyor'),
         if (search != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: TextField(
               key: const ValueKey('list_search_field'),
-              onChanged: (value) => setState(() => _query = value.trim().toLowerCase()),
+              controller: _searchController,
+              onChanged: _setQuery,
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
-                hintText: 'Ara',
+                labelText: 'Ara',
                 prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: _searchController.text.isEmpty
+                    ? null
+                    : IconButton(
+                        key: const ValueKey('list_search_clear'),
+                        tooltip: 'Aramayı temizle',
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () {
+                          _searchController.clear();
+                          _setQuery('');
+                        },
+                      ),
                 filled: true,
-                fillColor: const Color(0xFF1C1C22).withValues(alpha: 0.7),
+                fillColor: scheme.surface.withValues(alpha: 0.7),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
               ),
             ),
@@ -191,7 +250,7 @@ class SearchablePagedListState extends State<SearchablePagedList> {
                     padding: widget.padding,
                     itemCount: visible.length + (showFooter ? 1 : 0),
                     itemBuilder: (context, index) =>
-                        index < visible.length ? widget.itemBuilder(context, visible[index]) : _footer(),
+                        index < visible.length ? widget.itemBuilder(context, visible[index]) : _footer(visible.isEmpty),
                   ),
           ),
         ),
