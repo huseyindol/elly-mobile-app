@@ -1,164 +1,104 @@
-# Elly Mobile App - Claude Code Project Guide
+# Elly Mobile App — Claude Code Proje Rehberi
 
-## Project Overview
+`elly-admin` yönetim panelinin **Flutter** mobil karşılığı: sayfa, bileşen, post, içerik, widget, banner,
+form ve asset yönetimi. Backend: `elly-backend` (Spring Boot, db-per-tenant). Bu repo `elly-studio`
+orchestrator'ının bir parçasıdır; çapraz repo kuralları kökteki `AGENTS.md`'dedir.
 
-Elly Mobile App is a React Native (Expo) mobile admin panel application that mirrors and extends the functionality of the [Elly Admin Panel](https://github.com/huseyindol/elly-admin-panel). It provides mobile-first management of pages, components, widgets, banners, and posts.
+## Stack
 
-## Team Structure
+| Katman | Teknoloji |
+|---|---|
+| Framework | Flutter 3.x (Dart `^3.13`), Material 3, koyu tema |
+| State | `provider` (`ChangeNotifier`) — `AuthProvider` |
+| HTTP | `http` + `http_parser`/`mime` (multipart) |
+| Güvenli depo | `flutter_secure_storage` (accessToken, refreshToken, tenantId) |
+| Dosya seçimi | `file_picker` |
+| Test | `flutter_test`, `integration_test` |
+| Lint | `flutter_lints` (`analysis_options.yaml`) |
 
-### Team Lead: Claude (Orchestrator)
-The **Team Lead** agent owns this project. It:
-- Decomposes tasks into parallel workstreams
-- Assigns subtasks to specialist agents
-- Reviews and integrates all agent outputs
-- Makes architectural decisions
-- Owns the final commit & push
-
-**Team Lead rule**: Before starting any feature, the Team Lead must:
-1. Read the relevant section of CLAUDE.md
-2. Create a TodoWrite task list
-3. Spawn parallel agents for independent subtasks
-4. Integrate results before committing
-
-### Specialist Agents
-- **ui-agent**: Handles screens, components, styling (React Native + NativeWind/StyleSheet)
-- **api-agent**: Handles API integration, data fetching, state management (React Query + Zustand)
-- **nav-agent**: Handles navigation structure (React Navigation / Expo Router)
-- **test-agent**: Handles unit and integration tests (Jest + Testing Library)
-
-## Architecture
+## Dizin yapısı
 
 ```
-elly-mobile-app/
-├── app/                    # Expo Router screens (file-based routing)
-│   ├── (auth)/             # Auth screens (login, forgot-password)
-│   ├── (tabs)/             # Main tab navigator
-│   │   ├── dashboard/      # Dashboard / overview
-│   │   ├── pages/          # CMS page management
-│   │   ├── posts/          # Blog/post management
-│   │   ├── banners/        # Banner management
-│   │   └── components/     # UI component library management
-│   └── widgets/            # Widget configuration screens
-├── components/             # Shared React Native components
-│   ├── ui/                 # Base UI: Button, Card, Input, Badge, etc.
-│   ├── forms/              # Form components with react-hook-form
-│   └── layout/             # Layout helpers: Container, Section, etc.
-├── hooks/                  # Custom React hooks
-├── services/               # API service layer (axios instances, endpoints)
-├── store/                  # Zustand global state
-├── types/                  # TypeScript type definitions
-├── utils/                  # Helper functions
-├── constants/              # App constants, colors, theme
-├── AGENTS.md               # Shared agent entry (Cursor + general); points here and to .agents/
-├── .claude/                # Claude Code agent & skill configuration
-│   ├── agents/             # Agent rule files
-│   └── skills/             # Reusable skill scripts
-└── .agents/                # Mirror of .claude/ for Cursor and other agent tools
-    ├── agents/
-    └── skills/
+lib/
+├── main.dart                      # MultiProvider + AuthWrapper (login ↔ dashboard)
+├── config/modules_config.dart     # CRUD modül tanımları (tek kaynak)
+├── models/                        # crud_module.dart (CrudModule/FieldConfig/RequestMode), login_response.dart
+├── providers/auth_provider.dart   # login / logout / oturum durumu
+├── services/
+│   ├── api_service.dart           # tüm HTTP istekleri, header'lar, 401 → refresh
+│   └── crud_payload.dart          # saf yardımcılar: getPath/setPath, buildPayload, extractItems
+└── screens/
+    ├── login_screen.dart
+    ├── dashboard_screen.dart
+    └── crud/generic_crud_{list,form}_screen.dart
+test/                              # unit/widget testleri + opt-in canlı sözleşme testi
+integration_test/                  # cihaz/simülatörde uçtan uca test
 ```
 
-## Tech Stack
+## Mimari kurallar
 
-| Layer | Technology |
-|-------|-----------|
-| Framework | Expo (SDK 52+) with Expo Router |
-| Language | TypeScript (strict mode) |
-| Styling | NativeWind (Tailwind for RN) + StyleSheet |
-| Navigation | Expo Router (file-based) |
-| State | Zustand + React Query (TanStack) |
-| Forms | react-hook-form + zod |
-| HTTP | Axios |
-| Testing | Jest + React Native Testing Library |
-| Linting | ESLint + Prettier |
+- **Tüm istekler `ApiService` üzerinden.** `X-Tenant-Id` ve `Authorization: Bearer` header'larını o ekler;
+  401'de tek bir `/auth/refresh` çağrısını paylaştırır, başarısızsa `onSessionExpired` → logout.
+  Ekranlarda doğrudan `http` kullanma.
+- Yanıtlar `{ "result": true, "data": ... }` sarmalıdır; `ApiService` `data`'yı döner, sayfalı listelerde
+  `data.content` → `extractItems`. Hatalar backend `ErrorResponse`'tan (`message`, `validationErrors`,
+  `details`) `ApiException` mesajına çevrilir.
+- **Dinamik CRUD:** yönetim ekranları `ModulesConfig.allModules`'tan render edilir
+  (`GenericCrudListScreen` / `GenericCrudFormScreen`). Yeni modül/alan = önce `modules_config.dart`.
+  - Her modül backend'deki `Dto*IU` sınıfını yansıtır (`elly-backend/src/main/java/com/cms/dto`).
+  - Gönderilen payload **yalnız `payloadKeys`** içerir; ilişki id listeleri (componentIds, pageIds…)
+    bilinçli olarak gönderilmez (backend `null` = ilişkiye dokunma).
+  - `RequestMode`: `json` · `multipartData` (banners: `data` JSON part + dosyalar) ·
+    `multipartFields` (assets: düz alanlar + `file`).
+- Endpoint'ler `/api/v1` köküne görelidir (`ApiService.baseUrl`). Yeni bir kök/endpoint backend'de yoksa
+  **kullanma** — sözleşme önce backend'de değişir (kök `AGENTS.md` → contract-first).
+- Giriş `loginType: 'admin'` ile panel kullanıcısı gibi yapılır. **2FA henüz desteklenmiyor**
+  (`mfaRequired` → hata mesajı). Panelde olduğu gibi sosyal giriş yok.
+- UI'da permission kontrolü henüz yok; yetki backend'de `@PreAuthorize` ile zorlanır. Eklenirse anahtarlar
+  `elly-backend/.../PermissionConstants.java`'da tanımlı olmalı.
 
-## Coding Standards
+## Kodlama kuralları
 
-### General
-- All files in TypeScript (strict)
-- No `any` types — use proper types or `unknown`
-- Functional components only, no class components
-- Prefer named exports over default exports (except screen files)
+- Dart dosyaları `snake_case.dart`, sınıflar `PascalCase`, private üyeler `_` önekli.
+- `print` yok; hata kullanıcıya `ApiException` mesajıyla gösterilir.
+- Yeni saf mantık (`crud_payload.dart` gibi) Flutter'a bağımlı olmadan yazılır ve unit test alır.
+- Gizli bilgi koda yazılmaz. Test hesapları env / `--dart-define` ile verilir.
+- Yeni kodda `withOpacity` yerine `withValues(alpha: …)` kullan.
 
-### Naming
-- **Files**: `kebab-case.tsx` for components, `camelCase.ts` for utils/hooks
-- **Components**: `PascalCase`
-- **Hooks**: `use` prefix (`useAuth`, `usePosts`)
-- **Types**: `PascalCase` with suffix (`PostItem`, `BannerFormData`)
-- **Constants**: `SCREAMING_SNAKE_CASE`
-
-### API Layer
-- All API calls go through `services/` — never call `axios` directly in components
-- Use React Query for server state, Zustand for client/UI state
-- Handle loading, error, and empty states in every data-fetching component
-
-### Component Rules
-- Keep components < 150 lines; extract if larger
-- Props interface defined above component
-- Memoize expensive list items with `React.memo`
-
-## Development Workflow
-
-### Branch Strategy
-- Feature branch: `claude/admin-panel-mobile-setup-BMSnZ`
-- Never push directly to `main`
-- Commit messages: `type(scope): description` (e.g., `feat(posts): add list screen`)
-
-### Before Every Commit
-1. `npx tsc --noEmit` — no TypeScript errors
-2. `npx eslint . --max-warnings 0` — no lint warnings
-3. Tests pass (if applicable)
-
-### Agent Parallel Workflow
-When implementing a new admin section (e.g., "Posts"):
-1. **nav-agent** creates the route file
-2. **api-agent** creates the service + types + React Query hooks (parallel with ui-agent)
-3. **ui-agent** creates the screen + shared components
-4. **Team Lead** integrates, reviews, commits
-
-## Admin Panel Feature Map
-
-These areas from the admin panel are mirrored in this app:
-
-| Admin Panel Area | Mobile Screen | Status |
-|-----------------|---------------|--------|
-| Dashboard | `app/(tabs)/dashboard` | planned |
-| Pages | `app/(tabs)/pages` | planned |
-| Posts | `app/(tabs)/posts` | planned |
-| Banners | `app/(tabs)/banners` | planned |
-| Components | `app/(tabs)/components` | planned |
-| Widgets | `app/widgets` | planned |
-| Auth/Login | `app/(auth)/login` | planned |
-
-## Environment Variables
-
-Use `.env.local` (not committed):
-```
-EXPO_PUBLIC_API_URL=https://api.elly.com
-EXPO_PUBLIC_API_KEY=
-```
-
-Access via `process.env.EXPO_PUBLIC_*` or use `constants/env.ts`.
-
-## Key Commands
+## Komutlar
 
 ```bash
-bun start                   # Start dev server (expo start)
-bun run ios                 # iOS simulator
-bun run android             # Android emulator
-bunx tsc --noEmit           # Type check
-bunx eslint .               # Lint
-bun test                    # Run tests
-bunx expo export            # Production build
+flutter pub get
+flutter run                       # bağlı cihaz / simülatör
+flutter analyze                   # statik analiz (error/warning 0 olmalı)
+flutter test                      # unit + widget testleri (canlı test atlanır)
 
-# Install deps
-bun install
+# Canlı sözleşme testi — gerçek backend'e yazar ve siler, opt-in:
+LIVE_API=1 ELLY_USER=... ELLY_PASS=... [ELLY_TENANT=tenant1] flutter test test/crud_live_contract_test.dart
+
+# Uçtan uca (cihaz/simülatör):
+flutter test integration_test --dart-define=ELLY_USER=... --dart-define=ELLY_PASS=...
+
+flutter build ipa                 # iOS release
+flutter build appbundle           # Android release
 ```
 
-## Notes for Claude Agents
+## Git
 
-- **Always read CLAUDE.md first** before starting any task; use **`AGENTS.md`** as the cross-tool index (Cursor and others load `.agents/` as a peer to `.claude/`)
-- **Team Lead** must claim ownership (create TodoWrite) before delegating
-- Use parallel agents for independent work (API layer + UI layer simultaneously)
-- When in doubt about design, follow the admin panel's existing patterns
-- Log all architectural decisions as comments at the top of the relevant file
+- `main` üzerinde çalış (feature branch açma), conventional commit + Türkçe açıklama
+  (örn. `feat(crud): banner çoklu görsel desteği`).
+- Commit öncesi: `flutter analyze && flutter test`.
+- **Push yok** — push yalnız Orchestrator üzerinden kullanıcı onayıyla.
+
+## Agent'lar ve skill'ler
+
+| Tür | Dosya | Amaç |
+|---|---|---|
+| Agent | `.claude/agents/test-writer.md` | Dart unit/widget testleri yazar |
+| Agent | `.claude/agents/ui-reviewer.md` | Flutter UI/UX + a11y review (salt-okunur) |
+| Skill | `.claude/skills/karpathy-guidelines/` | Düşün → sor, basit tut, cerrahi değiş, hedef odaklı |
+| Skill | `.claude/skills/ponytail/` | Lazy senior dev modu — işi tam çözen en küçük değişiklik (`/ponytail lite\|full\|ultra`) |
+| Skill | `.claude/skills/ponytail-review/` | Diff kalite review'u |
+
+Orchestrator tarafındaki lead playbook'u: `../.agents/skills/mobile-lead/SKILL.md`.
+Cursor karşılıkları `.cursor/rules/`, Antigravity karşılıkları `.agents/rules/` ve `.agents/skills/`.

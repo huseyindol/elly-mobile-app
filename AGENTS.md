@@ -1,62 +1,42 @@
-# Elly Mobile App — Agent guide (Cursor & general)
+# Elly Mobile App — Agent Rehberi (Antigravity / Cursor / genel)
 
-This file is the **shared entry point** for AI assistants (Cursor, Claude Code, other agents). It points to the canonical project guide and the specialist role definitions.
+Tüm AI asistanları için ortak giriş noktası. Kanonik proje rehberi **`CLAUDE.md`**'dir — önce onu oku.
 
-## Read order
+## Okuma sırası
 
-1. **`CLAUDE.md`** — project overview, architecture, tech stack, coding standards, workflows, commands.
-2. **This file** — where agent definitions live and how they map to tools.
-3. **Role files** — pick the specialist that matches the work (see below).
+1. `CLAUDE.md` — stack, dizin yapısı, mimari kurallar, komutlar, git.
+2. Bu dosya — agent/skill/rule dosyalarının yeri.
+3. Orchestrator'dan geliyorsan: `../AGENTS.md` ve `../.agents/skills/mobile-lead/SKILL.md`.
 
-## Where configuration lives
+## Yapılandırma nerede
 
-| Location | Purpose |
-|----------|---------|
-| `CLAUDE.md` | Single source of truth for conventions and workflows. |
-| `.claude/agents/` | Specialist prompts for **Claude Code** (`team-lead`, `ui-agent`, `api-agent`, `nav-agent`, `test-agent`). |
-| `.claude/skills/` | Repeatable workflows: `commit-and-push`, `new-admin-section`, `review-section`. |
-| `.agents/agents/` | **Mirror** of `.claude/agents/` for Cursor and other tools that read `.agents/`. |
-| `.agents/skills/` | **Mirror** of `.claude/skills/`. |
-| `.cursor/rules/*.mdc` | Cursor-specific rules (optional; use for globs / always-on policies). |
+| Konum | Araç | İçerik |
+|---|---|---|
+| `CLAUDE.md` | hepsi | Tek kaynak: kurallar ve iş akışı |
+| `.claude/agents/` | Claude Code | `test-writer`, `ui-reviewer` |
+| `.claude/skills/` | Claude Code | `karpathy-guidelines`, `ponytail`, `ponytail-review` |
+| `.agents/rules/` | Antigravity | `ponytail.md` (her zaman aktif workspace kuralı) |
+| `.agents/skills/` | Antigravity | `karpathy-guidelines` |
+| `.cursor/rules/` | Cursor | `karpathy-guidelines.mdc`, `ponytail.mdc` (`alwaysApply`) |
 
-**Parity rule:** `.agents` is kept in sync with `.claude`. When you add or change an agent or skill, update **both** trees (or copy from one to the other) so every tool sees the same instructions.
+## Roller
 
-## Specialist roles (orchestration)
+| Rol | Sahiplik | Tanım |
+|---|---|---|
+| **mobile-lead** (Orchestrator'da) | Planlama, uygulama, doğrulama, commit | `../.agents/skills/mobile-lead/SKILL.md` |
+| **test-writer** | `test/` altındaki Dart testleri | `.claude/agents/test-writer.md` |
+| **ui-reviewer** | Ekran/bileşen UI-UX ve a11y review (salt-okunur) | `.claude/agents/ui-reviewer.md` |
 
-Use these labels when splitting work across subtasks or sessions:
+## Davranış
 
-| Role | Owns | Definition file (same in both trees) |
-|------|------|----------------------------------------|
-| **Team Lead** | Decomposition, parallel work, integration, pre-commit checks | `agents/team-lead.md` |
-| **ui-agent** | Screens, components, NativeWind/StyleSheet, UX states | `agents/ui-agent.md` |
-| **api-agent** | `services/`, `types/`, React Query hooks, Zustand data concerns | `agents/api-agent.md` |
-| **nav-agent** | Expo Router layouts, routes, params, auth guard wiring | `agents/nav-agent.md` |
-| **test-agent** | Jest, Testing Library, mocks, coverage | `agents/test-agent.md` |
+- **Karpathy:** düşün → sor, basit tut, cerrahi değiş, doğrulanabilir hedefle ilerle.
+- **Ponytail:** işi tam çözen en küçük değişiklik; istenmeyen soyutlama, seçenek, bağımlılık yok.
+  Doğrulama, hata yönetimi, güvenlik ve erişilebilirlikten asla kısma.
 
-**Team Lead checklist (any tool):**
+## Doğrulama
 
-1. Read the relevant section of `CLAUDE.md`.
-2. Track subtasks with the environment’s task list (e.g. Cursor’s todo list).
-3. Run independent streams in parallel when safe (often **api-agent** + **ui-agent**).
-4. Integrate, then run `bunx tsc --noEmit` and `bunx eslint . --max-warnings 0` before commit.
+```bash
+flutter analyze && flutter test
+```
 
-## Skills (workflows)
-
-| Skill | File | Summary |
-|-------|------|---------|
-| Commit & push | `skills/commit-and-push.md` | Pre-commit checks, semantic commit, branch push rules. |
-| New admin section | `skills/new-admin-section.md` | Scaffold list + detail for a resource across nav, API, UI. |
-| Review section | `skills/review-section.md` | Quality checklist before merge. |
-| Karpathy guidelines | `skills/karpathy-guidelines/SKILL.md` | Behavioral guidelines to reduce common LLM coding mistakes. |
-
-Paths above are relative to **either** `.claude/` or `.agents/` (content is mirrored).
-
-## Cursor-specific notes
-
-- Prefer **project rules** in `.cursor/rules/` for always-on or path-scoped policies; keep them short and actionable.
-- For multi-step features, follow the **Agent Parallel Workflow** in `CLAUDE.md` and the **Team Lead** / **new-admin-section** skill.
-
-## Notes
-
-- Route layout in docs may reference `app/(tabs)/`; the repo may use `app/(drawer)/` or other groups — follow the **actual** `app/` tree when implementing.
-- Never commit secrets; use `.env.local` (see `CLAUDE.md`).
+`main` üzerinde commit; **push yok**. Gizli bilgi commit edilmez (bkz. `CLAUDE.md` → Komutlar).
