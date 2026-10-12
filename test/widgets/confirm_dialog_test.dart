@@ -1,3 +1,4 @@
+import 'package:elly_mobile_app/config/app_theme.dart';
 import 'package:elly_mobile_app/widgets/confirm_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +8,7 @@ void main() {
     late Future<bool> result;
     await tester.pumpWidget(
       MaterialApp(
+        theme: appTheme,
         home: Builder(
           builder: (context) => TextButton(
             onPressed: () => result = showConfirmDialog(
@@ -55,13 +57,21 @@ void main() {
     expect(await result, isFalse);
   });
 
-  testWidgets('destructive variant has a red confirm button', (tester) async {
+  testWidgets('destructive variant uses colorScheme.error (AA red) with white text', (tester) async {
     await open(tester, destructive: true);
-    expect(confirmColor(tester), Colors.redAccent);
+    expect(confirmColor(tester), AppColors.error);
+    expect(
+      tester
+          .widget<ElevatedButton>(find.byKey(const ValueKey('confirm_dialog_button')))
+          .style
+          ?.foregroundColor
+          ?.resolve({}),
+      Colors.white,
+    );
   });
 
-  testWidgets('default variant is not red', (tester) async {
+  testWidgets('default variant uses the primary color', (tester) async {
     await open(tester);
-    expect(confirmColor(tester), isNot(Colors.redAccent));
+    expect(confirmColor(tester), AppColors.primary);
   });
 }

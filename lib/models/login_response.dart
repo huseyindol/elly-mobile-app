@@ -7,6 +7,7 @@ class LoginResponse {
   final bool mfaRequired;
   final String? mfaToken;
   final List<String>? permissions;
+  final List<String>? roles;
 
   LoginResponse({
     required this.token,
@@ -17,6 +18,7 @@ class LoginResponse {
     this.mfaRequired = false,
     this.mfaToken,
     this.permissions,
+    this.roles,
   });
 
   factory LoginResponse.fromJson(Map<String, dynamic> json) {
@@ -29,6 +31,7 @@ class LoginResponse {
       mfaRequired: json['mfaRequired'] ?? false,
       mfaToken: json['mfaToken']?.toString(),
       permissions: (json['permissions'] as List?)?.map((e) => e.toString()).toList(),
+      roles: (json['roles'] as List?)?.map((e) => e.toString()).toList(),
     );
   }
 }

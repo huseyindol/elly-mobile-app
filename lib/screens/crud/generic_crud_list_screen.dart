@@ -1,10 +1,10 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/crud_module.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/crud_payload.dart';
+import '../../widgets/app_scaffold.dart';
 import '../../widgets/confirm_dialog.dart';
 import '../../widgets/searchable_paged_list.dart';
 import 'generic_crud_form_screen.dart';
@@ -40,7 +40,7 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(message),
-      backgroundColor: error ? Colors.redAccent : Colors.green,
+      backgroundColor: error ? Theme.of(context).colorScheme.error : null,
       duration: Duration(seconds: error ? 6 : 2),
     ));
   }
@@ -97,18 +97,19 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
   Widget _buildItem(Map<String, dynamic> item, {required bool canEdit, required bool canDelete}) {
     final title = resolveListText(item, widget.module.listTitleKey) ?? '#${item['id']}';
     final subtitle = resolveListText(item, widget.module.listSubtitleKey) ?? '';
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       key: ValueKey('crud_item_${item['id']}'),
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF1C1C22).withValues(alpha: 0.7),
+        color: scheme.surface.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(color: scheme.onSurface.withValues(alpha: 0.05)),
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(subtitle, style: TextStyle(color: Colors.white.withValues(alpha: 0.5))),
+        subtitle: Text(subtitle, style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.65))),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -116,14 +117,14 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
               IconButton(
                 key: ValueKey('edit_${item['id']}'),
                 tooltip: 'Düzenle',
-                icon: const Icon(Icons.edit_rounded, color: Colors.white70),
+                icon: Icon(Icons.edit_rounded, color: scheme.onSurface.withValues(alpha: 0.75)),
                 onPressed: () => _navigateToForm(item),
               ),
             if (canDelete)
               IconButton(
                 key: ValueKey('delete_${item['id']}'),
                 tooltip: 'Sil',
-                icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+                icon: Icon(Icons.delete_outline_rounded, color: scheme.onErrorContainer),
                 onPressed: () => _deleteItem(item),
               ),
           ],
@@ -139,64 +140,24 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
     final canCreate = module.canCreate && auth.can(module.permissionKey, 'create');
     final canEdit = module.canEdit && auth.can(module.permissionKey, 'update');
     final canDelete = module.canDelete && auth.can(module.permissionKey, 'delete');
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(60),
-        child: ClipRRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: AppBar(
-              backgroundColor: const Color(0xFF0A0A0C).withValues(alpha: 0.5),
-              title: Text(widget.module.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-              actions: [
-                IconButton(
-                  tooltip: 'Yenile',
-                  icon: const Icon(Icons.refresh_rounded),
-                  onPressed: _fetchItems,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-      body: Stack(
-        children: [
-          Positioned(
-            top: -100,
-            right: -50,
-            child: Container(
-              width: 300,
-              height: 300,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF6366F1).withValues(alpha: 0.15),
-              ),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 100, sigmaY: 100),
-                child: Container(color: Colors.transparent),
-              ),
-            ),
-          ),
-          SafeArea(
-            child: SearchablePagedList(
-              key: _listKey,
-              api: _apiService,
-              endpoint: module.listEndpoint,
-              paged: module.paged,
-              searchText: (item) => [module.listTitleKey, module.listSubtitleKey]
-                  .map((key) => resolveListText(item, key) ?? '')
-                  .join(' '),
-              itemBuilder: (context, item) => _buildItem(item, canEdit: canEdit, canDelete: canDelete),
-            ),
-          ),
-        ],
+    return AppScaffold(
+      title: module.title,
+      navId: module.permissionKey,
+      actions: [IconButton(tooltip: 'Yenile', icon: const Icon(Icons.refresh_rounded), onPressed: _fetchItems)],
+      body: SearchablePagedList(
+        key: _listKey,
+        api: _apiService,
+        endpoint: module.listEndpoint,
+        paged: module.paged,
+        searchText: (item) =>
+            [module.listTitleKey, module.listSubtitleKey].map((key) => resolveListText(item, key) ?? '').join(' '),
+        itemBuilder: (context, item) => _buildItem(item, canEdit: canEdit, canDelete: canDelete),
       ),
       floatingActionButton: canCreate
           ? FloatingActionButton(
-              backgroundColor: const Color(0xFF6366F1),
+              tooltip: 'Yeni kayıt',
               onPressed: () => _navigateToForm(),
-              child: const Icon(Icons.add_rounded, color: Colors.white),
+              child: const Icon(Icons.add_rounded),
             )
           : null,
     );

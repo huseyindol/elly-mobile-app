@@ -1,3 +1,4 @@
+import 'package:elly_mobile_app/config/app_theme.dart';
 import 'package:elly_mobile_app/providers/auth_provider.dart';
 import 'package:elly_mobile_app/screens/coming_soon_screen.dart';
 import 'package:elly_mobile_app/screens/dashboard_screen.dart';
@@ -61,7 +62,13 @@ void main() {
         {'id': 1},
         {'id': 2},
       ])
-      ..ok('/assets/list/paged', {'content': [], 'totalElements': 5, 'last': true});
+      ..ok('/assets/list/paged', {'content': [], 'totalElements': 5, 'last': true})
+      ..ok('/storage/tenant/t1/quota', {
+        'tenantId': 't1',
+        'usedBytes': 805306368, // 768 MB
+        'limitBytes': 1073741824, // 1 GB
+        'usedPercent': 75.0,
+      });
   });
 
   /// Lets the fake backend / mock storage futures complete, then rebuilds.
@@ -75,20 +82,22 @@ void main() {
     List<String>? permissions, {
     Size size = const Size(800, 3000),
     double textScale = 1,
+    String? tenantId = 't1',
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     await tester.runAsync(() async {
-      if (permissions != null) return backend.signIn(auth, permissions);
-      // null: keep the test's own /users/me/permissions route.
-      FlutterSecureStorage.setMockInitialValues({'accessToken': 'a', 'tenantId': 't1'});
+      // null permissions: keep the test's own /users/me/permissions route.
+      if (permissions != null) backend.permissions(permissions);
+      FlutterSecureStorage.setMockInitialValues({'accessToken': 'a', 'tenantId': ?tenantId});
       await auth.checkAuthStatus();
     });
     await tester.pumpWidget(
       ChangeNotifierProvider<AuthProvider>.value(
         value: auth,
         child: MaterialApp(
+          theme: appTheme,
           builder: (context, child) => MediaQuery(
             data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
             child: child!,
@@ -252,5 +261,106 @@ void main() {
     expect(find.text('Tekrar Dene'), findsNothing);
     expect(inCard('posts', '2'), findsOneWidget);
     expect(card('forms'), findsNothing);
+  });
+
+  group('storage usage card', () {
+    Finder inStorage(String text) =>
+        find.descendant(of: find.byKey(const ValueKey('storage_card')), matching: find.text(text));
+
+    testWidgets('uses the session tenant URL like the admin and shows usage', (tester) async {
+      await pumpDashboard(tester, ['pages:read']);
+
+      expect(backend.requestsTo('/storage/tenant/t1/quota'), hasLength(1));
+      expect(inStorage('Depolama Kullanımı'), findsOneWidget);
+      expect(inStorage('%75,0'), findsOneWidget);
+      expect(inStorage('768 MB'), findsOneWidget);
+      expect(inStorage('1 GB'), findsOneWidget);
+      expect(inStorage('256 MB'), findsOneWidget);
+      expect(inStorage('Kota dolmak üzere.'), findsOneWidget);
+      expect(tester.widget<Text>(find.byKey(const ValueKey('storage_percent'))).style?.color, AppColors.warning);
+    });
+
+    testWidgets('no tenant in the session → /storage/quota', (tester) async {
+      backend.ok('/storage/quota', {'usedBytes': 0, 'limitBytes': 1024, 'usedPercent': 0.0});
+      await pumpDashboard(tester, ['pages:read'], tenantId: null);
+
+      expect(backend.requestsTo('/storage/quota'), hasLength(1));
+      expect(inStorage('Genel / Admin'), findsOneWidget);
+      expect(inStorage('Kota dolmak üzere.'), findsNothing);
+    });
+
+    testWidgets('failure shows an inline error; "Tekrar Dene" reloads only the quota', (tester) async {
+      backend.routes['/storage/tenant/t1/quota'] = (_) => http.Response('', 500);
+      await pumpDashboard(tester, ['posts:read']);
+      expect(inStorage('Depolama bilgisi yüklenemedi.'), findsOneWidget);
+
+      backend.ok('/storage/tenant/t1/quota', {'usedBytes': 950, 'limitBytes': 1000, 'usedPercent': 95.0});
+      await tester.tap(inStorage('Tekrar Dene'));
+      await tester.pump();
+      await settle(tester);
+
+      expect(inStorage('%95,0'), findsOneWidget);
+      expect(inStorage('Kota neredeyse dolu — yeni yüklemeler reddedilebilir.'), findsOneWidget);
+      expect(backend.requestsTo('/posts/list/summary'), hasLength(1));
+    });
+
+    test('thresholds: <70 success, 70–90 warning, ≥90 error (admin StorageUsageWidget)', () {
+      final scheme = appTheme.colorScheme;
+      expect(quotaColor(0, scheme), AppColors.success);
+      expect(quotaColor(69.9, scheme), AppColors.success);
+      expect(quotaColor(70, scheme), AppColors.warning);
+      expect(quotaColor(89.9, scheme), AppColors.warning);
+      expect(quotaColor(90, scheme), scheme.onErrorContainer);
+      expect(quotaColor(100, scheme), scheme.onErrorContainer);
+    });
+  });
+
+  group('stat grid columns', () {
+    Future<bool> sideBySide(WidgetTester tester, double width, double textScale) async {
+      await pumpDashboard(tester, ['posts:read', 'forms:read'], size: Size(width, 2400), textScale: textScale);
+      expect(tester.takeException(), isNull);
+      return tester.getTopLeft(card('posts')).dy == tester.getTopLeft(card('forms')).dy;
+    }
+
+    for (final width in [320.0, 360.0, 393.0, 430.0]) {
+      testWidgets('$width dp phone, normal text → two columns', (tester) async {
+        expect(await sideBySide(tester, width, 1.0), isTrue);
+      });
+    }
+
+    for (final (width, scale) in [(360.0, 1.5), (393.0, 2.0)]) {
+      testWidgets('$width dp phone, text ×$scale → one column', (tester) async {
+        expect(await sideBySide(tester, width, scale), isFalse);
+      });
+    }
+  });
+
+  testWidgets('refresh button is locked while refreshing (one reload per tap burst)', (tester) async {
+    await pumpDashboard(tester, ['posts:read']);
+    final refresh = find.byTooltip('Yenile');
+
+    // Second tap lands before the first refresh finishes (no frame in between).
+    await tester.tap(refresh);
+    await tester.tap(refresh);
+    await settle(tester);
+    await settle(tester);
+    expect(backend.requestsTo('/users/me/permissions'), hasLength(2), reason: 'initial + one refresh');
+    expect(backend.requestsTo('/posts/list/summary'), hasLength(2), reason: 'cards reloaded once, not twice');
+    expect(tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.refresh_rounded)).onPressed, isNotNull);
+  });
+
+  testWidgets('a failed permission refresh keeps the dashboard and shows a SnackBar', (tester) async {
+    await pumpDashboard(tester, ['posts:read']);
+    backend.routes['/users/me/permissions'] = (_) => http.Response('', 500);
+
+    await tester.tap(find.byTooltip('Yenile'));
+    await settle(tester);
+    await settle(tester);
+
+    expect(
+      find.descendant(of: find.byType(SnackBar), matching: find.textContaining('Yetkiler yenilenemedi')),
+      findsOneWidget,
+    );
+    expect(inCard('posts', '2'), findsOneWidget, reason: 'last known permissions stay in effect');
   });
 }

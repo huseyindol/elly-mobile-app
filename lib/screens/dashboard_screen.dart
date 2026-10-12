@@ -1,13 +1,14 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../config/app_theme.dart';
 import '../config/nav_config.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../services/crud_payload.dart';
+import '../services/text_format.dart';
 import '../widgets/app_drawer.dart';
+import '../widgets/app_scaffold.dart';
 import '../widgets/state_views.dart';
 
 /// A summary card of the elly-admin dashboard (`(baseLayout)/dashboard/page.tsx`).
@@ -21,6 +22,7 @@ class _Stat {
   const _Stat(this.navId, this.title, this.permission, this.endpoint, this.color);
 }
 
+// Card accents identify a card (like the admin's per-card gradients); shared colors live in app_theme.dart.
 // Same cards, permissions and endpoints as the admin dashboard; a card without its
 // permission is neither shown nor requested (no 403s).
 const _stats = [
@@ -35,7 +37,10 @@ const _stats = [
 ];
 
 const _emailStatusLabel = {'SENT': 'Gönderildi', 'FAILED': 'Başarısız', 'PENDING': 'Beklemede'};
-const _cardColor = Color(0xB31C1C22);
+
+/// Storage usage color, same thresholds as the admin StorageUsageWidget: <70 ok, 70–90 warning, ≥90 critical.
+Color quotaColor(double percent, ColorScheme scheme) =>
+    percent >= 90 ? scheme.onErrorContainer : (percent >= 70 ? AppColors.warning : AppColors.success);
 
 /// 1234567 → "1.234.567" (tr-TR grouping, like the admin).
 String _formatCount(int? n) =>
@@ -70,59 +75,79 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   _Stat _stat(String navId) => _stats.firstWhere((s) => s.navId == navId);
 
+  /// Storage quota of the session tenant; needs only a signed-in user (`isAuthenticated()`).
+  Future<dynamic>? _quota;
+  Future<dynamic> _quotaFuture() => _quota ??= () async {
+    final tenantId = await _api.secureStorage.read(key: 'tenantId');
+    // Same URL as the admin StorageUsageWidget: target tenant in the path; none → own context.
+    return _api.get(
+      tenantId == null || tenantId.isEmpty
+          ? '/storage/quota'
+          : '/storage/tenant/${Uri.encodeComponent(tenantId)}/quota',
+    );
+  }();
+
+  bool _refreshing = false;
+
   void _retry(_Stat stat) => setState(() {
     _futures.remove(stat.navId);
   });
 
   Future<void> _refresh() async {
-    final auth = context.read<AuthProvider>();
-    await auth.loadPermissions(); // also picks up role changes
-    if (!mounted) return;
-    setState(() {
-      _futures.clear();
-      for (final stat in _stats.where((s) => auth.has(s.permission))) {
-        _future(stat);
+    if (_refreshing) return;
+    setState(() => _refreshing = true);
+    try {
+      final auth = context.read<AuthProvider>();
+      await auth.loadPermissions(); // also picks up role changes
+      if (!mounted) return;
+      if (auth.permissionsError != null && auth.permissionsLoaded) {
+        // The last known permissions stay in effect; tell the user they may be stale.
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Yetkiler yenilenemedi: ${auth.permissionsError}'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
       }
-    });
-    await Future.wait(_futures.values.map((f) => f.then((_) {}, onError: (_) {})));
+      setState(() {
+        _futures.clear();
+        _quota = null;
+        for (final stat in _stats.where((s) => auth.has(s.permission))) {
+          _future(stat);
+        }
+        _quotaFuture();
+      });
+      await Future.wait([..._futures.values, _quota!].map((f) => f.then((_) {}, onError: (_) {})));
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final topInset = MediaQuery.paddingOf(context).top + 70;
+    // Content scrolls under the glass app bar, so the top inset is applied here.
+    final topInset = MediaQuery.paddingOf(context).top + kToolbarHeight;
 
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      drawer: const AppDrawer(),
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(70),
-        child: ClipRRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: AppBar(
-              backgroundColor: const Color(0xFF0A0A0C).withValues(alpha: 0.5),
-              elevation: 0,
-              title: const Text('Gösterge Paneli', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
-              actions: [IconButton(tooltip: 'Yenile', icon: const Icon(Icons.refresh_rounded), onPressed: _refresh)],
-            ),
-          ),
+    return AppScaffold(
+      title: 'Gösterge Paneli',
+      navId: NavConfig.dashboard.id,
+      safeArea: false,
+      actions: [
+        IconButton(
+          tooltip: 'Yenile',
+          icon: const Icon(Icons.refresh_rounded),
+          onPressed: _refreshing ? null : _refresh,
         ),
-      ),
-      body: Stack(
-        children: [
-          _ambientLight(top: -100, left: -100, size: 300, color: const Color(0xFF6366F1)),
-          _ambientLight(bottom: -50, right: -50, size: 250, color: const Color(0xFFEC4899)),
-          RefreshIndicator(
-            edgeOffset: topInset,
-            onRefresh: _refresh,
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-              padding: EdgeInsets.fromLTRB(20, topInset + 20, 20, 40),
-              children: _content(auth),
-            ),
-          ),
-        ],
+      ],
+      body: RefreshIndicator(
+        edgeOffset: topInset,
+        onRefresh: _refresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+          padding: EdgeInsets.fromLTRB(20, topInset + 20, 20, 40 + MediaQuery.paddingOf(context).bottom),
+          children: _content(auth),
+        ),
       ),
     );
   }
@@ -159,6 +184,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _greeting(auth.currentUser?.username),
       const SizedBox(height: 24),
       if (stats.isNotEmpty) _statsGrid(stats),
+      const SizedBox(height: 24),
+      _storageCard(),
       if (canEmails) ...[
         const SizedBox(height: 24),
         _recentSection(
@@ -171,9 +198,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 subtitle: '${log['recipient'] ?? ''} · ${_formatDateTime(log['createdAt'])}',
                 badge: _emailStatusLabel[log['status']] ?? '${log['status'] ?? ''}',
                 badgeColor: switch (log['status']) {
-                  'SENT' => Colors.greenAccent,
-                  'FAILED' => Colors.redAccent,
-                  _ => Colors.amberAccent,
+                  'SENT' => AppColors.success,
+                  'FAILED' => Theme.of(context).colorScheme.onErrorContainer,
+                  _ => AppColors.warning,
                 },
               ),
           ],
@@ -190,7 +217,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 title: post['title']?.toString() ?? '#${post['id']}',
                 subtitle: post['slug']?.toString() ?? '',
                 badge: post['status'] == true ? 'Yayında' : 'Taslak',
-                badgeColor: post['status'] == true ? Colors.greenAccent : Colors.white54,
+                badgeColor: post['status'] == true
+                    ? AppColors.success
+                    : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
               ),
           ],
         ),
@@ -198,36 +227,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ];
   }
 
-  Widget _ambientLight({
-    double? top,
-    double? left,
-    double? bottom,
-    double? right,
-    required double size,
-    required Color color,
-  }) {
-    return Positioned(
-      top: top,
-      left: left,
-      bottom: bottom,
-      right: right,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(shape: BoxShape.circle, color: color.withValues(alpha: 0.15)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 100, sigmaY: 100),
-          child: Container(color: Colors.transparent),
-        ),
-      ),
-    );
-  }
-
   Widget _greeting(String? name) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Tekrar hoş geldin,', style: TextStyle(fontSize: 16, color: Colors.white.withValues(alpha: 0.6))),
+        Text('Tekrar hoş geldin,', style: TextStyle(fontSize: 16, color: _muted(context))),
         const SizedBox(height: 8),
         Text(
           (name == null || name.isEmpty) ? 'Yönetici' : name,
@@ -239,12 +243,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  Color _muted(BuildContext context) => Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65);
+
+  BoxDecoration _cardDecoration(BuildContext context) => BoxDecoration(
+    color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.7),
+    borderRadius: BorderRadius.circular(24),
+    border: Border.all(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.05)),
+  );
+
   /// Cards size to their content (no fixed aspect ratio) → no overflow at large text scales.
+  /// Two columns while a column keeps ≥130 dp of *scaled* room: every phone (320–430 dp) at
+  /// normal text, one column once the text scale makes cards too narrow (≈1.4× on 393 dp).
   Widget _statsGrid(List<_Stat> stats) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final bigText = MediaQuery.textScalerOf(context).scale(1) > 1.5;
-        final columns = constraints.maxWidth < 360 || bigText ? 1 : 2;
+        final textScale = MediaQuery.textScalerOf(context).scale(16) / 16;
+        final columns = constraints.maxWidth / textScale >= 260 ? 2 : 1;
         const spacing = 16.0;
         final width = (constraints.maxWidth - spacing * (columns - 1)) / columns;
         return Wrap(
@@ -270,9 +284,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: CircularProgressIndicator(strokeWidth: 2, semanticsLabel: '${stat.title} yükleniyor'),
           );
         } else if (failed) {
-          value = const Text(
+          value = Text(
             'Yüklenemedi · tekrar dene',
-            style: TextStyle(fontSize: 13, color: Colors.redAccent, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              fontSize: 13,
+              color: Theme.of(context).colorScheme.onErrorContainer,
+              fontWeight: FontWeight.w600,
+            ),
           );
         } else {
           value = Text(
@@ -281,7 +299,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           );
         }
         return Material(
-          color: _cardColor,
+          color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.7),
           borderRadius: BorderRadius.circular(24),
           clipBehavior: Clip.antiAlias,
           child: MergeSemantics(
@@ -304,13 +322,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           child: Icon(item.icon, color: stat.color, size: 20),
                         ),
                         const Spacer(),
-                        if (failed) const Icon(Icons.refresh_rounded, color: Colors.redAccent, size: 20),
+                        if (failed)
+                          Icon(Icons.refresh_rounded, color: Theme.of(context).colorScheme.onErrorContainer, size: 20),
                       ],
                     ),
                     const SizedBox(height: 12),
                     value,
                     const SizedBox(height: 4),
-                    Text(stat.title, style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.6))),
+                    Text(stat.title, style: TextStyle(fontSize: 13, color: _muted(context))),
                   ],
                 ),
               ),
@@ -321,6 +340,126 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  /// Admin StorageUsageWidget: usage bar, percent, used / limit / remaining (read-only; limit is set in Ayarlar).
+  Widget _storageCard() {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      key: const ValueKey('storage_card'),
+      padding: const EdgeInsets.all(16),
+      decoration: _cardDecoration(context),
+      child: FutureBuilder<dynamic>(
+        future: _quotaFuture(),
+        builder: (context, snapshot) {
+          final quota = snapshot.data is Map ? snapshot.data as Map : null;
+          final percent = ((quota?['usedPercent'] as num?)?.toDouble() ?? 0).clamp(0.0, 100.0);
+          final color = quotaColor(percent, scheme);
+          final used = (quota?['usedBytes'] as num?) ?? 0;
+          final limit = (quota?['limitBytes'] as num?) ?? 0;
+          final Widget body;
+          if (snapshot.connectionState != ConnectionState.done) {
+            body = const Padding(
+              padding: EdgeInsets.all(16),
+              child: LoadingView(label: 'Depolama yükleniyor'),
+            );
+          } else if (snapshot.hasError || quota == null) {
+            body = Row(
+              children: [
+                Expanded(
+                  child: Text('Depolama bilgisi yüklenemedi.', style: TextStyle(color: scheme.onErrorContainer)),
+                ),
+                TextButton(onPressed: () => setState(() => _quota = null), child: const Text('Tekrar Dene')),
+              ],
+            );
+          } else {
+            body = Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '%${percent.toStringAsFixed(1).replaceAll('.', ',')}',
+                  key: const ValueKey('storage_percent'),
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color),
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: percent / 100,
+                    minHeight: 10,
+                    color: color,
+                    backgroundColor: scheme.onSurface.withValues(alpha: 0.08),
+                    semanticsLabel: 'Depolama kullanımı',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 24,
+                  runSpacing: 8,
+                  children: [
+                    _metric('Kullanılan', formatBytes(used)),
+                    _metric('Toplam Limit', formatBytes(limit)),
+                    _metric('Kalan', formatBytes(limit - used < 0 ? 0 : limit - used)),
+                  ],
+                ),
+                if (percent >= 70) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    percent >= 90 ? 'Kota neredeyse dolu — yeni yüklemeler reddedilebilir.' : 'Kota dolmak üzere.',
+                    style: TextStyle(color: color, fontSize: 12),
+                  ),
+                ],
+              ],
+            );
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.storage_rounded, color: scheme.primary),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Semantics(
+                          header: true,
+                          child: const Text(
+                            'Depolama Kullanımı',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        Text(
+                          '${quota?['tenantId'] ?? 'Genel / Admin'}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 12, color: _muted(context)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => openNavItem(context, NavConfig.byId('settings')),
+                    child: const Text('Yönet'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              body,
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _metric(String label, String value) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(label, style: TextStyle(fontSize: 12, color: _muted(context))),
+      Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+    ],
+  );
+
   /// "Son …" list under the cards; shares the card's request (same as the admin).
   Widget _recentSection({
     required String title,
@@ -329,11 +468,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _cardColor,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-      ),
+      decoration: _cardDecoration(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -365,7 +500,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Text(
                     'Kayıt yok',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+                    style: TextStyle(color: _muted(context)),
                   ),
                 );
               }
@@ -386,7 +521,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Container(
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.04), borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Row(
         children: [
           Expanded(
@@ -403,7 +541,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   subtitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.5)),
+                  style: TextStyle(fontSize: 12, color: _muted(context)),
                 ),
               ],
             ),

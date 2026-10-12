@@ -191,4 +191,14 @@ void main() {
     expect(backend.requestsTo('/assets/list/paged').single.url.queryParameters,
         {'sort': 'id,desc', 'page': '0', 'size': '20'});
   });
+
+  testWidgets('CRUD screens have the drawer with their own item highlighted', (tester) async {
+    await pumpList(tester, ['posts:read', 'pages:read']);
+
+    tester.state<ScaffoldState>(find.byType(Scaffold)).openDrawer();
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<ListTile>(find.byKey(const ValueKey('nav_posts'))).selected, isTrue);
+    expect(tester.widget<ListTile>(find.byKey(const ValueKey('nav_pages'))).selected, isFalse);
+  });
 }

@@ -230,4 +230,56 @@ void main() {
       expect(auth.has('posts:read'), isTrue);
     });
   });
+
+  group('roles (display only)', () {
+    test('loaded from /users/me/permissions; label like the admin sidebar', () async {
+      FlutterSecureStorage.setMockInitialValues({'accessToken': 'a', 'tenantId': 't1'});
+      final auth = build();
+      expect(auth.roleLabel, 'Kullanıcı');
+
+      await auth.checkAuthStatus();
+      expect(auth.roles, ['EDITOR']);
+      expect(auth.roleLabel, 'Editör');
+    });
+
+    test('seeded from the login response; highest known role wins; cleared on logout', () async {
+      routes['/users/me/permissions'] = (_) => http.Response('', 500);
+      routes['/auth/login'] = (_) => _ok({
+        'token': 'a',
+        'refreshToken': 'r',
+        'roles': ['VIEWER', 'SUPER_ADMIN'],
+        'permissions': ['posts:read'],
+      });
+      final auth = build();
+      await auth.login(usernameOrEmail: 'u', password: 'p', tenantId: 't1');
+      expect(auth.roleLabel, 'Süper Admin');
+
+      await auth.logout();
+      expect(auth.roles, isEmpty);
+      expect(auth.roleLabel, 'Kullanıcı');
+    });
+
+    test('labels: ADMIN, VIEWER, unknown role as-is', () async {
+      FlutterSecureStorage.setMockInitialValues({'accessToken': 'a', 'tenantId': 't1'});
+      for (final (roles, label) in [
+        (['ADMIN'], 'Admin'),
+        (['VIEWER'], 'Görüntüleyici'),
+        (['MODERATOR'], 'MODERATOR'),
+      ]) {
+        routes['/users/me/permissions'] = (_) => _ok({'roles': roles, 'permissions': <String>[]});
+        final auth = build();
+        await auth.loadPermissions();
+        expect(auth.roleLabel, label);
+      }
+    });
+
+    test('roles never grant permissions (no SUPER_ADMIN bypass in the client)', () async {
+      routes['/users/me/permissions'] = (_) => _ok({'roles': ['SUPER_ADMIN'], 'permissions': <String>[]});
+      FlutterSecureStorage.setMockInitialValues({'accessToken': 'a', 'tenantId': 't1'});
+      final auth = build();
+      await auth.checkAuthStatus();
+      expect(auth.roleLabel, 'Süper Admin');
+      expect(auth.has('users:manage'), isFalse);
+    });
+  });
 }

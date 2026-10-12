@@ -1,56 +1,63 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
+import 'config/app_theme.dart';
 import 'providers/auth_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/dashboard_screen.dart';
+import 'services/api_service.dart';
 
 void main() {
   runApp(
     MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()..checkAuthStatus()),
-      ],
+      providers: [ChangeNotifierProvider(create: (_) => AuthProvider()..checkAuthStatus())],
       child: const EllyMobileApp(),
     ),
   );
 }
 
 class EllyMobileApp extends StatelessWidget {
-  const EllyMobileApp({super.key});
+  /// Test seam: ApiService for the dashboard.
+  final ApiService? apiService;
+
+  const EllyMobileApp({super.key, this.apiService});
+
+  static final navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Elly Mobile App',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF0A0A0C),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF6366F1), // Indigo
-          secondary: Color(0xFFEC4899), // Pink
-          surface: Color(0xFF1C1C22),
-        ),
-        fontFamily: 'Inter',
-        useMaterial3: true,
-      ),
-      home: const AuthWrapper(),
+      navigatorKey: navigatorKey,
+      theme: appTheme,
+      home: AuthWrapper(apiService: apiService),
     );
   }
 }
 
-class AuthWrapper extends StatelessWidget {
-  const AuthWrapper({super.key});
+/// Root route: login ↔ dashboard. On sign-out (logout or expired session) every screen, dialog
+/// and sheet above it is closed, so the next user never lands on the previous user's screen.
+class AuthWrapper extends StatefulWidget {
+  final ApiService? apiService;
+  const AuthWrapper({super.key, this.apiService});
+
+  @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  bool _wasAuthenticated = false;
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AuthProvider>(
-      builder: (context, auth, child) {
-        if (auth.isAuthenticated) {
-          return const DashboardScreen();
-        }
-        return const LoginScreen();
-      },
-    );
+    final authenticated = context.watch<AuthProvider>().isAuthenticated;
+    if (_wasAuthenticated && !authenticated) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => EllyMobileApp.navigatorKey.currentState?.popUntil((route) => route.isFirst),
+      );
+    }
+    _wasAuthenticated = authenticated;
+    return authenticated ? DashboardScreen(apiService: widget.apiService) : const LoginScreen();
   }
 }

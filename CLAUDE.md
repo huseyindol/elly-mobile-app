@@ -20,26 +20,29 @@ orchestrator'ının bir parçasıdır; çapraz repo kuralları kökteki `AGENTS.
 
 ```
 lib/
-├── main.dart                      # MultiProvider + AuthWrapper (login ↔ dashboard)
+├── main.dart                      # MultiProvider + AuthWrapper (login ↔ dashboard; çıkışta yığın temizliği)
 ├── config/
+│   ├── app_theme.dart             # TEK renk kaynağı: AppColors + appTheme (colorScheme)
 │   ├── modules_config.dart        # CRUD modül tanımları (tek kaynak); başlıklar admin sidebar etiketleri
 │   └── nav_config.dart            # drawer menüsü: admin Sidebar grupları/sırası/permission'ları (NavGroup/NavItem)
 ├── models/                        # crud_module.dart (CrudModule/FieldConfig/RequestMode), login_response.dart
 ├── providers/auth_provider.dart   # login (+2FA adımı) / logout / oturum + permission durumu
 ├── services/
 │   ├── api_service.dart           # tüm HTTP istekleri, header'lar, 401 → refresh
-│   └── crud_payload.dart          # saf yardımcılar: getPath/setPath, buildPayload, extractItems, paging
+│   ├── crud_payload.dart          # saf yardımcılar: getPath/setPath, buildPayload, extractItems, paging
+│   └── text_format.dart           # saf: foldTr (Türkçe arama anahtarı), upperTr, formatBytes
 ├── screens/
 │   ├── login_screen.dart
 │   ├── dashboard_screen.dart      # admin dashboard özet kartları + son e-postalar/yazılar (permission'a göre)
 │   ├── coming_soon_screen.dart    # mobilde henüz olmayan admin alanları için yer tutucu
 │   └── crud/generic_crud_{list,form}_screen.dart
 └── widgets/                       # ortak bileşenler — yeni ekranlar bunları kullanır
-    ├── app_drawer.dart            # AppDrawer + openNavItem + isNavItemVisible
+    ├── app_scaffold.dart          # AppScaffold (cam AppBar + AmbientBackground + opsiyonel drawer)
+    ├── app_drawer.dart            # AppDrawer(currentId) + openNavItem + isNavItemVisible + avatarInitials
     ├── state_views.dart           # LoadingView (semanticsLabel) · ErrorView (Tekrar Dene) · EmptyView
     ├── confirm_dialog.dart        # showConfirmDialog (destructive: kırmızı onay)
     ├── searchable_paged_list.dart # liste gövdesi: arama, pull-to-refresh, /list/paged sonsuz kaydırma
-    └── relation_multi_select.dart # ilişki id listesi seçici (componentIds, widgetIds, …)
+    └── relation_multi_select.dart # FormField<List<Object>>: ilişki id listesi seçici (componentIds, …)
 test/                              # unit/widget testleri (helpers/fake_backend.dart) + opt-in canlı sözleşme testi
 integration_test/                  # cihaz/simülatörde uçtan uca test
 ```
@@ -67,16 +70,32 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
   { mfaToken, code }` (Authorization yok, `X-Tenant-Id` login'deki tenant). 2FA kurulumu/kapatma panelden
   yapılır, mobilde yok. Panelde olduğu gibi sosyal giriş yok.
 - **Navigasyon:** dashboard kök ekrandır; `AppDrawer` admin `Sidebar.tsx` gruplarını aynı sırayla gösterir
-  (Gösterge Paneli · İçerik Yönetimi · Bileşenler · Medya · Etkileşim · İletişim · Sistem) + profil başlığı +
-  çıkış. Drawer seçimi ekranı dashboard'un üstüne `push` eder. Bottom nav yok: 16 hedef 5 sekmeye sığmaz ve
-  menü admin ile birebir kalır. Yeni alan = `nav_config.dart`'ta `NavItem` (CRUD ise `NavItem.crud(key)`);
+  (Gösterge Paneli · İçerik Yönetimi · Bileşenler · Medya · Etkileşim · İletişim · Sistem) + profil başlığı
+  (Türkçe baş harfler + rol etiketi) + çıkış. Her bölüm ekranında drawer vardır (`AppScaffold(navId:)`,
+  aktif öğe vurgulu). `openNavItem` yığını `[dashboard, bölüm]` tutar (popUntil(isFirst) + push); alt ekranlar
+  (form vb.) `navId` vermez → geri butonu. Bottom nav yok: 16 hedef 5 sekmeye sığmaz ve menü admin ile
+  birebir kalır. Yeni alan = `nav_config.dart`'ta `NavItem` (CRUD ise `NavItem.crud(key)`);
   `module == null` olan öğe "Yakında" ekranını açar — faz tamamlanınca gerçek ekrana bağlanır.
+- **Oturum sonu:** `EllyMobileApp.navigatorKey`; `AuthWrapper` oturum düşünce (logout ya da refresh başarısız)
+  `popUntil(isFirst)` ile tüm ekran/dialog/sheet'leri kapatır — sonraki kullanıcı eski ekranı görmez.
+- **Ekran iskeleti:** yeni ekranlar `AppScaffold` (ya da yalnız arka plan için `AmbientBackground`) kullanır;
+  ambient ışık / blur AppBar kopyalanmaz.
 - **Dashboard:** kartlar ve endpoint'ler admin `dashboard/page.tsx` ile aynıdır; yetkisi olmayan kart ne
   gösterilir ne istenir. Her kartın isteği bağımsızdır (hata → karta dokun = tekrar dene); pull-to-refresh
-  permission'ları ve tüm kartları yeniler. Kartlar sabit en-boy oranı kullanmaz (büyük yazıda taşma yok).
+  permission'ları ve tüm kartları yeniler (çalışırken kilitli; izin yenileme hatası SnackBar). Kartlar sabit
+  en-boy oranı kullanmaz; ölçekli genişlik ≥260 dp ise iki sütun (320–430 dp telefonlar), büyük yazıda tek.
+  "Depolama Kullanımı" kartı admin `StorageUsageWidget` ile aynı: `GET /storage/tenant/{tenantId}/quota`
+  (oturum tenant'ı yoksa `/storage/quota`), eşikler <70 yeşil · 70–90 amber · ≥90 kırmızı.
 - **Listeler:** `SearchablePagedList` — `paged: true` ise `page`/`size` eklenir (`PagedResponse.last`'a kadar
-  sonraki sayfa). Arama istemci tarafındadır (backend list endpoint'lerinde arama parametresi yok).
-  Dışarıdan yenileme `GlobalKey<SearchablePagedListState>().currentState.reload()`.
+  sonraki sayfa; mevcut query, tekrarlı `sort` dahil, korunur). Arama istemci tarafında ve `foldTr` iledir
+  (backend list endpoint'lerinde arama parametresi yok); sorgu doluyken sonraki sayfa otomatik değil,
+  "Daha fazla ara" ile yüklenir. Yenileme sırasında eski liste + ince ilerleme çubuğu; hata → SnackBar.
+  Alt padding FAB payı bırakır. Dışarıdan yenileme `GlobalKey<SearchablePagedListState>().currentState.reload()`.
+- **İlişki alanları:** `RelationMultiSelect` bir `FormField` (validator / `isRequired`, `Form.save/reset`).
+  `paged: true` kaynakta tüm sayfalar baştan çekilir (seçili id'lerin etiketi her zaman çözülür; ~5000 kayda
+  kadar uygun). İlk `maxChips` chip + "+K daha".
+- **Roller:** `AuthProvider.roles` / `roleLabel` yalnız gösterim içindir; yetki her zaman permission'dan
+  gelir (istemcide SUPER_ADMIN bypass'ı yok — backend süper admine tüm izinleri zaten verir).
 - **Permission (UI gating):** `AuthProvider.can(module, action)` / `has('<module>:<action>')` — kaynak
   `GET /users/me/permissions` (login/mfa-verify sonrası ve açılışta token varsa yüklenir; logout'ta temizlenir).
   Her `CrudModule` `permissionKey` taşır (`PermissionConstants.java`'daki modül adı). `<key>:read` yoksa modül
@@ -92,8 +111,13 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
 - Yeni saf mantık (`crud_payload.dart` gibi) Flutter'a bağımlı olmadan yazılır ve unit test alır.
 - Gizli bilgi koda yazılmaz. Test hesapları env / `--dart-define` ile verilir.
 - Yeni kodda `withOpacity` yerine `withValues(alpha: …)` kullan.
+- **Renkler yalnız `config/app_theme.dart`'ta.** Widget'larda `Theme.of(context).colorScheme` kullan
+  (`error` = #D32F2F dolu yıkıcı buton/SnackBar, beyaz metin AA; hata metni/ikonu `onErrorContainer`);
+  colorScheme'da karşılığı olmayan durum renkleri `AppColors.success/warning`. Sabit `Color(0x…)` /
+  `Colors.redAccent` kopyalama.
 - Yükleme/hata/boş durumları ve onaylar için `lib/widgets/` bileşenlerini kullan; ilerleme göstergelerine
-  `semanticsLabel` ver. Türkçe metinde `toUpperCase()` kullanma (`i` → `I`).
+  `semanticsLabel` ver. Türkçe metinde `toUpperCase()`/`toLowerCase()` yerine `upperTr` / `foldTr` kullan;
+  baş harf gibi kesmelerde `characters` kullan.
 
 ## Komutlar
 

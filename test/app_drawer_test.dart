@@ -2,6 +2,7 @@ import 'package:elly_mobile_app/config/nav_config.dart';
 import 'package:elly_mobile_app/providers/auth_provider.dart';
 import 'package:elly_mobile_app/screens/coming_soon_screen.dart';
 import 'package:elly_mobile_app/screens/dashboard_screen.dart';
+import 'package:elly_mobile_app/widgets/app_drawer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -109,5 +110,79 @@ void main() {
 
     expect(auth.isAuthenticated, isFalse);
     expect(auth.permissionsLoaded, isFalse);
+  });
+
+  ListTile tile(WidgetTester tester, String id) => tester.widget<ListTile>(nav(id));
+
+  Future<void> openSectionDrawer(WidgetTester tester) async {
+    tester.state<ScaffoldState>(find.byType(Scaffold).last).openDrawer();
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('sections have the drawer too; current item is highlighted; sections replace each other', (tester) async {
+    await openDrawer(tester, ['mail:read', 'chat:read']);
+    expect(tile(tester, 'dashboard').selected, isTrue);
+
+    await tester.tap(nav('mail-accounts'));
+    await tester.pumpAndSettle();
+    await openSectionDrawer(tester);
+    expect(tile(tester, 'mail-accounts').selected, isTrue);
+    expect(tile(tester, 'dashboard').selected, isFalse);
+
+    await tester.tap(nav('chat'));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: find.byType(AppBar), matching: find.text('Chat')), findsOneWidget);
+
+    // Stack is [dashboard, chat]: one back press returns to the dashboard.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(ComingSoonScreen), findsNothing);
+    expect(find.descendant(of: find.byType(AppBar), matching: find.text('Gösterge Paneli')), findsOneWidget);
+  });
+
+  testWidgets('"Gösterge Paneli" from a section pops back to the dashboard', (tester) async {
+    await openDrawer(tester, ['mail:read']);
+    await tester.tap(nav('mail-accounts'));
+    await tester.pumpAndSettle();
+    await openSectionDrawer(tester);
+
+    await tester.tap(nav('dashboard'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ComingSoonScreen), findsNothing);
+    expect(find.byType(DashboardScreen), findsOneWidget);
+  });
+
+  testWidgets('profile header: Turkish initials and role label', (tester) async {
+    backend.ok('/auth/login', {'token': 'a', 'refreshToken': 'r', 'username': 'ilker'});
+    backend.ok('/users/me/permissions', {
+      'roles': ['ADMIN'],
+      'permissions': ['posts:read'],
+    });
+    await tester.runAsync(() => auth.login(usernameOrEmail: 'ilker', password: 'p', tenantId: 't1'));
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AuthProvider>.value(
+        value: auth,
+        child: const MaterialApp(
+          home: Scaffold(drawer: AppDrawer(currentId: 'dashboard')),
+        ),
+      ),
+    );
+    tester.state<ScaffoldState>(find.byType(Scaffold)).openDrawer();
+    await tester.pumpAndSettle();
+
+    final header = find.byKey(const ValueKey('drawer_profile'));
+    expect(find.descendant(of: header, matching: find.text('İL')), findsOneWidget);
+    expect(find.descendant(of: header, matching: find.text('ilker')), findsOneWidget);
+    expect(find.descendant(of: header, matching: find.text('Admin')), findsOneWidget);
+  });
+
+  test('avatarInitials: Turkish upper case, grapheme-safe, fallback', () {
+    expect(avatarInitials('ilker'), 'İL');
+    expect(avatarInitials('ışık'), 'IŞ');
+    expect(avatarInitials('  ömer '), 'ÖM');
+    expect(avatarInitials('👩‍💻dev'), '👩‍💻D');
+    expect(avatarInitials('a'), 'A');
+    expect(avatarInitials(''), 'U');
   });
 }

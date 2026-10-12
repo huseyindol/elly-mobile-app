@@ -1,10 +1,10 @@
 import 'dart:convert';
-import 'dart:ui';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../../models/crud_module.dart';
 import '../../services/api_service.dart';
 import '../../services/crud_payload.dart';
+import '../../widgets/app_scaffold.dart';
 import '../../widgets/state_views.dart';
 
 class GenericCrudFormScreen extends StatefulWidget {
@@ -32,6 +32,7 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
   bool _isLoading = false;
 
   bool get _isEditing => widget.initialData != null;
+  ColorScheme get _scheme => Theme.of(context).colorScheme;
   List<FieldConfig> get _fields => widget.module.fields;
 
   @override
@@ -165,7 +166,6 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(_isEditing ? 'Güncellendi' : 'Oluşturuldu'),
-        backgroundColor: Colors.green,
       ));
       Navigator.of(context).pop(true);
     } catch (e) {
@@ -178,7 +178,7 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(message.replaceFirst('Exception: ', '')),
-      backgroundColor: Colors.redAccent,
+      backgroundColor: _scheme.error,
       duration: const Duration(seconds: 6),
     ));
   }
@@ -186,21 +186,21 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
   InputDecoration _decoration(FieldConfig field) => InputDecoration(
         labelText: field.isRequired ? '${field.label} *' : field.label,
         hintText: field.hint,
-        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
-        labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+        hintStyle: TextStyle(color: _scheme.onSurface.withValues(alpha: 0.45)),
+        labelStyle: TextStyle(color: _scheme.onSurface.withValues(alpha: 0.7)),
         filled: true,
-        fillColor: const Color(0xFF1C1C22).withValues(alpha: 0.7),
+        fillColor: _scheme.surface.withValues(alpha: 0.7),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+          borderSide: BorderSide(color: _scheme.onSurface.withValues(alpha: 0.1)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+          borderSide: BorderSide(color: _scheme.onSurface.withValues(alpha: 0.1)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: Color(0xFF6366F1)),
+          borderSide: BorderSide(color: _scheme.primary),
         ),
       );
 
@@ -227,10 +227,10 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
       case FieldType.boolean:
         child = SwitchListTile(
           key: ValueKey('field_${field.key}'),
-          title: Text(field.label, style: const TextStyle(color: Colors.white)),
+          title: Text(field.label),
           value: _values[field.key] == true,
           onChanged: (val) => setState(() => _values[field.key] = val),
-          activeThumbColor: const Color(0xFF6366F1),
+          activeThumbColor: _scheme.primary,
         );
       case FieldType.dropdown:
         final options = field.optionsEndpoint != null
@@ -242,8 +242,8 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
           key: ValueKey('field_${field.key}_${options.length}'),
           initialValue: hasCurrent ? current as Object : null,
           decoration: _decoration(field),
-          dropdownColor: const Color(0xFF1C1C22),
-          style: const TextStyle(color: Colors.white),
+          dropdownColor: _scheme.surface,
+          style: TextStyle(color: _scheme.onSurface),
           isExpanded: true,
           items: [for (final o in options) DropdownMenuItem<Object>(value: o.key, child: Text(o.value))],
           onChanged: (val) => _onDropdownChanged(field, val),
@@ -262,11 +262,12 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
                   child: Text(
                     picked?.name ?? 'Dosya seçilmedi',
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: Colors.white.withValues(alpha: picked == null ? 0.4 : 1)),
+                    style: TextStyle(color: _scheme.onSurface.withValues(alpha: picked == null ? 0.6 : 1)),
                   ),
                 ),
                 if (picked != null)
                   IconButton(
+                    tooltip: 'Dosyayı kaldır',
                     icon: const Icon(Icons.close_rounded, size: 18),
                     onPressed: () => setState(() => _files.remove(field.key)),
                   ),
@@ -292,7 +293,7 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
               ? TextInputType.number
               : (field.type == FieldType.text ? TextInputType.text : TextInputType.multiline),
           style: TextStyle(
-            color: Colors.white,
+            color: _scheme.onSurface,
             fontFamily: field.type == FieldType.json ? 'Courier' : null,
             fontSize: field.type == FieldType.json ? 13 : null,
           ),
@@ -305,42 +306,11 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(60),
-        child: ClipRRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: AppBar(
-              backgroundColor: const Color(0xFF0A0A0C).withValues(alpha: 0.5),
-              title: Text(_isEditing ? '${widget.module.title} · Düzenle' : '${widget.module.title} · Yeni'),
-            ),
-          ),
-        ),
-      ),
-      body: Stack(
-        children: [
-          Positioned(
-            top: -100,
-            left: -50,
-            child: Container(
-              width: 300,
-              height: 300,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFFEC4899).withValues(alpha: 0.15),
-              ),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 100, sigmaY: 100),
-                child: Container(color: Colors.transparent),
-              ),
-            ),
-          ),
-          SafeArea(
-            child: !_ready
-                ? (_loadError == null ? const LoadingView() : ErrorView(message: _loadError!, onRetry: _loadRecord))
-                : SingleChildScrollView(
+    return AppScaffold(
+      title: _isEditing ? '${widget.module.title} · Düzenle' : '${widget.module.title} · Yeni',
+      body: !_ready
+          ? (_loadError == null ? const LoadingView() : ErrorView(message: _loadError!, onRetry: _loadRecord))
+          : SingleChildScrollView(
               padding: const EdgeInsets.all(24.0),
               child: Form(
                 key: _formKey,
@@ -355,13 +325,13 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
                         key: const ValueKey('crud_save_button'),
                         onPressed: _isLoading ? null : _submit,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF6366F1),
-                          foregroundColor: Colors.white,
+                          backgroundColor: _scheme.primary,
+                          foregroundColor: _scheme.onPrimary,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                           elevation: 0,
                         ),
                         child: _isLoading
-                            ? const CircularProgressIndicator(color: Colors.white, semanticsLabel: 'Kaydediliyor')
+                            ? CircularProgressIndicator(color: _scheme.onPrimary, semanticsLabel: 'Kaydediliyor')
                             : const Text('Kaydet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                       ),
                     ),
@@ -369,9 +339,6 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
                 ),
               ),
             ),
-          ),
-        ],
-      ),
     );
   }
 }

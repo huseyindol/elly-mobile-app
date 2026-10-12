@@ -5,34 +5,46 @@ import '../config/nav_config.dart';
 import '../providers/auth_provider.dart';
 import '../screens/coming_soon_screen.dart';
 import '../screens/crud/generic_crud_list_screen.dart';
+import '../services/text_format.dart';
 
 bool isNavItemVisible(AuthProvider auth, NavItem item) => item.permission == null || auth.has(item.permission!);
 
-/// Opens [item] on top of the dashboard (CRUD list or "yakında" placeholder).
+/// Opens [item]. Sections replace each other: the stack is always [dashboard] or [dashboard, section],
+/// however long the user browses (system back from a section → dashboard).
 void openNavItem(BuildContext context, NavItem item) {
+  final navigator = Navigator.of(context);
+  navigator.popUntil((route) => route.isFirst);
   if (item.id == NavConfig.dashboard.id) return;
   final module = item.module;
-  Navigator.of(context).push(
+  navigator.push(
     MaterialPageRoute(
-      builder: (_) => module != null ? GenericCrudListScreen(module: module) : ComingSoonScreen(title: item.label),
+      settings: RouteSettings(name: item.id),
+      builder: (_) =>
+          module != null ? GenericCrudListScreen(module: module) : ComingSoonScreen(title: item.label, navId: item.id),
     ),
   );
 }
 
-/// Main navigation: admin sidebar groups, filtered by permission; profile + logout.
+/// "hüseyin" → "HÜ" (grapheme-safe, Turkish upper case).
+String avatarInitials(String name) => name.trim().isEmpty ? 'U' : upperTr(name.trim().characters.take(2).toString());
+
+/// Main navigation: admin sidebar groups filtered by permission, profile header, logout.
 class AppDrawer extends StatelessWidget {
-  const AppDrawer({super.key});
+  /// `NavItem.id` of the screen hosting the drawer (highlighted; tapping it just closes the drawer).
+  final String currentId;
+
+  const AppDrawer({super.key, required this.currentId});
 
   void _open(BuildContext context, NavItem item) {
-    Navigator.of(context).pop(); // close the drawer first
-    openNavItem(context, item);
+    Navigator.of(context).pop(); // close the drawer
+    if (item.id != currentId) openNavItem(context, item);
   }
 
   /// Header + visible items of [group]; nothing when no item is visible (like the admin sidebar).
   List<Widget> _groupTiles(BuildContext context, AuthProvider auth, NavGroup group) {
     final items = group.items.where((item) => isNavItemVisible(auth, item)).toList();
     if (items.isEmpty) return const [];
-    final muted = Colors.white.withValues(alpha: 0.5);
+    final muted = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6);
     return [
       if (group.title.isNotEmpty)
         Padding(
@@ -51,7 +63,7 @@ class AppDrawer extends StatelessWidget {
           key: ValueKey('nav_${item.id}'),
           leading: Icon(item.icon),
           title: Text(item.label),
-          selected: item.id == NavConfig.dashboard.id,
+          selected: item.id == currentId,
           trailing: item.module == null && item.id != NavConfig.dashboard.id
               ? Text('Yakında', style: TextStyle(color: muted, fontSize: 12))
               : null,
@@ -63,12 +75,11 @@ class AppDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final scheme = Theme.of(context).colorScheme;
     final name = auth.currentUser?.username ?? '';
-    final initials = name.isEmpty ? 'U' : name.substring(0, name.length < 2 ? name.length : 2).toUpperCase();
-    final muted = Colors.white.withValues(alpha: 0.5);
 
     return Drawer(
-      backgroundColor: const Color(0xFF111116),
+      backgroundColor: scheme.surface,
       child: SafeArea(
         child: Column(
           children: [
@@ -76,15 +87,14 @@ class AppDrawer extends StatelessWidget {
               key: const ValueKey('drawer_profile'),
               contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
               leading: CircleAvatar(
-                backgroundColor: const Color(0xFF6366F1),
-                child: Text(
-                  initials,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                ),
+                backgroundColor: scheme.primary,
+                foregroundColor: scheme.onPrimary,
+                child: Text(avatarInitials(name), style: const TextStyle(fontWeight: FontWeight.bold)),
               ),
               title: Text(name.isEmpty ? 'Kullanıcı' : name, maxLines: 1, overflow: TextOverflow.ellipsis),
-              subtitle: Text('Profil', style: TextStyle(color: muted)),
-              trailing: const Icon(Icons.chevron_right_rounded),
+              subtitle: Text(auth.roleLabel, style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.6))),
+              trailing: const Icon(Icons.chevron_right_rounded, semanticLabel: 'Profil'),
+              selected: currentId == NavConfig.profile.id,
               onTap: () => _open(context, NavConfig.profile),
             ),
             const Divider(height: 1),
@@ -97,8 +107,10 @@ class AppDrawer extends StatelessWidget {
             const Divider(height: 1),
             ListTile(
               key: const ValueKey('drawer_logout'),
-              leading: const Icon(Icons.logout_rounded, color: Colors.redAccent),
-              title: const Text('Çıkış Yap', style: TextStyle(color: Colors.redAccent)),
+              iconColor: scheme.onErrorContainer,
+              textColor: scheme.onErrorContainer,
+              leading: const Icon(Icons.logout_rounded),
+              title: const Text('Çıkış Yap'),
               onTap: () {
                 Navigator.of(context).pop();
                 auth.logout();

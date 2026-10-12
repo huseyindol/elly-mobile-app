@@ -22,6 +22,7 @@ class AuthProvider with ChangeNotifier {
 
   // null = not loaded yet (or failed before any load) → UI hides gated actions.
   Set<String>? _permissions;
+  List<String> _roles = const [];
   String? _permissionsError;
   bool _permissionsLoading = false;
 
@@ -32,6 +33,22 @@ class AuthProvider with ChangeNotifier {
   bool get mfaPending => _mfaToken != null;
   bool get permissionsLoaded => _permissions != null;
   String? get permissionsError => _permissionsError;
+
+  /// Role names (SUPER_ADMIN, ADMIN, …) — display only; gating always uses permissions.
+  List<String> get roles => _roles;
+
+  /// Same label as the admin sidebar profile card.
+  String get roleLabel {
+    for (final (role, label) in const [
+      ('SUPER_ADMIN', 'Süper Admin'),
+      ('ADMIN', 'Admin'),
+      ('EDITOR', 'Editör'),
+      ('VIEWER', 'Görüntüleyici'),
+    ]) {
+      if (_roles.contains(role)) return label;
+    }
+    return _roles.isNotEmpty ? _roles.first : 'Kullanıcı';
+  }
 
   /// UI gating only; the backend enforces the same keys with @PreAuthorize.
   /// [action]: read | create | update | delete.
@@ -61,6 +78,8 @@ class AuthProvider with ChangeNotifier {
       final data = await _apiService.get('/users/me/permissions');
       final list = (data is Map ? data['permissions'] as List? : null) ?? const [];
       _permissions = list.map((e) => e.toString()).toSet();
+      final roles = data is Map ? data['roles'] as List? : null;
+      if (roles != null) _roles = roles.map((e) => e.toString()).toList();
       _permissionsError = null;
     } catch (e) {
       if (_isAuthenticated) _permissionsError = e.toString().replaceAll('Exception: ', '');
@@ -131,6 +150,7 @@ class AuthProvider with ChangeNotifier {
       _mfaTenantId = null;
       // Seed from the auth response so a failed permissions call still leaves a usable UI.
       _permissions = user.permissions?.toSet();
+      _roles = user.roles ?? const [];
       _permissionsError = null;
       _isAuthenticated = true;
       await loadPermissions();
@@ -152,6 +172,7 @@ class AuthProvider with ChangeNotifier {
     _mfaToken = null;
     _mfaTenantId = null;
     _permissions = null;
+    _roles = const [];
     _permissionsError = null;
     notifyListeners();
   }
