@@ -22,7 +22,7 @@ final _ts = DateTime.now().millisecondsSinceEpoch;
 final _png = base64Decode(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
 
-CrudModule _module(String title) => ModulesConfig.allModules.firstWhere((m) => m.title == title);
+CrudModule _module(String permissionKey) => ModulesConfig.byKey(permissionKey);
 
 final api = ApiService();
 
@@ -56,7 +56,7 @@ Future<Map<String, dynamic>> _save(CrudModule m, Map<String, dynamic>? original,
 
 /// create → listed → edit one field → change persisted + `preserved` paths untouched → delete → gone.
 Future<void> _crudCycle(
-  String title, {
+  String permissionKey, {
   required Map<String, dynamic> createValues,
   required String editKey,
   required Object editValue,
@@ -64,7 +64,8 @@ Future<void> _crudCycle(
   List<UploadFile> files = const [],
   List<UploadFile> editFiles = const [],
 }) async {
-  final m = _module(title);
+  final m = _module(permissionKey);
+  final title = m.title;
   final values = {...initialFormValues(m, null), ...createValues};
   final created = await _save(m, null, values, files: files);
   final id = created['id'];
@@ -119,11 +120,11 @@ void main() {
     test('expired access token is refreshed transparently', () async {
       const storage = FlutterSecureStorage();
       await storage.write(key: 'accessToken', value: 'expired.token.value');
-      expect(await _list(_module('Pages')), isA<List>());
+      expect(await _list(_module('pages')), isA<List>());
       expect(await storage.read(key: 'accessToken'), isNot('expired.token.value'));
     });
 
-    test('Pages', () => _crudCycle('Pages',
+    test('Pages', () => _crudCycle('pages',
         createValues: {
           'title': 'Mobile Test $_ts',
           'slug': 'mobile-test-$_ts',
@@ -134,14 +135,14 @@ void main() {
         editValue: 'Mobile Test Edited $_ts',
         preserved: ['slug', 'seoInfo.title', 'template', 'status']));
 
-    test('Components', () => _crudCycle('Components',
+    test('Components', () => _crudCycle('components',
         createValues: {'name': 'Mobile Comp $_ts', 'type': 'WIDGET', 'template': 'BComponent'},
         editKey: 'name',
         editValue: 'Mobile Comp Edited $_ts',
         preserved: ['type', 'template', 'orderIndex', 'status']));
 
     test('Posts (publishedAt not on form must survive update)', () async {
-      final m = _module('Posts');
+      final m = _module('posts');
       final created = await api.post(m.crudEndpoint, {
         ...buildPayload(m, null, {
           ...initialFormValues(m, null),
@@ -165,7 +166,7 @@ void main() {
       }
     });
 
-    test('Contents', () => _crudCycle('Contents',
+    test('Contents', () => _crudCycle('contents',
         createValues: {
           'basicInfo.title': 'Mobile Section $_ts',
           'basicInfo.sectionKey': 'mobile_contract_test',
@@ -175,7 +176,7 @@ void main() {
         editValue: 'Mobile Section Edited $_ts',
         preserved: ['metadata', 'contentType', 'basicInfo.sectionKey']));
 
-    test('Widgets', () => _crudCycle('Widgets',
+    test('Widgets', () => _crudCycle('widgets',
         createValues: {'name': 'Mobile Widget $_ts', 'type': 'POST', 'template': 'BWidget'},
         editKey: 'name',
         editValue: 'Mobile Widget Edited $_ts',
@@ -183,7 +184,7 @@ void main() {
 
     test('Banners (multipart, URL images + file upload)', () async {
       final file = File('${Directory.systemTemp.path}/elly_banner_$_ts.png')..writeAsBytesSync(_png);
-      await _crudCycle('Banners',
+      await _crudCycle('banners',
           createValues: {
             'title': 'Mobile Banner $_ts',
             'subFolder': 'mobile-test',
@@ -197,9 +198,9 @@ void main() {
     });
 
     test('Forms', () async {
-      final m = _module('Forms');
+      final m = _module('forms');
       final accounts = extractItems(await api.get('/mail-accounts'));
-      await _crudCycle('Forms',
+      await _crudCycle('forms',
           createValues: {
             'title': 'Mobile Form $_ts',
             'senderMailAccountId': accounts.first['id'],
@@ -214,7 +215,7 @@ void main() {
     test('Assets (multipart upload, replace, delete)', () async {
       final f1 = File('${Directory.systemTemp.path}/elly_asset_$_ts.png')..writeAsBytesSync(_png);
       final f2 = File('${Directory.systemTemp.path}/elly_asset_${_ts}_v2.png')..writeAsBytesSync(_png);
-      await _crudCycle('Assets',
+      await _crudCycle('assets',
           createValues: {'subFolder': 'mobile-test'},
           files: [UploadFile('file', f1.path)],
           editKey: 'subFolder',

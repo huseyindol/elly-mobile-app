@@ -5,6 +5,7 @@ import '../models/crud_module.dart';
 /// `payloadKeys` = IU DTO keys sent on create/update. Relation id lists
 /// (componentIds, pageIds, bannerIds, ...) are intentionally NOT sent: backend
 /// treats null as "leave relations untouched".
+/// Titles match the elly-admin sidebar labels.
 class ModulesConfig {
   static const _slugPattern = r'^[a-z0-9]+(?:-[a-z0-9]+)*$';
   static const _slugMessage = 'Sadece küçük harf, rakam ve tire (örn: hakkimda-sayfasi)';
@@ -14,7 +15,7 @@ class ModulesConfig {
   static const List<CrudModule> allModules = [
     // DtoPageIU
     CrudModule(
-      title: 'Pages',
+      title: 'Sayfalar',
       crudEndpoint: '/pages',
       permissionKey: 'pages',
       listEndpoint: '/pages/list',
@@ -40,7 +41,7 @@ class ModulesConfig {
     ),
     // DtoComponentIU
     CrudModule(
-      title: 'Components',
+      title: 'Componentler',
       crudEndpoint: '/components',
       permissionKey: 'components',
       listEndpoint: '/components/list',
@@ -68,7 +69,7 @@ class ModulesConfig {
     ),
     // DtoPostIU
     CrudModule(
-      title: 'Posts',
+      title: 'Yazılar',
       crudEndpoint: '/posts',
       permissionKey: 'posts',
       listEndpoint: '/posts/list',
@@ -103,7 +104,7 @@ class ModulesConfig {
     ),
     // DtoCmsContentIU { basicInfo: DtoCmsBasicInfoIU, contentType, metadata }
     CrudModule(
-      title: 'Contents',
+      title: 'İçerikler',
       crudEndpoint: '/contents',
       permissionKey: 'contents',
       listEndpoint: '/contents/list',
@@ -162,7 +163,7 @@ class ModulesConfig {
     ),
     // DtoWidgetIU
     CrudModule(
-      title: 'Widgets',
+      title: 'Widgetlar',
       crudEndpoint: '/widgets',
       permissionKey: 'widgets',
       listEndpoint: '/widgets/list',
@@ -190,7 +191,7 @@ class ModulesConfig {
     ),
     // DtoBannerIU — multipart: `data` (JSON) + optional desktop/tablet/mobile files
     CrudModule(
-      title: 'Banners',
+      title: 'Bannerlar',
       crudEndpoint: '/banners',
       permissionKey: 'banners',
       listEndpoint: '/banners/list',
@@ -224,7 +225,7 @@ class ModulesConfig {
     ),
     // DtoFormDefinitionIU
     CrudModule(
-      title: 'Forms',
+      title: 'Formlar',
       crudEndpoint: '/forms',
       permissionKey: 'forms',
       listEndpoint: '/forms/list',
@@ -276,10 +277,11 @@ class ModulesConfig {
     ),
     // Assets — multipart: `file` (+ `subFolder`); PUT replaces the file
     CrudModule(
-      title: 'Assets',
+      title: 'Assetler',
       crudEndpoint: '/assets',
       permissionKey: 'assets',
-      listEndpoint: '/assets/list/paged?page=0&size=100&sort=id,desc',
+      listEndpoint: '/assets/list/paged?sort=id,desc',
+      paged: true,
       icon: Icons.folder_special_rounded,
       listTitleKey: 'name',
       listSubtitleKey: 'path|subFolder|extension',
@@ -291,4 +293,7 @@ class ModulesConfig {
       ],
     ),
   ];
+
+  /// Module by its backend permission key (`posts`, `pages`, ...).
+  static CrudModule byKey(String permissionKey) => allModules.firstWhere((m) => m.permissionKey == permissionKey);
 }

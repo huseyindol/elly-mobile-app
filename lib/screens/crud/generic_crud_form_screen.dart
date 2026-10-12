@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../models/crud_module.dart';
 import '../../services/api_service.dart';
 import '../../services/crud_payload.dart';
+import '../../widgets/state_views.dart';
 
 class GenericCrudFormScreen extends StatefulWidget {
   final CrudModule module;
@@ -313,7 +314,7 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
             filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
             child: AppBar(
               backgroundColor: const Color(0xFF0A0A0C).withValues(alpha: 0.5),
-              title: Text(_isEditing ? '${widget.module.title} Düzenle' : 'Yeni ${widget.module.title}'),
+              title: Text(_isEditing ? '${widget.module.title} · Düzenle' : '${widget.module.title} · Yeni'),
             ),
           ),
         ),
@@ -338,19 +339,7 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
           ),
           SafeArea(
             child: !_ready
-                ? Center(
-                    child: _loadError == null
-                        ? const CircularProgressIndicator()
-                        : Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: Column(mainAxisSize: MainAxisSize.min, children: [
-                              Text(_loadError!,
-                                  textAlign: TextAlign.center, style: const TextStyle(color: Colors.redAccent)),
-                              const SizedBox(height: 16),
-                              ElevatedButton(onPressed: _loadRecord, child: const Text('Tekrar Dene')),
-                            ]),
-                          ),
-                  )
+                ? (_loadError == null ? const LoadingView() : ErrorView(message: _loadError!, onRetry: _loadRecord))
                 : SingleChildScrollView(
               padding: const EdgeInsets.all(24.0),
               child: Form(
@@ -372,7 +361,7 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
                           elevation: 0,
                         ),
                         child: _isLoading
-                            ? const CircularProgressIndicator(color: Colors.white)
+                            ? const CircularProgressIndicator(color: Colors.white, semanticsLabel: 'Kaydediliyor')
                             : const Text('Kaydet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                       ),
                     ),

@@ -98,3 +98,20 @@ String? detailPath(CrudModule module, Map<String, dynamic> item) => module.detai
       RegExp(r'\{(\w+)\}'),
       (m) => Uri.encodeComponent(item[m.group(1)]?.toString() ?? ''),
     );
+
+/// `/assets/list/paged?sort=id,desc` + page/size → backend `PagedResponse` query.
+String pagedEndpoint(String endpoint, int page, int size) {
+  final uri = Uri.parse(endpoint);
+  return uri.replace(queryParameters: {...uri.queryParameters, 'page': '$page', 'size': '$size'}).toString();
+}
+
+/// Backend `PagedResponse.last`; falls back to "fewer items than requested" when absent.
+bool isLastPage(dynamic data, int size) =>
+    data is! Map || (data['last'] as bool? ?? extractItems(data).length < size);
+
+/// Record count of a list (`length`) or page (`totalElements`) response; null when unknown.
+int? totalCount(dynamic data) {
+  if (data is List) return data.length;
+  if (data is Map) return (data['totalElements'] as num?)?.toInt() ?? extractItems(data).length;
+  return null;
+}

@@ -134,6 +134,61 @@ void main() {
     expect(find.text('Sunucu hatası'), findsOneWidget);
     expect(find.text('Tekrar Dene'), findsOneWidget);
     expect(find.text('Birinci'), findsNothing);
+  });
 
+  testWidgets('delete: destructive confirm → DELETE → list reloads', (tester) async {
+    backend.routes['/posts/1'] = (req) =>
+        req.method == 'DELETE' ? jsonResponse({'result': true, 'data': null}, 200) : jsonResponse({}, 405);
+    await pumpList(tester, ['posts:read', 'posts:delete']);
+
+    await tester.tap(delete(1));
+    await tester.pumpAndSettle();
+    expect(find.text('Silinsin mi?'), findsOneWidget);
+    backend.ok('/posts/list', [{'id': 2, 'title': 'Ikinci'}]);
+    await tester.tap(find.byKey(const ValueKey('confirm_delete_button')));
+    await tester.pump();
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pump();
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pump();
+
+    expect(backend.requests.where((r) => r.method == 'DELETE').single.url.path, endsWith('/posts/1'));
+    expect(backend.requestsTo('/posts/list'), hasLength(2));
+    expect(find.text('Birinci'), findsNothing);
+    expect(find.text('Ikinci'), findsOneWidget);
+  });
+
+  testWidgets('delete cancelled: no request', (tester) async {
+    await pumpList(tester, ['posts:read', 'posts:delete']);
+
+    await tester.tap(delete(1));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Vazgeç'));
+    await tester.pumpAndSettle();
+
+    expect(backend.requests.where((r) => r.method == 'DELETE'), isEmpty);
+    expect(find.text('Birinci'), findsOneWidget);
+  });
+
+  testWidgets('search box filters by list title/subtitle', (tester) async {
+    await pumpList(tester, ['posts:read']);
+
+    await tester.enterText(find.byKey(const ValueKey('list_search_field')), 'ikinci');
+    await tester.pump();
+
+    expect(find.text('Birinci'), findsNothing);
+    expect(find.text('Ikinci'), findsOneWidget);
+  });
+
+  testWidgets('paged module (assets) requests page/size and keeps its sort', (tester) async {
+    backend.ok('/assets/list/paged', {
+      'content': [{'id': 5, 'name': 'logo.png', 'path': 'images/logo.png'}],
+      'last': true,
+    });
+    await pumpList(tester, ['assets:read'], module: ModulesConfig.byKey('assets'));
+
+    expect(find.text('logo.png'), findsOneWidget);
+    expect(backend.requestsTo('/assets/list/paged').single.url.queryParameters,
+        {'sort': 'id,desc', 'page': '0', 'size': '20'});
   });
 }

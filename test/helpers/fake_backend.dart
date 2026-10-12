@@ -34,5 +34,16 @@ class FakeBackend {
     routes['/users/me/permissions'] = (_) => okData({'permissions': keys});
   }
 
+  /// Serves `{result: true, data}` for [path] (query string ignored).
+  void ok(String path, Object data) => routes[path] = (_) => okData(data);
+
+  /// App start with a stored token: [auth] loads [keys] through this backend.
+  /// Call inside `tester.runAsync` in widget tests.
+  Future<void> signIn(AuthProvider auth, List<String> keys) {
+    permissions(keys);
+    FlutterSecureStorage.setMockInitialValues({'accessToken': 'a', 'tenantId': 't1'});
+    return auth.checkAuthStatus();
+  }
+
   Iterable<http.Request> requestsTo(String suffix) => requests.where((r) => r.url.path.endsWith(suffix));
 }

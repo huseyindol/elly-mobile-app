@@ -59,6 +59,10 @@ class CrudModule {
   final String title;
   final String crudEndpoint;
   final String listEndpoint;
+
+  /// [listEndpoint] is a backend `/list/paged` endpoint (`PagedResponse`): the list
+  /// appends `page`/`size` and loads more on scroll.
+  final bool paged;
   final IconData icon;
   final List<FieldConfig> fields;
 
@@ -91,6 +95,7 @@ class CrudModule {
     required this.title,
     required this.crudEndpoint,
     required this.listEndpoint,
+    this.paged = false,
     required this.icon,
     required this.fields,
     required this.permissionKey,
