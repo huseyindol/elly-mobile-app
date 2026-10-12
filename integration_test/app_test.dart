@@ -51,17 +51,19 @@ void main() {
     await tester.pumpAndSettle(const Duration(seconds: 5));
 
     // 3. Dashboard'a başarıyla girildiğini doğrula
-    expect(find.text('Dashboard'), findsWidgets, reason: 'Giriş başarılı olmalı ve Dashboard açılmalı');
+    expect(find.text('Gösterge Paneli'), findsWidgets, reason: 'Giriş başarılı olmalı ve Dashboard açılmalı');
 
-    // 4. Modüllere tıkla ve test et (Örnek: Pages)
-    final pagesCard = find.text('Pages');
-    if (pagesCard.evaluate().isNotEmpty) {
-      // Modülü tıkla
-      await tester.tap(pagesCard.first);
+    // 4. Drawer'dan bir modüle git (Örnek: Sayfalar)
+    tester.state<ScaffoldState>(find.byType(Scaffold).first).openDrawer();
+    await tester.pumpAndSettle();
+    final pagesItem = find.byKey(const ValueKey('nav_pages'));
+    if (pagesItem.evaluate().isNotEmpty) {
+      await tester.tap(pagesItem);
       await tester.pumpAndSettle(const Duration(seconds: 3));
 
       // Liste ekranı açıldığını onayla
-      expect(find.descendant(of: find.byType(AppBar), matching: find.text('Pages')), findsWidgets, reason: 'Pages liste ekranı yüklenmeli');
+      expect(find.descendant(of: find.byType(AppBar), matching: find.text('Sayfalar')), findsWidgets,
+          reason: 'Sayfalar liste ekranı yüklenmeli');
 
       // Geri dön
       await tester.pageBack();

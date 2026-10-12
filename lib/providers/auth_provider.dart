@@ -35,7 +35,10 @@ class AuthProvider with ChangeNotifier {
 
   /// UI gating only; the backend enforces the same keys with @PreAuthorize.
   /// [action]: read | create | update | delete.
-  bool can(String module, String action) => _permissions?.contains('$module:$action') ?? false;
+  bool can(String module, String action) => has('$module:$action');
+
+  /// Full `<module>:<action>` key, e.g. `users:manage`.
+  bool has(String permission) => _permissions?.contains(permission) ?? false;
 
   Future<void> checkAuthStatus() async {
     final token = await _secureStorage.read(key: 'accessToken');
