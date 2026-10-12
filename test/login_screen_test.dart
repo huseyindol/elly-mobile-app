@@ -93,6 +93,21 @@ void main() {
     expect(auth.isAuthenticated, isFalse);
   });
 
+  testWidgets('system back on the code step cancels 2FA instead of leaving the screen', (tester) async {
+    await pumpLogin(tester);
+    await submitCredentials(tester);
+    await tester.enterText(find.byKey(_mfaField), '12');
+
+    final handled = await tester.binding.handlePopRoute();
+    await tester.pump();
+
+    expect(handled, isTrue, reason: 'PopScope must consume the back press');
+    expect(auth.mfaPending, isFalse);
+    expect(find.byType(LoginScreen), findsOneWidget);
+    expect(find.text('Sign In'), findsOneWidget);
+    expect(backend.requestsTo('/auth/mfa/verify'), isEmpty);
+  });
+
   for (final bad in ['12345', '12345a', '']) {
     testWidgets('invalid code "$bad" is rejected locally and not sent', (tester) async {
       await pumpLogin(tester);
