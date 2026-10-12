@@ -14,6 +14,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _tenantController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _codeController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
   @override
@@ -21,6 +22,7 @@ class _LoginScreenState extends State<LoginScreen> {
     _tenantController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _codeController.dispose();
     super.dispose();
   }
 
@@ -28,13 +30,16 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_formKey.currentState?.validate() ?? false) {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       
-      final success = await authProvider.login(
-        tenantId: _tenantController.text.trim(),
-        usernameOrEmail: _emailController.text.trim(),
-        password: _passwordController.text,
-      );
+      final success = authProvider.mfaPending
+          ? await authProvider.verifyMfa(_codeController.text.trim())
+          : await authProvider.login(
+              tenantId: _tenantController.text.trim(),
+              usernameOrEmail: _emailController.text.trim(),
+              password: _passwordController.text,
+            );
 
-      if (!success && mounted) {
+      // mfaPending after login = code step shown, not an error.
+      if (!success && authProvider.errorMessage != null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(authProvider.errorMessage ?? 'Giriş başarısız'),
@@ -132,28 +137,46 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 48),
-                    
-                    _buildInputField(
-                      controller: _tenantController,
-                      label: 'Tenant ID',
-                      icon: Icons.business_rounded,
-                      validator: (val) => val == null || val.isEmpty ? 'Tenant ID required' : null,
-                    ),
-                    const SizedBox(height: 16),
-                    _buildInputField(
-                      controller: _emailController,
-                      label: 'Email or Username',
-                      icon: Icons.person_rounded,
-                      validator: (val) => val == null || val.isEmpty ? 'Email required' : null,
-                    ),
-                    const SizedBox(height: 16),
-                    _buildInputField(
-                      controller: _passwordController,
-                      label: 'Password',
-                      icon: Icons.lock_rounded,
-                      isPassword: true,
-                      validator: (val) => val == null || val.isEmpty ? 'Password required' : null,
-                    ),
+
+                    if (authProvider.mfaPending) ...[
+                      Text(
+                        'Doğrulama uygulamanızdaki 6 haneli kodu girin.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildInputField(
+                        key: const ValueKey('mfa_code_field'),
+                        controller: _codeController,
+                        label: '2FA Kodu',
+                        icon: Icons.verified_user_rounded,
+                        keyboardType: TextInputType.number,
+                        validator: (val) =>
+                            RegExp(r'^\d{6}$').hasMatch(val?.trim() ?? '') ? null : '6 haneli kod girin',
+                      ),
+                    ] else ...[
+                      _buildInputField(
+                        controller: _tenantController,
+                        label: 'Tenant ID',
+                        icon: Icons.business_rounded,
+                        validator: (val) => val == null || val.isEmpty ? 'Tenant ID required' : null,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildInputField(
+                        controller: _emailController,
+                        label: 'Email or Username',
+                        icon: Icons.person_rounded,
+                        validator: (val) => val == null || val.isEmpty ? 'Email required' : null,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildInputField(
+                        controller: _passwordController,
+                        label: 'Password',
+                        icon: Icons.lock_rounded,
+                        isPassword: true,
+                        validator: (val) => val == null || val.isEmpty ? 'Password required' : null,
+                      ),
+                    ],
                     const SizedBox(height: 32),
                     
                     SizedBox(
@@ -175,12 +198,22 @@ class _LoginScreenState extends State<LoginScreen> {
                                 height: 24,
                                 child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                               )
-                            : const Text(
-                                'Sign In',
-                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                            : Text(
+                                authProvider.mfaPending ? 'Doğrula' : 'Sign In',
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                               ),
                       ),
                     ),
+                    if (authProvider.mfaPending)
+                      TextButton(
+                        onPressed: authProvider.isLoading
+                            ? null
+                            : () {
+                                _codeController.clear();
+                                authProvider.cancelMfa();
+                              },
+                        child: const Text('Geri dön'),
+                      ),
                   ],
                 ),
               ),
@@ -192,10 +225,12 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildInputField({
+    Key? key,
     required TextEditingController controller,
     required String label,
     required IconData icon,
     bool isPassword = false,
+    TextInputType? keyboardType,
     String? Function(String?)? validator,
   }) {
     return Container(
@@ -205,8 +240,10 @@ class _LoginScreenState extends State<LoginScreen> {
         border: Border.all(color: Colors.white.withOpacity(0.1)),
       ),
       child: TextFormField(
+        key: key,
         controller: controller,
         obscureText: isPassword,
+        keyboardType: keyboardType,
         style: const TextStyle(color: Colors.white),
         decoration: InputDecoration(
           hintText: label,

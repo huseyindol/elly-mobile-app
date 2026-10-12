@@ -100,7 +100,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(height: 40),
               _buildSectionTitle('CMS Modules', ''),
               const SizedBox(height: 20),
-              _buildModulesGrid(context),
+              _buildModulesGrid(context, authProvider),
             ],
           ),
         ],
@@ -213,7 +213,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildModulesGrid(BuildContext context) {
+  Widget _buildModulesGrid(BuildContext context, AuthProvider auth) {
+    if (!auth.permissionsLoaded) {
+      // Hide modules until permissions are known; offer a retry instead of locking the user out.
+      if (auth.permissionsError == null) return const Center(child: CircularProgressIndicator());
+      return Column(
+        children: [
+          Text('Yetkiler yüklenemedi: ${auth.permissionsError}',
+              textAlign: TextAlign.center, style: const TextStyle(color: Colors.redAccent)),
+          const SizedBox(height: 12),
+          ElevatedButton(onPressed: auth.loadPermissions, child: const Text('Tekrar Dene')),
+        ],
+      );
+    }
+    final modules = ModulesConfig.allModules.where((m) => auth.can(m.permissionKey, 'read')).toList();
+    if (modules.isEmpty) return const Center(child: Text('Erişim yetkiniz olan modül yok.'));
     return GridView.builder(
       padding: EdgeInsets.zero,
       shrinkWrap: true,
@@ -224,9 +238,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         mainAxisSpacing: 16,
         childAspectRatio: 1.1,
       ),
-      itemCount: ModulesConfig.allModules.length,
+      itemCount: modules.length,
       itemBuilder: (context, index) {
-        final module = ModulesConfig.allModules[index];
+        final module = modules[index];
         return _buildModuleCard(
           context: context,
           title: module.title,

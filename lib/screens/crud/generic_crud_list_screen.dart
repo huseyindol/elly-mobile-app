@@ -1,6 +1,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../models/crud_module.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/crud_payload.dart';
 import 'generic_crud_form_screen.dart';
@@ -132,6 +134,11 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    final module = widget.module;
+    final canCreate = module.canCreate && auth.can(module.permissionKey, 'create');
+    final canEdit = module.canEdit && auth.can(module.permissionKey, 'update');
+    final canDelete = module.canDelete && auth.can(module.permissionKey, 'delete');
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: PreferredSize(
@@ -223,13 +230,13 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
                                   trailing: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      if (widget.module.canEdit)
+                                      if (canEdit)
                                         IconButton(
                                           key: ValueKey('edit_${item['id']}'),
                                           icon: const Icon(Icons.edit_rounded, color: Colors.white70),
                                           onPressed: () => _navigateToForm(item),
                                         ),
-                                      if (widget.module.canDelete)
+                                      if (canDelete)
                                         IconButton(
                                           key: ValueKey('delete_${item['id']}'),
                                           icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
@@ -245,7 +252,7 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
           ),
         ],
       ),
-      floatingActionButton: widget.module.canCreate
+      floatingActionButton: canCreate
           ? FloatingActionButton(
               backgroundColor: const Color(0xFF6366F1),
               onPressed: () => _navigateToForm(),

@@ -62,6 +62,9 @@ class CrudModule {
   final IconData icon;
   final List<FieldConfig> fields;
 
+  /// Backend permission module (PermissionConstants): `<key>:read|create|update|delete`.
+  final String permissionKey;
+
   /// Top-level keys of the backend IU DTO. Update payload = original record merged
   /// with form values, filtered to these keys — so fields not on the form are
   /// preserved (backend mappers overwrite missing fields with null).
@@ -90,6 +93,7 @@ class CrudModule {
     required this.listEndpoint,
     required this.icon,
     required this.fields,
+    required this.permissionKey,
     required this.payloadKeys,
     this.listTitleKey = 'title',
     this.listSubtitleKey = 'status',

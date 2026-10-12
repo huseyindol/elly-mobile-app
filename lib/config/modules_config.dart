@@ -16,6 +16,7 @@ class ModulesConfig {
     CrudModule(
       title: 'Pages',
       crudEndpoint: '/pages',
+      permissionKey: 'pages',
       listEndpoint: '/pages/list',
       detailEndpoint: '/pages/{slug}',
       icon: Icons.pages_rounded,
@@ -41,6 +42,7 @@ class ModulesConfig {
     CrudModule(
       title: 'Components',
       crudEndpoint: '/components',
+      permissionKey: 'components',
       listEndpoint: '/components/list',
       detailEndpoint: '/components/{id}',
       icon: Icons.extension_rounded,
@@ -68,6 +70,7 @@ class ModulesConfig {
     CrudModule(
       title: 'Posts',
       crudEndpoint: '/posts',
+      permissionKey: 'posts',
       listEndpoint: '/posts/list',
       detailEndpoint: '/posts/{id}',
       icon: Icons.article_rounded,
@@ -102,6 +105,7 @@ class ModulesConfig {
     CrudModule(
       title: 'Contents',
       crudEndpoint: '/contents',
+      permissionKey: 'contents',
       listEndpoint: '/contents/list',
       icon: Icons.text_snippet_rounded,
       listTitleKey: 'metadata.name|metadata.company|metadata.title|basicInfo.title',
@@ -160,6 +164,7 @@ class ModulesConfig {
     CrudModule(
       title: 'Widgets',
       crudEndpoint: '/widgets',
+      permissionKey: 'widgets',
       listEndpoint: '/widgets/list',
       detailEndpoint: '/widgets/{id}',
       icon: Icons.widgets_rounded,
@@ -187,6 +192,7 @@ class ModulesConfig {
     CrudModule(
       title: 'Banners',
       crudEndpoint: '/banners',
+      permissionKey: 'banners',
       listEndpoint: '/banners/list',
       icon: Icons.view_carousel_rounded,
       listTitleKey: 'title',
@@ -220,6 +226,7 @@ class ModulesConfig {
     CrudModule(
       title: 'Forms',
       crudEndpoint: '/forms',
+      permissionKey: 'forms',
       listEndpoint: '/forms/list',
       icon: Icons.dynamic_form_rounded,
       listTitleKey: 'title',
@@ -271,6 +278,7 @@ class ModulesConfig {
     CrudModule(
       title: 'Assets',
       crudEndpoint: '/assets',
+      permissionKey: 'assets',
       listEndpoint: '/assets/list/paged?page=0&size=100&sort=id,desc',
       icon: Icons.folder_special_rounded,
       listTitleKey: 'name',

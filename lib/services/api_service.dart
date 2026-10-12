@@ -21,7 +21,9 @@ class UploadFile {
 }
 
 class ApiService {
-  static const String baseUrl = 'https://api.huseyindol.com/api/v1';
+  // Override per build: --dart-define=API_BASE_URL=http://10.0.2.2:8080/api/v1
+  static const String baseUrl =
+      String.fromEnvironment('API_BASE_URL', defaultValue: 'https://api.huseyindol.com/api/v1');
 
   /// Called when the session can't be refreshed (refresh token expired/invalid).
   static void Function()? onSessionExpired;
