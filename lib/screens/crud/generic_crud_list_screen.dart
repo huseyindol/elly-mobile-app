@@ -10,14 +10,17 @@ import 'generic_crud_form_screen.dart';
 class GenericCrudListScreen extends StatefulWidget {
   final CrudModule module;
 
-  const GenericCrudListScreen({super.key, required this.module});
+  /// Test seam: lets tests inject an [ApiService] with a mock http client.
+  final ApiService? apiService;
+
+  const GenericCrudListScreen({super.key, required this.module, this.apiService});
 
   @override
   State<GenericCrudListScreen> createState() => _GenericCrudListScreenState();
 }
 
 class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
-  final ApiService _apiService = ApiService();
+  late final ApiService _apiService = widget.apiService ?? ApiService();
   List<Map<String, dynamic>> _items = [];
   bool _isLoading = true;
   String? _errorMessage;
