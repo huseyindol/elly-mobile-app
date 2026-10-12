@@ -134,4 +134,100 @@ void main() {
     expect(requests.where((r) => r.url.path.endsWith('/users/me/permissions')), hasLength(1));
     expect(auth.can('posts', 'read'), isTrue);
   });
+  group('has', () {
+    test('is false for everything before permissions are loaded', () {
+      final auth = build();
+      expect(auth.permissionsLoaded, isFalse);
+      expect(auth.has('posts:read'), isFalse);
+      expect(auth.has(''), isFalse);
+    });
+
+    test('matches the full "<module>:<action>" key exactly (users:manage included)', () async {
+      FlutterSecureStorage.setMockInitialValues({'accessToken': 'a', 'tenantId': 't1'});
+      routes['/users/me/permissions'] = (_) => _ok({
+            'permissions': ['users:manage', 'posts:read', 'email_templates:read'],
+          });
+      final auth = build();
+      await auth.checkAuthStatus();
+
+      expect(auth.has('users:manage'), isTrue);
+      expect(auth.has('email_templates:read'), isTrue);
+      expect(auth.has('users:read'), isFalse, reason: 'users:manage does not imply users:read');
+      expect(auth.has('users'), isFalse, reason: 'module name alone is not a permission');
+      expect(auth.has('posts:'), isFalse);
+      expect(auth.has('post:read'), isFalse, reason: 'no prefix matching');
+      expect(auth.has('posts:read '), isFalse, reason: 'no trimming');
+      expect(auth.has('POSTS:READ'), isFalse, reason: 'case sensitive');
+    });
+
+    test('can(module, action) is has("module:action")', () async {
+      FlutterSecureStorage.setMockInitialValues({'accessToken': 'a', 'tenantId': 't1'});
+      final auth = build();
+      await auth.checkAuthStatus();
+
+      for (final key in ['posts:read', 'posts:update', 'pages:read', 'users:manage']) {
+        final parts = key.split(':');
+        expect(auth.can(parts[0], parts[1]), auth.has(key), reason: key);
+      }
+      expect(auth.has('posts:read'), isTrue);
+      expect(auth.can('posts', 'read'), isTrue);
+    });
+
+    test('a loaded but empty permission set grants nothing', () async {
+      FlutterSecureStorage.setMockInitialValues({'accessToken': 'a', 'tenantId': 't1'});
+      routes['/users/me/permissions'] = (_) => _ok({'permissions': <String>[]});
+      final auth = build();
+      await auth.checkAuthStatus();
+
+      expect(auth.permissionsLoaded, isTrue);
+      expect(auth.has('posts:read'), isFalse);
+    });
+
+    test('a response without a "permissions" list grants nothing and is not an error', () async {
+      FlutterSecureStorage.setMockInitialValues({'accessToken': 'a', 'tenantId': 't1'});
+      routes['/users/me/permissions'] = (_) => _ok({'roles': ['EDITOR']});
+      final auth = build();
+      await auth.checkAuthStatus();
+
+      expect(auth.permissionsLoaded, isTrue);
+      expect(auth.permissionsError, isNull);
+      expect(auth.has('posts:read'), isFalse);
+    });
+
+    test('is seeded from the login response when /users/me/permissions fails, and cleared on logout', () async {
+      routes['/auth/login'] = (_) => _ok({'token': 'a', 'refreshToken': 'r', 'permissions': ['pages:read']});
+      routes['/users/me/permissions'] = (_) => http.Response('', 500);
+      final auth = build();
+      await auth.login(usernameOrEmail: 'u', password: 'p', tenantId: 't1');
+
+      expect(auth.has('pages:read'), isTrue);
+      expect(auth.has('posts:read'), isFalse);
+
+      await auth.logout();
+      expect(auth.has('pages:read'), isFalse);
+    });
+
+    test('a successful reload replaces the previous set (revoked permissions disappear)', () async {
+      FlutterSecureStorage.setMockInitialValues({'accessToken': 'a', 'tenantId': 't1'});
+      final auth = build();
+      await auth.checkAuthStatus();
+      expect(auth.has('posts:update'), isTrue);
+
+      routes['/users/me/permissions'] = (_) => _ok({'permissions': ['posts:read']});
+      await auth.loadPermissions();
+      expect(auth.has('posts:read'), isTrue);
+      expect(auth.has('posts:update'), isFalse);
+    });
+
+    test('a failed reload keeps the last known set', () async {
+      FlutterSecureStorage.setMockInitialValues({'accessToken': 'a', 'tenantId': 't1'});
+      final auth = build();
+      await auth.checkAuthStatus();
+
+      routes['/users/me/permissions'] = (_) => http.Response('', 500);
+      await auth.loadPermissions();
+      expect(auth.permissionsError, isNotNull);
+      expect(auth.has('posts:read'), isTrue);
+    });
+  });
 }
