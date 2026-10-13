@@ -1,0 +1,110 @@
+{
+  "id": 7,
+  "title": "Başvuru Formu",
+  "version": 3,
+  "schema": {
+    "config": { "layout": "wizard", "submitLabel": "Başvur", "theme": "compact" },
+    "fields": [
+      {
+        "id": "name",
+        "stepId": "9b2f6c1e-1d2a-4c3b-8e7f-0a1b2c3d4e5f",
+        "type": "text",
+        "label": "Ad Soyad",
+        "required": true,
+        "validation": { "min": 2, "max": 100, "pattern": null },
+        "condition": null,
+        "options": null
+      },
+      {
+        "id": "email",
+        "stepId": "9b2f6c1e-1d2a-4c3b-8e7f-0a1b2c3d4e5f",
+        "type": "email",
+        "label": "E-posta",
+        "required": true,
+        "validation": null,
+        "condition": null,
+        "options": null
+      },
+      {
+        "id": "age",
+        "stepId": "9b2f6c1e-1d2a-4c3b-8e7f-0a1b2c3d4e5f",
+        "type": "number",
+        "label": "Yaş",
+        "required": false,
+        "validation": { "min": 18, "max": 120, "pattern": null },
+        "condition": null,
+        "options": null
+      },
+      {
+        "id": "company",
+        "stepId": "c0ffee00-0000-4000-8000-000000000002",
+        "type": "text",
+        "label": "Şirket",
+        "required": false,
+        "validation": null,
+        "condition": { "field": "age", "operator": "GT", "value": 18 },
+        "options": null
+      },
+      {
+        "id": "topic",
+        "stepId": "c0ffee00-0000-4000-8000-000000000002",
+        "type": "select",
+        "label": "Konu",
+        "required": true,
+        "validation": null,
+        "condition": null,
+        "options": [
+          { "label": "Destek", "value": "support" },
+          { "label": "Satış", "value": "sales" }
+        ]
+      },
+      {
+        "id": "interests",
+        "stepId": "c0ffee00-0000-4000-8000-000000000002",
+        "type": "multi_checkbox",
+        "label": "İlgi Alanları",
+        "required": false,
+        "validation": null,
+        "condition": { "field": "topic", "operator": "EQUALS", "value": "sales" },
+        "options": [
+          { "label": "Web", "value": "web" },
+          { "label": "Mobil", "value": "mobile" }
+        ]
+      },
+      {
+        "id": "kvkk",
+        "stepId": "c0ffee00-0000-4000-8000-000000000002",
+        "type": "checkbox",
+        "label": "KVKK metnini onaylıyorum",
+        "required": true,
+        "validation": null,
+        "condition": null,
+        "options": null
+      },
+      {
+        "id": "rating",
+        "stepId": "c0ffee00-0000-4000-8000-000000000002",
+        "type": "star_rating",
+        "label": "Puan",
+        "required": false,
+        "validation": { "min": 1, "max": 5, "pattern": null },
+        "condition": null,
+        "options": null,
+        "placeholder": "1-5"
+      }
+    ],
+    "steps": [
+      { "id": "9b2f6c1e-1d2a-4c3b-8e7f-0a1b2c3d4e5f", "title": "Kişisel Bilgiler", "description": "Sizi tanıyalım" },
+      { "id": "c0ffee00-0000-4000-8000-000000000002", "title": "Talep", "description": null }
+    ]
+  },
+  "active": true,
+  "senderMailAccountId": 2,
+  "senderMailAccountName": "Bildirim",
+  "senderFromAddress": "noreply@example.com",
+  "recipientEmail": "ops@example.com, sales@example.com",
+  "notificationSubject": null,
+  "notificationEnabled": true,
+  "createdAt": "2026-02-14T00:00:00.000+00:00",
+  "updatedAt": "2026-03-01T10:00:00.000+00:00"
+}
