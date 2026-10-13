@@ -268,4 +268,46 @@ void main() {
       expect(slugify('a -- b'), 'a-b');
     });
   });
+
+  group('seoInfo', () {
+    test('all-empty SEO block is not sent for a record without one', () {
+      final values = initialFormValues(_pages, null)
+        ..['title'] = 'T'
+        ..['slug'] = 't'
+        ..['seoInfo.title'] = ''
+        ..['seoInfo.keywords'] = '  ';
+      expect(buildPayload(_pages, null, values).containsKey('seoInfo'), isFalse);
+    });
+
+    test('a filled field or a set flag sends it', () {
+      final values = initialFormValues(_pages, null)..['seoInfo.noIndex'] = true;
+      expect(buildPayload(_pages, null, values)['seoInfo'], containsPair('noIndex', true));
+    });
+
+    test('an existing seoInfo is kept even when emptied (explicit edit)', () {
+      final values = initialFormValues(_pages, _page)
+        ..['seoInfo.title'] = ''
+        ..['seoInfo.description'] = '';
+      expect(buildPayload(_pages, _page, values)['seoInfo'], isA<Map>());
+    });
+  });
+
+  group('banner _imageMode', () {
+    test('edit: url when the record has images, upload otherwise; never read from the record', () {
+      expect(
+        initialFormValues(_banners, {
+          'images': {'desktop': 'a.png'},
+        })['_imageMode'],
+        'url',
+      );
+      expect(
+        initialFormValues(_banners, {
+          'images': {'desktop': null, 'mobile': ''},
+        })['_imageMode'],
+        'upload',
+      );
+      expect(initialFormValues(_banners, {'_imageMode': 'url'})['_imageMode'], 'upload');
+      expect(initialFormValues(_banners, null)['_imageMode'], 'upload');
+    });
+  });
 }

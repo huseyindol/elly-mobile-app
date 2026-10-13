@@ -241,4 +241,100 @@ void main() {
     expect(find.byKey(const ValueKey('field_metadata.company')), findsOneWidget);
     expect(find.text('portfolio_experience'), findsOneWidget, reason: 'section key template follows the type');
   });
+
+  testWidgets('banner edit with stored images opens in URL mode (inputs visible, URLs filled)', (tester) async {
+    await pumpForm(tester, ModulesConfig.byKey('banners'), {
+      'id': 4,
+      'title': 'Kampanya',
+      'images': {'desktop': 'assets/t/t1/images/d.png', 'tablet': null, 'mobile': null},
+    });
+
+    expect(find.text('URL gir'), findsOneWidget);
+    expect(find.byKey(const ValueKey('field_images.desktop')), findsOneWidget);
+    expect(find.text('assets/t/t1/images/d.png'), findsOneWidget);
+    expect(find.byKey(const ValueKey('field_desktop')), findsNothing);
+  });
+
+  testWidgets('banner edit without images opens in upload mode', (tester) async {
+    await pumpForm(tester, ModulesConfig.byKey('banners'), {'id': 5, 'title': 'Boş', 'images': null});
+
+    expect(find.text('Dosya yükle'), findsOneWidget);
+    expect(find.byKey(const ValueKey('field_desktop')), findsOneWidget);
+    expect(find.byKey(const ValueKey('field_images.desktop')), findsNothing);
+  });
+
+  testWidgets('invalid form: no request, "N alan hatalı" and the first error is shown', (tester) async {
+    final sent = capture('/pages', 'POST');
+    await pumpForm(tester, ModulesConfig.byKey('pages'));
+
+    await save(tester);
+    await tester.pumpAndSettle();
+
+    expect(sent, isEmpty);
+    expect(find.text('2 alan hatalı'), findsOneWidget, reason: 'title + slug required');
+    expect(find.text('Başlık zorunlu'), findsOneWidget);
+  });
+
+  group('leaving with unsaved changes', () {
+    Future<void> pumpInNavigator(WidgetTester tester) async {
+      await tester.runAsync(() => backend.signIn(auth, ['pages:update']));
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AuthProvider>.value(
+          value: auth,
+          child: MaterialApp(
+            localizationsDelegates: FlutterQuillLocalizations.localizationsDelegates,
+            home: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        GenericCrudFormScreen(module: ModulesConfig.byKey('pages'), apiService: backend.api),
+                  ),
+                ),
+                child: const Text('aç'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('aç'));
+      await tester.pumpAndSettle();
+      await settle(tester);
+    }
+
+    testWidgets('untouched form pops without asking', (tester) async {
+      await pumpInNavigator(tester);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(GenericCrudFormScreen), findsNothing);
+    });
+
+    testWidgets('edited form asks; "Kal" stays, "Çık" leaves', (tester) async {
+      await pumpInNavigator(tester);
+      await tester.enterText(find.byKey(const ValueKey('field_title')), 'Taslak');
+      await tester.pump();
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Kaydedilmemiş değişiklikler'), findsOneWidget);
+      await tester.tap(find.text('Kal'));
+      await tester.pumpAndSettle();
+      expect(find.byType(GenericCrudFormScreen), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('confirm_leave_button')));
+      await tester.pumpAndSettle();
+      expect(find.byType(GenericCrudFormScreen), findsNothing);
+    });
+
+    testWidgets('a toggled switch also counts as a change', (tester) async {
+      await pumpInNavigator(tester);
+      await tester.tap(find.byKey(const ValueKey('field_status')));
+      await tester.pump();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Kaydedilmemiş değişiklikler'), findsOneWidget);
+    });
+  });
 }

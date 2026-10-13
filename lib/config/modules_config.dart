@@ -463,11 +463,33 @@ class ModulesConfig {
           options: ['upload', 'url'],
           optionLabels: {'upload': 'Dosya yükle', 'url': 'URL gir'},
           defaultValue: 'upload',
+          initialValueOf: _bannerImageMode,
           section: 'Görseller',
         ),
-        FieldConfig(key: 'desktop', label: 'Desktop Görsel', type: FieldType.file, visibleWhen: _upload),
-        FieldConfig(key: 'tablet', label: 'Tablet Görsel', type: FieldType.file, visibleWhen: _upload),
-        FieldConfig(key: 'mobile', label: 'Mobile Görsel', type: FieldType.file, visibleWhen: _upload),
+        FieldConfig(
+          key: 'desktop',
+          label: 'Desktop Görsel',
+          type: FieldType.file,
+          imageOnly: true,
+          currentImageKey: 'images.desktop',
+          visibleWhen: _upload,
+        ),
+        FieldConfig(
+          key: 'tablet',
+          label: 'Tablet Görsel',
+          type: FieldType.file,
+          imageOnly: true,
+          currentImageKey: 'images.tablet',
+          visibleWhen: _upload,
+        ),
+        FieldConfig(
+          key: 'mobile',
+          label: 'Mobile Görsel',
+          type: FieldType.file,
+          imageOnly: true,
+          currentImageKey: 'images.mobile',
+          visibleWhen: _upload,
+        ),
         FieldConfig(key: 'images.desktop', label: 'Desktop Görsel URL', type: FieldType.imageUrl, visibleWhen: _url),
         FieldConfig(key: 'images.tablet', label: 'Tablet Görsel URL', type: FieldType.imageUrl, visibleWhen: _url),
         FieldConfig(key: 'images.mobile', label: 'Mobile Görsel URL', type: FieldType.imageUrl, visibleWhen: _url),
@@ -557,6 +579,13 @@ class ModulesConfig {
 
   /// Module by its backend permission key (`posts`, `pages`, ...).
   static CrudModule byKey(String permissionKey) => allModules.firstWhere((m) => m.permissionKey == permissionKey);
+}
+
+/// Edit: URL mode when the banner already has image URLs/paths (so they are visible), else upload.
+Object? _bannerImageMode(Map<String, dynamic>? record) {
+  final images = record?['images'];
+  final hasImage = images is Map && images.values.any((v) => v != null && v.toString().trim().isNotEmpty);
+  return hasImage ? 'url' : 'upload';
 }
 
 String _order(Map<String, dynamic> item) => 'Sıra: ${item['orderIndex'] ?? 0}';

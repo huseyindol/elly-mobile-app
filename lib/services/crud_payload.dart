@@ -59,7 +59,11 @@ Map<String, dynamic> initialFormValues(CrudModule module, Map<String, dynamic>? 
   final values = <String, dynamic>{};
   for (final field in module.fields) {
     if (field.type == FieldType.file) continue;
-    if (field.type == FieldType.relation) {
+    if (field.initialValueOf != null) {
+      values[field.key] = field.initialValueOf!(original);
+    } else if (field.key.startsWith('_')) {
+      values[field.key] = field.defaultValue; // local form state, never read from the record
+    } else if (field.type == FieldType.relation) {
       values[field.key] = original == null
           ? <Object>[]
           : relationIds(getPath(original, field.relationSource ?? field.key));
@@ -116,6 +120,14 @@ Map<String, dynamic> buildPayload(CrudModule module, Map<String, dynamic>? origi
       if (field.type == FieldType.date && value == '') value = null;
     }
     setPath(merged, field.key, value);
+  }
+  // An all-empty SEO block is not created (admin sends no seoInfo for a page without one); an existing
+  // one is kept as edited (clearing fields of a stored seoInfo is a real change).
+  final seo = merged['seoInfo'];
+  if (seo is Map &&
+      original?['seoInfo'] == null &&
+      seo.values.every((v) => v == null || v == false || '$v'.trim().isEmpty)) {
+    merged.remove('seoInfo');
   }
   return {
     for (final key in module.payloadKeys)

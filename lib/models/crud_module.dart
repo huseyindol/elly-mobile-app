@@ -73,6 +73,16 @@ class FieldConfig {
   /// the current ids are always sent.
   final bool relationKeepsOnNull;
 
+  /// File field: images only (picker filter + 5 MB limit like the admin `ImageUploadBox`).
+  final bool imageOnly;
+
+  /// File field: dot-path of the record's current image, previewed next to the picker.
+  final String? currentImageKey;
+
+  /// Initial value computed from the record (null when creating). Local `_` fields use it instead of
+  /// reading the record (banner `_imageMode`).
+  final Object? Function(Map<String, dynamic>? record)? initialValueOf;
+
   const FieldConfig({
     required this.key,
     required this.label,
@@ -98,6 +108,9 @@ class FieldConfig {
     this.optionSubtitleKey,
     this.relationSource,
     this.relationKeepsOnNull = false,
+    this.imageOnly = false,
+    this.currentImageKey,
+    this.initialValueOf,
   });
 }
 

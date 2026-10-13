@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -8,9 +9,11 @@ import '../../models/crud_module.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/crud_payload.dart';
+import '../../services/rich_text_codec.dart' show isAllowedUrl;
 import '../../services/text_format.dart';
 import '../../widgets/app_scaffold.dart';
 import '../../widgets/asset_picker.dart';
+import '../../widgets/confirm_dialog.dart';
 import '../../widgets/relation_multi_select.dart';
 import '../../widgets/rich_text_field.dart';
 import '../../widgets/state_views.dart';
@@ -43,6 +46,10 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
   bool _ready = false;
   String? _loadError;
   bool _isLoading = false;
+  bool _dirty = false; // any user edit → leaving asks for confirmation
+
+  /// Admin `ImageUploadBox` limit.
+  static const _maxImageBytes = 5 * 1024 * 1024;
 
   bool get _isEditing => widget.initialData != null;
   ColorScheme get _scheme => Theme.of(context).colorScheme;
@@ -130,8 +137,13 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
     }
   }
 
+  void _markDirty() {
+    if (!_dirty && mounted) setState(() => _dirty = true);
+  }
+
   void _onDropdownChanged(FieldConfig field, Object? value) {
     final previous = _values[field.key];
+    _dirty = true;
     setState(() => _values[field.key] = value);
     // Swap templates bound to this dropdown (only if the user hasn't customised the field).
     for (final bound in _fields.where((f) => f.templateFromField == field.key)) {
@@ -154,23 +166,32 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
   }
 
   Future<void> _pickFile(FieldConfig field) async {
-    final picked = await FilePicker.pickFiles();
+    final picked = await FilePicker.pickFiles(type: field.imageOnly ? FileType.image : FileType.any);
     if (picked.isEmpty || picked.first.path == null) return;
+    final size = picked.first.lengthSync() ?? 0;
+    if (field.imageOnly && size > _maxImageBytes) {
+      _showError('${field.label}: dosya 5 MB sınırını aşıyor');
+      return;
+    }
+    _dirty = true;
     setState(() => _files[field.key] = picked.first);
   }
 
   Future<void> _pickDate(FieldConfig field) async {
-    final current = DateTime.tryParse(_values[field.key]?.toString() ?? '');
+    final first = DateTime(2000);
+    final last = DateTime(2100);
+    final current = DateTime.tryParse(_values[field.key]?.toString() ?? '') ?? DateTime.now();
     final picked = await showDatePicker(
       context: context,
-      initialDate: current ?? DateTime.now(),
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
+      initialDate: current.isBefore(first) ? first : (current.isAfter(last) ? last : current),
+      firstDate: first,
+      lastDate: last,
     );
     if (picked == null) return;
     final date =
         '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}-'
         '${picked.day.toString().padLeft(2, '0')}';
+    _dirty = true;
     setState(() => _values[field.key] = date);
   }
 
@@ -198,7 +219,12 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
   }
 
   Future<void> _submit() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
+    final invalid = _formKey.currentState?.validateGranularly() ?? const {};
+    if (invalid.isNotEmpty) {
+      Scrollable.ensureVisible(invalid.first.context, alignment: 0.2, duration: const Duration(milliseconds: 250));
+      _showError('${invalid.length} alan hatalı');
+      return;
+    }
     _collectControllerValues();
     setState(() => _isLoading = true);
 
@@ -224,6 +250,7 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
       }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_isEditing ? 'Güncellendi' : 'Oluşturuldu')));
+      _dirty = false;
       Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) _showError(e.toString());
@@ -312,6 +339,21 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
 
   Widget _buildFile(FieldConfig field) {
     final picked = _files[field.key];
+    final current = field.currentImageKey == null ? null : getPath(_original, field.currentImageKey!)?.toString();
+    final hasCurrent = current != null && current.trim().isNotEmpty;
+    final preview = picked != null && field.imageOnly
+        ? ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.file(
+              File(picked.path!),
+              width: 48,
+              height: 48,
+              fit: BoxFit.cover,
+              semanticLabel: '${field.label} yeni görsel',
+              errorBuilder: (_, _, _) => const Icon(Icons.image_outlined),
+            ),
+          )
+        : (hasCurrent ? AssetThumbnail(url: current, semanticLabel: '${field.label} mevcut görsel') : null);
     return FormField<PlatformFile>(
       key: ValueKey('field_${field.key}'),
       validator: (_) => field.isRequired && _files[field.key] == null ? '${field.label} seçin' : null,
@@ -319,26 +361,36 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
         decoration: _decoration(field).copyWith(errorText: state.errorText),
         child: Row(
           children: [
+            if (preview != null) ...[preview, const SizedBox(width: 8)],
             Expanded(
               child: Text(
-                picked?.name ?? 'Dosya seçilmedi',
+                picked?.name ?? (hasCurrent ? 'Mevcut görsel' : 'Dosya seçilmedi'),
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: _scheme.onSurface.withValues(alpha: picked == null ? 0.6 : 1)),
               ),
             ),
             if (picked != null)
               IconButton(
-                tooltip: 'Dosyayı kaldır',
+                tooltip: '${field.label} dosyasını kaldır',
                 icon: const Icon(Icons.close_rounded, size: 18),
                 onPressed: () => setState(() => _files.remove(field.key)),
               ),
-            TextButton.icon(
-              onPressed: () async {
-                await _pickFile(field);
-                state.didChange(_files[field.key]);
-              },
-              icon: const Icon(Icons.upload_file_rounded),
-              label: const Text('Seç'),
+            Tooltip(
+              message: '${field.label} seç',
+              excludeFromSemantics: true,
+              child: Semantics(
+                label: '${field.label} seç',
+                button: true,
+                excludeSemantics: true,
+                child: TextButton.icon(
+                  onPressed: () async {
+                    await _pickFile(field);
+                    state.didChange(_files[field.key]);
+                  },
+                  icon: const Icon(Icons.upload_file_rounded),
+                  label: const Text('Seç'),
+                ),
+              ),
             ),
           ],
         ),
@@ -362,14 +414,26 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
           ),
           if (date.isNotEmpty)
             IconButton(
-              tooltip: 'Tarihi temizle',
+              tooltip: '${field.label} temizle',
               icon: const Icon(Icons.close_rounded, size: 18),
-              onPressed: () => setState(() => _values[field.key] = null),
+              onPressed: () {
+                _dirty = true;
+                setState(() => _values[field.key] = null);
+              },
             ),
-          TextButton.icon(
-            onPressed: () => _pickDate(field),
-            icon: const Icon(Icons.event_rounded),
-            label: const Text('Seç'),
+          Tooltip(
+            message: '${field.label} seç',
+            excludeFromSemantics: true,
+            child: Semantics(
+              label: '${field.label} seç',
+              button: true,
+              excludeSemantics: true,
+              child: TextButton.icon(
+                onPressed: () => _pickDate(field),
+                icon: const Icon(Icons.event_rounded),
+                label: const Text('Seç'),
+              ),
+            ),
           ),
         ],
       ),
@@ -390,7 +454,7 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
             suffixIcon: canPickAssets
                 ? IconButton(
                     key: ValueKey('asset_pick_button_${field.key}'),
-                    tooltip: 'Assetlerden seç',
+                    tooltip: '${field.label}: assetlerden seç',
                     icon: const Icon(Icons.photo_library_outlined),
                     onPressed: () async {
                       final url = await showAssetPicker(context, _apiService);
@@ -403,7 +467,8 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
         ),
         ValueListenableBuilder<TextEditingValue>(
           valueListenable: controller,
-          builder: (_, value, _) => value.text.trim().isEmpty
+          // Preview only a usable URL/path (no request per keystroke of a half-typed "https://ex").
+          builder: (_, value, _) => !_previewable(value.text)
               ? const SizedBox.shrink()
               : Padding(
                   padding: const EdgeInsets.only(top: 8),
@@ -414,6 +479,13 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
     );
   }
 
+  static bool _previewable(String text) {
+    final value = text.trim();
+    if (!isAllowedUrl(value)) return false;
+    final uri = Uri.tryParse(value);
+    return uri != null && (uri.hasScheme ? uri.host.contains('.') && uri.path.length > 1 : value.contains('/'));
+  }
+
   Widget _buildField(FieldConfig field, {required bool canPickAssets}) {
     final Widget child;
     switch (field.type) {
@@ -422,7 +494,10 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
           key: ValueKey('field_${field.key}'),
           title: Text(field.label),
           value: _values[field.key] == true,
-          onChanged: (val) => setState(() => _values[field.key] = val),
+          onChanged: (val) {
+            _dirty = true;
+            setState(() => _values[field.key] = val);
+          },
           activeThumbColor: _scheme.primary,
         );
       case FieldType.dropdown:
@@ -444,7 +519,10 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
           subtitleKey: field.optionSubtitleKey,
           isRequired: field.isRequired,
           initialValue: List<Object>.from(_values[field.key] as List? ?? const []),
-          onChanged: (ids) => _values[field.key] = ids,
+          onChanged: (ids) {
+            _values[field.key] = ids;
+            _markDirty();
+          },
         );
       case FieldType.richText:
         child = RichTextField(
@@ -453,6 +531,7 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
           initialHtml: _values[field.key]?.toString() ?? '',
           api: _apiService,
           canPickAssets: canPickAssets,
+          onChanged: _markDirty,
         );
       default:
         final isJson = field.type == FieldType.json;
@@ -505,43 +584,78 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
     return widgets;
   }
 
+  /// Back with unsaved edits (or while saving) asks first.
+  Future<void> _confirmLeave() async {
+    final leave = await showConfirmDialog(
+      context,
+      title: _isLoading ? 'Kayıt sürüyor' : 'Kaydedilmemiş değişiklikler',
+      message: _isLoading
+          ? 'Kayıt henüz tamamlanmadı. Çıkarsanız sonucu göremezsiniz.'
+          : 'Değişiklikler kaydedilmedi ve kaybolacak. Çıkılsın mı?',
+      confirmLabel: 'Çık',
+      cancelLabel: 'Kal',
+      destructive: true,
+      confirmKey: const ValueKey('confirm_leave_button'),
+    );
+    if (leave && mounted) Navigator.of(context).pop();
+  }
+
+  Widget _saveBar() => SafeArea(
+    top: false,
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 12),
+      child: SizedBox(
+        width: double.infinity,
+        height: 56,
+        child: ElevatedButton(
+          key: const ValueKey('crud_save_button'),
+          onPressed: _isLoading ? null : _submit,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _scheme.primary,
+            foregroundColor: _scheme.onPrimary,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            elevation: 0,
+          ),
+          child: _isLoading
+              ? CircularProgressIndicator(color: _scheme.onPrimary, semanticsLabel: 'Kaydediliyor')
+              : const Text('Kaydet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        ),
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final canPickAssets = context.watch<AuthProvider>().can('assets', 'read');
-    return AppScaffold(
-      title: _isEditing ? '${widget.module.title} · Düzenle' : '${widget.module.title} · Yeni',
-      body: !_ready
-          ? (_loadError == null ? const LoadingView() : ErrorView(message: _loadError!, onRetry: _loadRecord))
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    ..._formFields(canPickAssets),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 56,
-                      child: ElevatedButton(
-                        key: const ValueKey('crud_save_button'),
-                        onPressed: _isLoading ? null : _submit,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _scheme.primary,
-                          foregroundColor: _scheme.onPrimary,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          elevation: 0,
+    return PopScope(
+      canPop: !_dirty && !_isLoading,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _confirmLeave();
+      },
+      child: AppScaffold(
+        title: _isEditing ? '${widget.module.title} · Düzenle' : '${widget.module.title} · Yeni',
+        body: !_ready
+            ? (_loadError == null ? const LoadingView() : ErrorView(message: _loadError!, onRetry: _loadRecord))
+            // Save stays reachable at the bottom while the long form scrolls.
+            : Column(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+                      child: Form(
+                        key: _formKey,
+                        onChanged: _markDirty,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: _formFields(canPickAssets),
                         ),
-                        child: _isLoading
-                            ? CircularProgressIndicator(color: _scheme.onPrimary, semanticsLabel: 'Kaydediliyor')
-                            : const Text('Kaydet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                  _saveBar(),
+                ],
               ),
-            ),
+      ),
     );
   }
 }
