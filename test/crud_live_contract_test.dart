@@ -73,7 +73,8 @@ Future<void> _crudCycle(
   try {
     final listed = await _find(m, id);
     for (final e in createValues.entries) {
-      if (m.fields.any((f) => f.key == e.key && f.type != FieldType.file)) {
+      // `_`-keys are local form state (banner `_imageMode`), never sent.
+      if (!e.key.startsWith('_') && m.fields.any((f) => f.key == e.key && f.type != FieldType.file)) {
         expect(getPath(listed, e.key), e.value, reason: '$title create: ${e.key}');
       }
     }
@@ -141,6 +142,71 @@ void main() {
         editValue: 'Mobile Comp Edited $_ts',
         preserved: ['type', 'template', 'orderIndex', 'status']));
 
+    test('Relations survive unrelated edits (components/widgets: backend null = clear)', () async {
+      final pages = _module('pages');
+      final comps = _module('components');
+      final widgets = _module('widgets');
+      final posts = _module('posts');
+      final post = await _save(posts, null, {
+        ...initialFormValues(posts, null),
+        'title': 'Mobile Rel Post $_ts',
+        'slug': 'mobile-rel-post-$_ts',
+      });
+      final widget = await _save(widgets, null, {
+        ...initialFormValues(widgets, null),
+        'name': 'Mobile Rel Widget $_ts',
+        'type': 'POST',
+        'postIds': [post['id']],
+      });
+      final comp = await _save(comps, null, {
+        ...initialFormValues(comps, null),
+        'name': 'Mobile Rel Comp $_ts',
+        'type': 'WIDGET',
+        'widgetIds': [widget['id']],
+      });
+      final page = await _save(pages, null, {
+        ...initialFormValues(pages, null),
+        'title': 'Mobile Rel Page $_ts',
+        'slug': 'mobile-rel-page-$_ts',
+        'componentIds': [comp['id']],
+      });
+      try {
+        // Edit each record without touching its relations.
+        for (final (m, listed, key) in [
+          (comps, comp, 'name'),
+          (widgets, widget, 'name'),
+          (pages, page, 'title'),
+        ]) {
+          final original = await _editable(m, await _find(m, listed['id']));
+          await _save(m, original, initialFormValues(m, original)..[key] = '${original[key]} Edited');
+        }
+        final comp2 = await _editable(comps, await _find(comps, comp['id']));
+        expect(relationIds(comp2['widgets']), [widget['id']], reason: 'component widgets wiped');
+        expect(comp2['pageIds'], [page['id']], reason: 'component pages wiped');
+        final widget2 = await _editable(widgets, await _find(widgets, widget['id']));
+        expect(relationIds(widget2['posts']), [post['id']], reason: 'widget posts wiped');
+        final page2 = await _editable(pages, await _find(pages, page['id']));
+        expect(relationIds(page2['components']), [comp['id']], reason: 'page components wiped');
+      } finally {
+        await api.delete('/pages/${page['id']}');
+        await api.delete('/components/${comp['id']}');
+        await api.delete('/widgets/${widget['id']}');
+        await api.delete('/posts/${post['id']}');
+      }
+    });
+
+    test('Posts (rich text body, date, cover image)', () => _crudCycle('posts',
+        createValues: {
+          'title': 'Mobile Rich Post $_ts',
+          'slug': 'mobile-rich-post-$_ts',
+          'content': '<h2>Başlık</h2><p>Merhaba <strong>dünya</strong></p>',
+          'coverImage': 'https://example.com/cover.png',
+          'category': 'Mobile',
+        },
+        editKey: 'title',
+        editValue: 'Mobile Rich Post Edited $_ts',
+        preserved: ['content', 'coverImage', 'category', 'slug']));
+
     test('Posts (publishedAt not on form must survive update)', () async {
       final m = _module('posts');
       final created = await api.post(m.crudEndpoint, {
@@ -170,7 +236,11 @@ void main() {
         createValues: {
           'basicInfo.title': 'Mobile Section $_ts',
           'basicInfo.sectionKey': 'mobile_contract_test',
-          'metadata': {'name': 'Mobile Skill $_ts', 'level': 'Expert', 'years': '1', 'sortOrder': 0},
+          'metadata.name': 'Mobile Skill $_ts',
+          'metadata.level': 'Expert',
+          'metadata.years': '1',
+          'metadata.imageUrl': 'https://example.com/skill.png',
+          'metadata.url': 'https://example.com',
         },
         editKey: 'basicInfo.title',
         editValue: 'Mobile Section Edited $_ts',
@@ -182,15 +252,22 @@ void main() {
         editValue: 'Mobile Widget Edited $_ts',
         preserved: ['type', 'template', 'orderIndex']));
 
-    test('Banners (multipart, URL images + file upload)', () async {
+    test('Banners (multipart, URL mode)', () => _crudCycle('banners',
+        createValues: {
+          'title': 'Mobile Banner URL $_ts',
+          'subFolder': 'mobile-test',
+          '_imageMode': 'url',
+          'images.tablet': 'https://example.com/t.png',
+          'images.mobile': 'https://example.com/m.png',
+        },
+        editKey: 'title',
+        editValue: 'Mobile Banner URL Edited $_ts',
+        preserved: ['images', 'link', 'target', 'subFolder']));
+
+    test('Banners (multipart, upload mode)', () async {
       final file = File('${Directory.systemTemp.path}/elly_banner_$_ts.png')..writeAsBytesSync(_png);
       await _crudCycle('banners',
-          createValues: {
-            'title': 'Mobile Banner $_ts',
-            'subFolder': 'mobile-test',
-            'images.tablet': 'https://example.com/t.png',
-            'images.mobile': 'https://example.com/m.png',
-          },
+          createValues: {'title': 'Mobile Banner $_ts', 'subFolder': 'mobile-test'},
           files: [UploadFile('desktop', file.path)],
           editKey: 'title',
           editValue: 'Mobile Banner Edited $_ts',
