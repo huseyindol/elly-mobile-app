@@ -213,4 +213,66 @@ void main() {
       expect(analyzeHtml('<ul><li>a</li><li>b <em>c</em></li></ul>').supported, isTrue);
     });
   });
+
+  group('embeds and URL safety', () {
+    test('an image sharing a line with text is split out, not dropped', () {
+      expect(
+        opsToHtml([
+          {'insert': 'ab'},
+          {
+            'insert': {'image': 'https://x/i.png'},
+            'attributes': {'alt': 'A'},
+          },
+          {'insert': 'cd'},
+          {
+            'insert': '\n',
+            'attributes': {'header': 2},
+          },
+        ]),
+        '<h2>ab</h2><img loading="lazy" class="tiptap-img" src="https://x/i.png" alt="A"><h2>cd</h2>',
+      );
+    });
+
+    test('an image line never takes block attributes (would be swallowed by <h2>/<li>)', () {
+      expect(
+        opsToHtml([
+          {
+            'insert': {'image': 'https://x/i.png'},
+          },
+          {
+            'insert': '\n',
+            'attributes': {'list': 'bullet'},
+          },
+        ]),
+        '<img loading="lazy" class="tiptap-img" src="https://x/i.png">',
+      );
+    });
+
+    test('dangerous schemes are rejected on load and never written', () {
+      expect(analyzeHtml('<img src="data:image/png;base64,AA">').supported, isFalse);
+      expect(analyzeHtml('<p><a href="vbscript:x">x</a></p>').supported, isFalse);
+      expect(
+        opsToHtml([
+          {
+            'insert': 'x',
+            'attributes': {'link': 'javascript:alert(1)'},
+          },
+          {'insert': '\n'},
+        ]),
+        '<p>x</p>',
+      );
+    });
+
+    test('isAllowedUrl: http(s)/relative for images, + mailto/tel for links', () {
+      for (final ok in ['https://a.b/c', 'http://a', '/assets/x.png', 'x.png', '#a']) {
+        expect(isAllowedUrl(ok), isTrue, reason: ok);
+      }
+      for (final bad in ['', '  ', 'javascript:x', ' java\tscript:x', 'data:x', 'mailto:a@b.c', 'ftp://x']) {
+        expect(isAllowedUrl(bad), isFalse, reason: bad);
+      }
+      expect(isAllowedUrl('mailto:a@b.c', link: true), isTrue);
+      expect(isAllowedUrl('tel:+90', link: true), isTrue);
+      expect(isAllowedUrl('JavaScript:x', link: true), isFalse);
+    });
+  });
 }

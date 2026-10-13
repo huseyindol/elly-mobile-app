@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+import 'package:flutter_quill/quill_delta.dart';
 
 import '../services/api_service.dart';
 import '../services/rich_text_codec.dart';
@@ -20,12 +21,16 @@ class RichTextField extends StatefulWidget {
   /// Show "Assetlerden seç" in the image dialog (`assets:read`).
   final bool canPickAssets;
 
+  /// Called on every edit (rich or raw), e.g. to mark the form dirty.
+  final VoidCallback? onChanged;
+
   const RichTextField({
     super.key,
     required this.label,
     required this.initialHtml,
     required this.api,
     this.canPickAssets = false,
+    this.onChanged,
   });
 
   @override
@@ -43,6 +48,9 @@ class RichTextFieldState extends State<RichTextField> {
   String? _problem;
 
   bool get isRawMode => _quill == null;
+
+  /// The value to save differs from the initial body.
+  bool get isDirty => html != widget.initialHtml;
 
   /// HTML to save. Rich mode: the loaded HTML as-is until the document changes.
   String get html {
@@ -62,6 +70,7 @@ class RichTextFieldState extends State<RichTextField> {
       _raw.text = widget.initialHtml;
       _problem = analysis.problem;
     }
+    _raw.addListener(() => widget.onChanged?.call());
   }
 
   void _openRich(List<Map<String, dynamic>> ops, String html) {
@@ -73,7 +82,10 @@ class RichTextFieldState extends State<RichTextField> {
       // ignore: experimental_member_use
       config: const QuillControllerConfig(clipboardConfig: QuillClipboardConfig(enableExternalRichPaste: false)),
     );
-    _changes = quill.document.changes.listen((_) => _dirty = true);
+    _changes = quill.document.changes.listen((_) {
+      _dirty = true;
+      widget.onChanged?.call();
+    });
     _quill = quill;
     _loadedHtml = html;
     _dirty = false;
@@ -125,10 +137,27 @@ class RichTextFieldState extends State<RichTextField> {
       builder: (_) => _ImageDialog(api: widget.api, canPickAssets: widget.canPickAssets),
     );
     if (image == null || !mounted) return;
-    final index = quill.selection.start < 0 ? quill.document.length - 1 : quill.selection.start;
+    final doc = quill.document;
+    var index = quill.selection.start < 0 ? doc.length - 1 : quill.selection.start;
     final length = quill.selection.end < 0 ? 0 : quill.selection.end - index;
-    quill.replaceText(index, length, BlockEmbed.image(image.url), TextSelection.collapsed(offset: index + 1));
-    if (image.alt.isNotEmpty) quill.formatText(index, 1, Attribute('alt', AttributeScope.ignore, image.alt));
+    if (length > 0) quill.replaceText(index, length, '', null);
+    // A block embed must sit alone on its line (opsToHtml writes images only for such lines): split the
+    // current line around the caret. replaceText keeps the block style of the split halves.
+    if (index > 0 && doc.toPlainText()[index - 1] != '\n') {
+      quill.replaceText(index, 0, '\n', null);
+      index++;
+    }
+    if (doc.toPlainText()[index] != '\n') quill.replaceText(index, 0, '\n', null);
+    // compose (not replaceText + formatText): the alt travels on the embed op itself; formatText drops
+    // attributes outside Quill's registry.
+    quill.compose(
+      Delta()
+        ..retain(index)
+        ..insert(BlockEmbed.image(image.url).toJson(), image.alt.isEmpty ? null : {'alt': image.alt}),
+      TextSelection.collapsed(offset: index + 1),
+      ChangeSource.local,
+    );
+    quill.updateSelection(TextSelection.collapsed(offset: index + 1), ChangeSource.local);
   }
 
   @override
@@ -142,13 +171,19 @@ class RichTextFieldState extends State<RichTextField> {
         Row(
           children: [
             Expanded(
-              child: Text(widget.label, style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.7))),
+              child: Semantics(
+                header: true,
+                child: Text(widget.label, style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.7))),
+              ),
             ),
-            TextButton.icon(
-              key: const ValueKey('rich_text_mode_button'),
-              onPressed: _toggleMode,
-              icon: Icon(isRawMode ? Icons.text_format_rounded : Icons.code_rounded),
-              label: Text(isRawMode ? 'Editör' : 'HTML'),
+            Tooltip(
+              message: isRawMode ? 'Görsel editöre geç' : 'Ham HTML düzenlemeye geç',
+              child: TextButton.icon(
+                key: const ValueKey('rich_text_mode_button'),
+                onPressed: _toggleMode,
+                icon: Icon(isRawMode ? Icons.text_format_rounded : Icons.code_rounded),
+                label: Text(isRawMode ? 'Editör' : 'HTML'),
+              ),
             ),
           ],
         ),
@@ -173,6 +208,7 @@ class RichTextFieldState extends State<RichTextField> {
             keyboardType: TextInputType.multiline,
             style: const TextStyle(fontFamily: 'Courier', fontSize: 13),
             decoration: InputDecoration(
+              labelText: '${widget.label} (HTML)',
               hintText: '<p>...</p>',
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
             ),
@@ -196,9 +232,18 @@ class RichTextFieldState extends State<RichTextField> {
                     showSearchButton: false,
                     showSubscript: false,
                     showSuperscript: false,
-                    buttonOptions: const QuillSimpleToolbarButtonOptions(
-                      selectHeaderStyleDropdownButton: QuillToolbarSelectHeaderStyleDropdownButtonOptions(
+                    // ≥40 dp touch targets on phones.
+                    iconTheme: const QuillIconTheme(
+                      iconButtonUnselectedData: IconButtonData(constraints: _minButton),
+                      iconButtonSelectedData: IconButtonData(constraints: _minButton),
+                    ),
+                    buttonOptions: QuillSimpleToolbarButtonOptions(
+                      selectHeaderStyleDropdownButton: const QuillToolbarSelectHeaderStyleDropdownButtonOptions(
                         attributes: [Attribute.header, Attribute.h1, Attribute.h2, Attribute.h3],
+                      ),
+                      // Site renders post HTML unsanitized: only http(s)/mailto/tel/relative links.
+                      linkStyle: QuillToolbarLinkStyleButtonOptions(
+                        validateLink: (link) => isAllowedUrl(link, link: true),
                       ),
                     ),
                     customButtons: [
@@ -228,6 +273,8 @@ class RichTextFieldState extends State<RichTextField> {
     );
   }
 }
+
+const _minButton = BoxConstraints(minWidth: 40, minHeight: 40);
 
 class _ImageEmbedBuilder extends EmbedBuilder {
   const _ImageEmbedBuilder();
@@ -290,7 +337,10 @@ class _ImageDialogState extends State<_ImageDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final url = _url.text.trim();
+    final valid = isAllowedUrl(url);
     return AlertDialog(
+      scrollable: true,
       title: const Text('Görsel ekle'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -299,7 +349,11 @@ class _ImageDialogState extends State<_ImageDialog> {
             key: const ValueKey('rich_image_url'),
             controller: _url,
             keyboardType: TextInputType.url,
-            decoration: const InputDecoration(labelText: 'Görsel URL', hintText: 'https://...'),
+            decoration: InputDecoration(
+              labelText: 'Görsel URL',
+              hintText: 'https://...',
+              errorText: url.isEmpty || valid ? null : 'Yalnız http(s) ya da göreli adres',
+            ),
             onChanged: (_) => setState(() {}),
           ),
           TextField(
@@ -322,9 +376,7 @@ class _ImageDialogState extends State<_ImageDialog> {
         TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('İptal')),
         FilledButton(
           key: const ValueKey('rich_image_insert'),
-          onPressed: _url.text.trim().isEmpty
-              ? null
-              : () => Navigator.of(context).pop((url: _url.text.trim(), alt: _alt.text.trim())),
+          onPressed: !valid ? null : () => Navigator.of(context).pop((url: url, alt: _alt.text.trim())),
           child: const Text('Ekle'),
         ),
       ],

@@ -273,7 +273,7 @@ void main() {
     ]) {
       test('href="$href" → unsupported', () {
         expect(analyzeHtml('<p><a href="$href">x</a></p>').supported, isFalse);
-      }, skip: 'BUG: rich_text_codec accepts javascript: hrefs (see report)');
+      });
     }
 
     test('safe schemes stay editable (https, http, mailto, tel, relative, anchor)', () {

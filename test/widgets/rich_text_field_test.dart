@@ -196,7 +196,7 @@ void main() {
 
     // BUG (reported): the alt text typed in the dialog never reaches the document — the `alt` attribute is
     // created with AttributeScope.ignore, which formatText does not apply.
-    testWidgets('KNOWN BUG (skipped): URL + alt are inserted as a Tiptap img', (tester) async {
+    testWidgets('URL + alt are inserted as a Tiptap img', (tester) async {
       await pumpField(tester, '');
       await openImageDialog(tester);
       await tester.enterText(find.byKey(const ValueKey('rich_image_url')), ' https://api.example.com/assets/t/a.png ');
@@ -210,7 +210,7 @@ void main() {
         '<img loading="lazy" class="tiptap-img" src="https://api.example.com/assets/t/a.png" alt="Kapak görseli">',
       );
       await drain(tester);
-    }, skip: true);
+    });
 
     // BUG (reported): inserting at the caret of a non-empty line puts the embed in the same Delta line as the
     // text; opsToHtml only writes an image for a line that is a lone embed, so the image is silently dropped.
@@ -219,7 +219,7 @@ void main() {
       ('middle of a text line', 2),
       ('end of a text line', 4),
     ]) {
-      testWidgets('KNOWN BUG (skipped): image inserted at the $name is kept in the saved html', (tester) async {
+      testWidgets('image inserted at the $name is kept in the saved html', (tester) async {
         await pumpField(tester, '<p>önce</p><p>sonra</p>');
         quill(tester).updateSelection(TextSelection.collapsed(offset: caret), ChangeSource.local);
         await openImageDialog(tester);
@@ -228,11 +228,14 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('rich_image_insert')));
         await tester.pumpAndSettle();
 
-        expect(key.currentState!.html, contains('src="https://x.y/a.png"'));
-        expect(key.currentState!.html, contains('önce'));
-        expect(key.currentState!.html, contains('sonra'));
+        final html = key.currentState!.html;
+        expect(html, contains('src="https://x.y/a.png"'));
+        // A block image splits the line at the caret (like Tiptap); no text is lost.
+        final text = html.replaceAll(RegExp('<[^>]+>'), '');
+        expect(text, 'öncesonra');
+        expect(RegExp('<img ').allMatches(html), hasLength(1));
         await drain(tester);
-      }, skip: true);
+      });
     }
 
     testWidgets('URL only: img without alt', (tester) async {

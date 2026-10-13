@@ -39,6 +39,26 @@ const codeLangAttr = 'code-lang';
 const _inlineKeys = ['bold', 'italic', 'strike', 'underline', 'code', 'link'];
 const _blockKeys = ['header', 'list', 'indent', 'blockquote', 'code-block', codeLangAttr];
 const _imageAttrs = ['alt', 'title', 'width', 'height'];
+
+/// Browsers ignore whitespace/control characters inside a URL scheme (`java\tscript:`), so they are
+/// removed before the scheme is read.
+String? _scheme(String url) =>
+    RegExp(r'^([a-zA-Z][a-zA-Z0-9+.-]*):')
+        .firstMatch(url.replaceAll(RegExp(r'[\x00-\x20\x7f]'), ''))
+        ?.group(1)
+        ?.toLowerCase();
+
+/// Executable/inline schemes the site would run or embed as-is (post HTML is rendered unsanitized).
+bool isDangerousUrl(String url) => const {'javascript', 'vbscript', 'data'}.contains(_scheme(url));
+
+/// What the editor lets a user add: relative paths and http(s); links also mailto/tel.
+bool isAllowedUrl(String url, {bool link = false}) {
+  final value = url.trim();
+  if (value.isEmpty) return false;
+  final scheme = _scheme(value);
+  return scheme == null || {'http', 'https', if (link) 'mailto', if (link) 'tel'}.contains(scheme);
+}
+
 const _markTags = {
   'strong': 'bold',
   'b': 'bold',
@@ -197,6 +217,7 @@ void _inline(List<dom.Node> nodes, Map<String, dynamic> marks, _OpsBuilder out) 
       if (href == null || node.attributes.keys.any((k) => !const {'href', 'target', 'rel'}.contains(k))) {
         throw const UnsupportedHtmlException('Desteklenmeyen bağlantı öznitelikleri');
       }
+      if (isDangerousUrl(href)) throw const UnsupportedHtmlException('Güvensiz bağlantı şeması');
       _inline(node.nodes, {...marks, 'link': href}, out);
     } else if (_markTags.containsKey(tag)) {
       _noAttrs(node);
@@ -215,6 +236,7 @@ void _image(dom.Element img, _OpsBuilder out) {
   if (src == null || src.isEmpty || img.attributes.keys.any((k) => !allowed.contains(k))) {
     throw const UnsupportedHtmlException('Desteklenmeyen görsel öznitelikleri');
   }
+  if (isDangerousUrl(src)) throw const UnsupportedHtmlException('Güvensiz görsel adresi');
   out.embed(
     {'image': src},
     {
@@ -292,6 +314,7 @@ String opsToHtml(List<Map<String, dynamic>> ops) {
     }
   }
   if (current.segments.isNotEmpty) lines.add(current);
+  _splitEmbeds(lines);
   if (lines.every((l) => l.segments.isEmpty && l.attrs.isEmpty)) return '';
 
   // A list item can only be one level deeper than the previous one.
@@ -330,7 +353,7 @@ String opsToHtml(List<Map<String, dynamic>> ops) {
     final header = line.attrs['header'];
     if (header != null) {
       html.write('<h$header>${_inlineHtml(line)}</h$header>');
-    } else if (embed != null && embed['image'] != null) {
+    } else if (embed != null && embed['image'] != null && !isDangerousUrl(embed['image'].toString())) {
       final a = line.segments.single.attrs;
       final extra = [
         for (final k in _imageAttrs)
@@ -345,6 +368,31 @@ String opsToHtml(List<Map<String, dynamic>> ops) {
     i++;
   }
   return html.toString();
+}
+
+/// Quill keeps block embeds on their own line, but a line mixing text and an embed (pasted or built by
+/// hand) must not lose the embed: split it into text / embed / text lines (text keeps the block attrs).
+/// Embed lines carry no block attributes.
+void _splitEmbeds(List<_Line> lines) {
+  for (var i = 0; i < lines.length; i++) {
+    final line = lines[i];
+    if (line.soleEmbed != null) line.attrs = const {}; // an image/hr is its own block (no header/list)
+    if (line.segments.length < 2 || !line.segments.any((s) => s.insert is Map)) continue;
+    final parts = <_Line>[];
+    var text = _Line()..attrs = line.attrs;
+    for (final s in line.segments) {
+      if (s.insert is Map) {
+        if (text.segments.isNotEmpty) parts.add(text);
+        parts.add(_Line()..segments.add(s));
+        text = _Line()..attrs = line.attrs;
+      } else {
+        text.segments.add(s);
+      }
+    }
+    if (text.segments.isNotEmpty) parts.add(text);
+    lines.replaceRange(i, i + 1, parts);
+    i += parts.length - 1;
+  }
 }
 
 int _listHtml(List<_Line> lines, int start, int depth, StringBuffer html) {
@@ -374,7 +422,7 @@ String _inlineHtml(_Line line) {
     if (a['strike'] == true) text = '<s>$text</s>';
     if (a['italic'] == true) text = '<em>$text</em>';
     if (a['bold'] == true) text = '<strong>$text</strong>';
-    if (a['link'] != null) {
+    if (a['link'] != null && !isDangerousUrl(a['link'].toString())) {
       text = '<a target="_blank" rel="noopener noreferrer nofollow" href="${_escape(a['link'].toString())}">$text</a>';
     }
     out.write(text);
