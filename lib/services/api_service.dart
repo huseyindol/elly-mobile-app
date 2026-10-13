@@ -136,6 +136,7 @@ class ApiService {
   }
 
   dynamic _handleResponse(http.Response response) {
+    if (response.statusCode == 204) return null; // e.g. DELETE /email-templates/{key}: no body
     dynamic decoded;
     try {
       decoded = response.body.isEmpty ? null : jsonDecode(utf8.decode(response.bodyBytes));

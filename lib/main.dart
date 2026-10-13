@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart' show FlutterQuillLocalizations;
 import 'package:provider/provider.dart';
 
@@ -17,6 +18,14 @@ void main() {
   );
 }
 
+/// Rich text editor toolbar strings + Flutter SDK Material/Widgets/Cupertino strings (each once).
+const appLocalizationsDelegates = <LocalizationsDelegate<dynamic>>[
+  FlutterQuillLocalizations.delegate,
+  GlobalMaterialLocalizations.delegate,
+  GlobalWidgetsLocalizations.delegate,
+  GlobalCupertinoLocalizations.delegate,
+];
+
 class EllyMobileApp extends StatelessWidget {
   /// Test seam: ApiService for the dashboard.
   final ApiService? apiService;
@@ -32,9 +41,11 @@ class EllyMobileApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       navigatorKey: navigatorKey,
       theme: appTheme,
-      // Material (date picker, …) and the rich text editor's toolbar strings; Turkish first like the admin.
-      localizationsDelegates: FlutterQuillLocalizations.localizationsDelegates,
-      supportedLocales: const [Locale('tr'), Locale('en')],
+      localizationsDelegates: appLocalizationsDelegates,
+      // The UI is Turkish only: system strings (date picker, list reorder actions, …) follow it whatever
+      // the device language is.
+      locale: const Locale('tr'),
+      supportedLocales: const [Locale('tr')],
       home: AuthWrapper(apiService: apiService),
     );
   }

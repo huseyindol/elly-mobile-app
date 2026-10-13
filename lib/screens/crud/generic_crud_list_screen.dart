@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../config/app_theme.dart';
 import '../../models/crud_module.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
@@ -10,6 +9,7 @@ import '../../widgets/app_scaffold.dart';
 import '../../widgets/asset_picker.dart';
 import '../../widgets/confirm_dialog.dart';
 import '../../widgets/searchable_paged_list.dart';
+import '../../widgets/status_badge.dart';
 import 'generic_crud_form_screen.dart';
 import '../../widgets/app_snack_bar.dart';
 
@@ -164,7 +164,7 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
           children: [
             if (subtitle.isNotEmpty) Text(subtitle, style: muted),
             for (final line in meta) Text(line, style: muted.copyWith(fontSize: 12)),
-            if (status is bool) ...[const SizedBox(height: 4), _StatusBadge(active: status)],
+            if (status is bool) ...[const SizedBox(height: 4), StatusBadge.active(status)],
           ],
         ),
         trailing: Row(
@@ -263,24 +263,6 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
               child: const Icon(Icons.add_rounded),
             )
           : null,
-    );
-  }
-}
-
-class _StatusBadge extends StatelessWidget {
-  final bool active;
-  const _StatusBadge({required this.active});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = active ? AppColors.success : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
-      child: Text(
-        active ? 'Aktif' : 'Pasif',
-        style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600),
-      ),
     );
   }
 }

@@ -37,6 +37,9 @@ class SearchablePagedList extends StatefulWidget {
   /// Extra work for pull-to-refresh besides reloading the list (e.g. a count shown above it).
   final Future<void> Function()? onRefresh;
 
+  /// Response of every successful (re)load of the first page, e.g. for a total count or filter options.
+  final ValueChanged<dynamic>? onLoad;
+
   /// Default bottom inset keeps the last row clear of a FloatingActionButton.
   final EdgeInsetsGeometry padding;
 
@@ -52,6 +55,7 @@ class SearchablePagedList extends StatefulWidget {
     this.compare,
     this.emptyMessage = 'Kayıt bulunamadı.',
     this.onRefresh,
+    this.onLoad,
     this.padding = const EdgeInsets.fromLTRB(16, 16, 16, 88),
   });
 
@@ -111,6 +115,7 @@ class SearchablePagedListState extends State<SearchablePagedList> {
         _hasMore = widget.paged && !isLastPage(data, widget.pageSize);
         _loading = false;
       });
+      widget.onLoad?.call(data);
     } catch (e) {
       if (!mounted || generation != _generation) return;
       final keepItems = _items.isNotEmpty;
