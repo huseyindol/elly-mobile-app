@@ -32,23 +32,28 @@ lib/
 │   ├── api_service.dart           # tüm HTTP istekleri, header'lar, 401 → refresh
 │   ├── crud_payload.dart          # saf: getPath/setPath, buildPayload (ilişki semantiği), extractItems, paging, compareByKey
 │   ├── rich_text_codec.dart       # saf: Tiptap HTML ↔ Quill Delta, analyzeHtml (desteklenmeyen içerik tespiti)
-│   └── text_format.dart           # saf: foldTr (Türkçe arama anahtarı), upperTr, formatBytes, slugify
+│   ├── form_schema.dart           # saf: form şeması kuralları, koşul değerlendirici (admin/tenant JS anlamı), formatPayloadValue
+│   └── text_format.dart           # saf: foldTr (Türkçe arama anahtarı), upperTr, formatBytes, slugify, formatDateTimeTr
 ├── screens/
 │   ├── login_screen.dart
 │   ├── dashboard_screen.dart      # admin dashboard özet kartları + son e-postalar/yazılar (permission'a göre)
 │   ├── coming_soon_screen.dart    # mobilde henüz olmayan admin alanları için yer tutucu
 │   ├── assets_screen.dart         # Medya: klasör, sunucu araması, çoklu yükleme, toplu silme (generic'e sığmıyor)
+│   ├── forms/                     # form builder alt ekranları: alanlar + alan düzenleme, önizleme, gönderimler (+ detay)
 │   └── crud/generic_crud_{list,form}_screen.dart
 └── widgets/                       # ortak bileşenler — yeni ekranlar bunları kullanır
     ├── app_scaffold.dart          # AppScaffold (cam AppBar + AmbientBackground + opsiyonel drawer)
     ├── app_drawer.dart            # AppDrawer(currentId) + openNavItem + isNavItemVisible + avatarInitials
     ├── state_views.dart           # LoadingView (semanticsLabel) · ErrorView (Tekrar Dene) · EmptyView
-    ├── confirm_dialog.dart        # showConfirmDialog (destructive: kırmızı onay)
+    ├── confirm_dialog.dart        # showConfirmDialog (destructive: kırmızı onay) · confirmLeaveForm (Çık/Kal)
+    ├── save_bar.dart              # SaveBar: formların sabit alt Kaydet çubuğu
+    ├── form_schema_editor.dart    # FormField<Map>: form şeması builder'ı (düzen, adımlar, alanlar, önizleme)
     ├── searchable_paged_list.dart # liste gövdesi: arama, filtre/sıralama, pull-to-refresh, /list/paged sonsuz kaydırma
     ├── relation_multi_select.dart # FormField<List<Object>>: ilişki id listesi seçici (componentIds, …)
     ├── rich_text_field.dart       # HTML gövde editörü (Quill; desteklenmeyen HTML → ham HTML modu)
     └── asset_picker.dart          # showAssetPicker (görsel assetten mutlak URL), AssetThumbnail, isImageAsset
 test/                              # unit/widget testleri (helpers/fake_backend.dart) + opt-in canlı sözleşme testi
+└── fixtures/                      # admin TS kaynağından üretilen beklenen sonuçlar (gen_form_fixtures.ts, bun) + admin form JSON'u
 integration_test/                  # cihaz/simülatörde uçtan uca test
 ```
 
@@ -77,7 +82,11 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
   - `RequestMode`: `json` · `multipartData` (banners: `data` JSON part + dosyalar) ·
     `multipartFields` (assets: düz alanlar + `file`).
   - Alan tipleri: `relation` · `richText` · `date` (`YYYY-MM-DD`) · `tags` (virgülle → `List<String>`) ·
-    `imageUrl` (önizleme + "Assetlerden seç", `assets:read` varsa). `_` ile başlayan anahtar yerel form
+    `imageUrl` (önizleme + "Assetlerden seç", `assets:read` varsa) · `formSchema` (form builder, aşağıda).
+    `requiredWhen` (örn. `{'notificationEnabled': true}`) koşullu zorunluluk; uzak dropdown'da
+    `optionsPermission` yoksa seçenek istenmez, `optionLabelOf` etiketi, `currentOptionLabel` listede olmayan
+    mevcut değeri gösterir. `CrudModule.recordLink` liste satırına ve düzenleme AppBar'ına kayda bağlı ekran
+    ekler (formlar → Yanıtlar). `_` ile başlayan anahtar yerel form
     durumudur, gönderilmez ve kayıttan okunmaz (banner `_imageMode`: `initialValueOf` → kayıtta görsel varsa
     `url`, yoksa `upload`). `slugFrom` yalnız yeni kayıtta, slug elle değişene kadar. Dosya alanı `imageOnly`
     → görsel filtresi + 5 MB (admin `ImageUploadBox`), `currentImageKey` mevcut görseli önizler.
@@ -85,11 +94,32 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
   - **Form UX:** her değişiklik (metin, dropdown, switch, tarih, dosya, ilişki, zengin metin) formu kirletir;
     `PopScope` kirliyken ya da kayıt sürerken çıkışta yıkıcı onay ister. Doğrulama hatasında
     `validateGranularly` → ilk hatalı alana kaydırma + "N alan hatalı". Kaydet sabit alt çubukta.
+    Yeni form ekranları aynı parçaları kullanır: `SaveBar`, `confirmLeaveForm`, `fieldDecoration` (app_theme).
   - Banner görselleri: backend dosya gelince URL'leri yok sayar (create'te tamamen düşürür) → admin gibi
     "Dosya yükle / URL gir" modu; yalnız görünen dosya alanları gönderilir.
   - İçerikler: metadata alanları `contentType`'a göre (admin `schemas/dynamic` skills/experience); tip
     düzenlemede kilitli; kayıttaki bilinmeyen metadata anahtarları korunur.
   - Şablon (`template`) serbest metin: admin listeyi tenant sitesinden sunucu env'iyle çeker, mobilde yok.
+- **Formlar (form builder):** generic CRUD ekranı + `FieldType.formSchema` (`FormSchemaEditor`). Şema backend
+  `FormSchema` (`{config, fields, steps}`) **ham map** olarak düzenlenir — tenant sitesi formu bu JSON ile render
+  eder: dokunulmamış şema bayt bayt geri gider (backend şema değişince `version` artırır), bilinmeyen alan
+  tipi/anahtar (`config` serbest map dahil) korunur; yalnız düzenlenen alan admin modalı gibi normalize edilir
+  (`normalizeField`: seçenek yalnız select/radio/multi_checkbox, boş validation/condition → null, boş stepId yok).
+  Koşul değeri/seçenek değeri metni değişmediyse orijinal tipli değer (`18`) kalır. `validation.min/max` tam
+  sayı (backend `Integer`), pattern geçerli RegExp olmalı (geçersiz pattern sitede formu kırar). Alan ID'si
+  değişince ona bakan koşullar taşınır (admin taşımaz). Kayıt kontrolü (`schemaError`): ≥1 alan; sihirbazda ≥1
+  adım ve her alan **var olan** bir adımda. Sihirbazdan çıkınca `steps` gönderilmez (admin gibi), geri dönünce
+  geri gelir. Alan listesi ayrı ekranda (`FormFieldsScreen`, sürükle-sırala otomatik kaydırsın diye
+  ReorderableListView ekranın kaydırıcısı); alan düzenleme tam ekran (`FieldEditScreen`, "Uygula"; değişiklik
+  yoksa alana dokunmaz). Önizleme `evaluateCondition`/`isFormFieldVisible` ile (admin/tenant
+  `condition-evaluator.ts` JavaScript `String()`/`Number()` anlamı; fixture testi 1875 vaka) — doğrulama ve
+  adım sayfalama yok, "Gönder" görünür alanların payload'ını gösterir. Bildirim: gönderici/alıcı yalnız
+  `notificationEnabled` açıkken zorunlu (backend `validateNotificationConfig`; admin Zod her zaman istiyor),
+  gönderici `/mail-accounts/active` (`mail:read`). Silme: yalnız **409**'da zorla silme önerilir
+  (`/forms/{id}/force`, backend ADMIN/SUPER_ADMIN rolü ister). Gönderimler (`forms:read`):
+  `/forms/{id}/submissions/paged?sort=submittedAt,desc` + `/count`; değerler şema etiketi/seçenek etiketiyle
+  (`formatPayloadValue` = admin), detayda şemada olmayan payload anahtarları da görünür. Admin'de ve backend'de
+  gönderim silme/dışa aktarma yok → mobilde de yok.
 - **Zengin metin (posts `content`):** `RichTextField` + `rich_text_codec.dart`. Kodek yalnız admin Tiptap
   alt kümesini (p, h1–h6, ul/ol>li>p iç içe, blockquote>p, pre>code[language-*], hr, img[src,alt,title],
   br, strong/em/s/u/code/a) kabul eder; başka her şey (tablo, iframe, div, span, style/class…) →

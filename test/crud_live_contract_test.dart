@@ -10,7 +10,9 @@ import 'dart:io';
 import 'package:elly_mobile_app/config/modules_config.dart';
 import 'package:elly_mobile_app/models/crud_module.dart';
 import 'package:elly_mobile_app/services/api_service.dart';
+import 'package:elly_mobile_app/screens/forms/form_submissions_screen.dart' show submissionPayload;
 import 'package:elly_mobile_app/services/crud_payload.dart';
+import 'package:elly_mobile_app/services/form_schema.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -274,19 +276,88 @@ void main() {
           preserved: ['images', 'link', 'target', 'subFolder']);
     });
 
-    test('Forms', () async {
+    test('Forms (builder schema round trip, submit, submissions, 409 → force delete)', () async {
       final m = _module('forms');
-      final accounts = extractItems(await api.get('/mail-accounts'));
-      await _crudCycle('forms',
-          createValues: {
-            'title': 'Mobile Form $_ts',
-            'senderMailAccountId': accounts.first['id'],
-            'recipientEmail': 'mobile-test@example.com',
-          },
-          editKey: 'title',
-          editValue: 'Mobile Form Edited $_ts',
-          preserved: ['schema', 'senderMailAccountId', 'recipientEmail', 'notificationEnabled']);
-      expect(m.forceDeleteSuffix, '/force');
+      final accounts = extractItems(await api.get('/mail-accounts/active'));
+      const step1 = '11111111-1111-4111-8111-111111111111';
+      const step2 = '22222222-2222-4222-8222-222222222222';
+      // What the builder sends (normalizeField shape, admin modal semantics).
+      final schema = {
+        'config': {'layout': 'wizard', 'submitLabel': 'Gönder'},
+        'fields': [
+          for (final f in [
+            {'id': 'name', 'type': 'text', 'label': 'Ad', 'required': true, 'validation': {'min': 2, 'max': 50, 'pattern': null}},
+            {'id': 'age', 'type': 'number', 'label': 'Yaş', 'required': false},
+            {
+              'id': 'company',
+              'type': 'text',
+              'label': 'Şirket',
+              'required': false,
+              'condition': {'field': 'age', 'operator': 'GT', 'value': '18'},
+            },
+            {
+              'id': 'topic',
+              'type': 'select',
+              'label': 'Konu',
+              'required': false,
+              'options': [
+                {'label': 'Destek', 'value': 'support'},
+                {'label': 'Satış', 'value': 'sales'},
+              ],
+            },
+          ])
+            normalizeField({...f, 'stepId': f['id'] == 'topic' ? step2 : step1}),
+        ],
+        'steps': [
+          {'id': step1, 'title': 'Kişisel', 'description': ''},
+          {'id': step2, 'title': 'Talep', 'description': ''},
+        ],
+      };
+      final created = await _save(m, null, {
+        ...initialFormValues(m, null),
+        'title': 'Mobile Form $_ts',
+        'schema': schema,
+        'senderMailAccountId': accounts.isEmpty ? null : accounts.first['id'],
+        'recipientEmail': 'mobile-test@example.com',
+        'notificationEnabled': accounts.isNotEmpty,
+      });
+      final id = created['id'];
+      try {
+        final stored = Map<String, dynamic>.from(await api.get('/forms/$id') as Map);
+        final fields = schemaFields(stored['schema'] as Map<String, dynamic>);
+        expect(fields.map((f) => f['id']), ['name', 'age', 'company', 'topic']);
+        expect(fields[2]['condition'], {'field': 'age', 'operator': 'GT', 'value': '18'});
+        expect(fields[3]['options'], ((schema['fields'] as List)[3] as Map)['options']);
+        expect(fields[3]['stepId'], step2);
+        expect(schemaSteps(stored['schema'] as Map<String, dynamic>).map((s) => s['id']), [step1, step2]);
+
+        // Untouched schema back → identical, and the backend does not bump the version (it does on change).
+        await _save(m, stored, initialFormValues(m, stored)..['title'] = 'Mobile Form Edited $_ts');
+        final updated = Map<String, dynamic>.from(await api.get('/forms/$id') as Map);
+        expect(updated['title'], 'Mobile Form Edited $_ts');
+        expect(jsonEncode(updated['schema']), jsonEncode(stored['schema']));
+        expect(updated['version'], stored['version']);
+
+        // Submission: hidden `company` (age ≤ 18) is dropped by the backend, like the site.
+        await api.post('/forms/$id/submit', {
+          'payload': {'name': 'Mobil', 'age': 17, 'company': 'Gizli', 'topic': 'sales'},
+        });
+        final page = await api.get('/forms/$id/submissions/paged?page=0&size=20&sort=submittedAt,desc');
+        final sub = extractItems(page).single;
+        expect(submissionPayload(sub).containsKey('company'), isFalse);
+        expect(formatPayloadValue(submissionPayload(sub)['topic'], fields[3]), 'Satış');
+        expect(await api.get('/forms/$id/submissions/count'), 1);
+        expect((await api.get('/forms/submissions/${sub['id']}') as Map)['id'], sub['id']);
+
+        // A form with submissions: plain delete → 409, force delete (ADMIN) removes both.
+        await expectLater(
+          api.delete('${m.crudEndpoint}/$id'),
+          throwsA(isA<ApiException>().having((e) => e.statusCode, 'statusCode', 409)),
+        );
+      } finally {
+        await api.delete('${m.crudEndpoint}/$id${m.forceDeleteSuffix}');
+      }
+      expect((await _list(m)).any((e) => e['id'] == id), isFalse, reason: 'forms force delete');
     });
 
     test('Assets (multipart upload, replace, delete)', () async {
