@@ -1,8 +1,8 @@
 # Elly Mobile App — Claude Code Proje Rehberi
 
 `elly-admin` yönetim panelinin **Flutter** mobil karşılığı: sayfa, bileşen, post, içerik, widget, banner,
-form ve asset yönetimi. Backend: `elly-backend` (Spring Boot, db-per-tenant). Bu repo `elly-studio`
-orchestrator'ının bir parçasıdır; çapraz repo kuralları kökteki `AGENTS.md`'dedir.
+form, asset, mail hesabı, e-posta şablonu ve e-posta logu yönetimi. Backend: `elly-backend` (Spring Boot,
+db-per-tenant). Bu repo `elly-studio` orchestrator'ının bir parçasıdır; çapraz repo kuralları kökteki `AGENTS.md`'dedir.
 
 ## Stack
 
@@ -14,6 +14,8 @@ orchestrator'ının bir parçasıdır; çapraz repo kuralları kökteki `AGENTS.
 | Güvenli depo | `flutter_secure_storage` (accessToken, refreshToken, tenantId) |
 | Dosya seçimi | `file_picker` |
 | Zengin metin | `flutter_quill` 11.6.0 (MIT) + `html` 0.15.7 (BSD) — kendi HTML ↔ Delta kodeği |
+| HTML önizleme | `webview_flutter` 4.14 (BSD-3, flutter.dev) — yalnız `SafeHtmlView` üzerinden (e-posta şablonu önizlemesi) |
+| Yerelleştirme | `flutter_localizations` (Flutter SDK) — uygulama sabit `tr` |
 | Test | `flutter_test`, `integration_test` |
 | Lint | `flutter_lints` (`analysis_options.yaml`) |
 
@@ -21,7 +23,7 @@ orchestrator'ının bir parçasıdır; çapraz repo kuralları kökteki `AGENTS.
 
 ```
 lib/
-├── main.dart                      # MultiProvider + AuthWrapper (login ↔ dashboard; çıkışta yığın temizliği)
+├── main.dart                      # MultiProvider + AuthWrapper (login ↔ dashboard; çıkışta yığın temizliği) + appLocalizationsDelegates
 ├── config/
 │   ├── app_theme.dart             # TEK renk kaynağı: AppColors + appTheme (colorScheme)
 │   ├── modules_config.dart        # CRUD modül tanımları (tek kaynak); başlıklar admin sidebar etiketleri
@@ -33,6 +35,8 @@ lib/
 │   ├── crud_payload.dart          # saf: getPath/setPath, buildPayload (ilişki semantiği), extractItems, paging, compareByKey
 │   ├── rich_text_codec.dart       # saf: Tiptap HTML ↔ Quill Delta, analyzeHtml (desteklenmeyen içerik tespiti)
 │   ├── form_schema.dart           # saf: form şeması kuralları, koşul değerlendirici (admin/tenant JS anlamı), formatPayloadValue
+│   ├── mail_payload.dart          # saf: mail hesabı / şablon payload'ı, e-posta durum etiketleri, log endpoint'i
+│   ├── safe_html.dart             # saf: güvenilmez HTML → önizleme belgesi (CSP, betik/URL temizliği), gezinme kuralı
 │   └── text_format.dart           # saf: foldTr (Türkçe arama anahtarı), upperTr, formatBytes, slugify, formatDateTimeTr
 ├── screens/
 │   ├── login_screen.dart
@@ -40,6 +44,7 @@ lib/
 │   ├── coming_soon_screen.dart    # mobilde henüz olmayan admin alanları için yer tutucu
 │   ├── assets_screen.dart         # Medya: klasör, sunucu araması, çoklu yükleme, toplu silme (generic'e sığmıyor)
 │   ├── forms/                     # form builder alt ekranları: alanlar + alan düzenleme, önizleme, gönderimler (+ detay)
+│   ├── mail/                      # İletişim: mail hesapları (+ form), e-posta şablonları (+ form, önizleme), e-posta logları (+ detay)
 │   └── crud/generic_crud_{list,form}_screen.dart
 └── widgets/                       # ortak bileşenler — yeni ekranlar bunları kullanır
     ├── app_scaffold.dart          # AppScaffold (cam AppBar + AmbientBackground + opsiyonel drawer + bottomNavigationBar)
@@ -47,10 +52,12 @@ lib/
     ├── reorder_controls.dart      # ReorderableRow (ekran okuyucu "Yukarı/Aşağı taşı") · ReorderControls (Taşı menüsü + tutamaç)
     ├── app_drawer.dart            # AppDrawer(currentId) + openNavItem + isNavItemVisible + avatarInitials
     ├── state_views.dart           # LoadingView (semanticsLabel) · ErrorView (Tekrar Dene) · EmptyView
-    ├── confirm_dialog.dart        # showConfirmDialog (destructive: kırmızı onay) · confirmLeaveForm (Çık/Kal)
+    ├── confirm_dialog.dart        # showConfirmDialog (destructive: kırmızı onay; requiredText: yazarak onay) · confirmLeaveForm (Çık/Kal)
+    ├── status_badge.dart          # StatusBadge (Aktif/Pasif, Ana Hesap, e-posta durumu…)
+    ├── safe_html_view.dart        # SafeHtmlView: güvenilmez HTML'i JS kapalı, ağsız WebView'da gösterir
     ├── save_bar.dart              # SaveBar: formların sabit alt Kaydet çubuğu
     ├── form_schema_editor.dart    # FormField<Map>: form şeması builder'ı (düzen, adımlar, alanlar, önizleme)
-    ├── searchable_paged_list.dart # liste gövdesi: arama, filtre/sıralama, pull-to-refresh, /list/paged sonsuz kaydırma
+    ├── searchable_paged_list.dart # liste gövdesi: arama, filtre/sıralama, pull-to-refresh, sayfalı sonsuz kaydırma, onLoad
     ├── relation_multi_select.dart # FormField<List<Object>>: ilişki id listesi seçici (componentIds, …)
     ├── rich_text_field.dart       # HTML gövde editörü (Quill; desteklenmeyen HTML → ham HTML modu)
     └── asset_picker.dart          # showAssetPicker (görsel assetten mutlak URL), AssetThumbnail, isImageAsset
@@ -66,7 +73,8 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
   Ekranlarda doğrudan `http` kullanma.
 - Yanıtlar `{ "result": true, "data": ... }` sarmalıdır; `ApiService` `data`'yı döner, sayfalı listelerde
   `data.content` → `extractItems`. Hatalar backend `ErrorResponse`'tan (`message`, `validationErrors`,
-  `details`) `ApiException` mesajına çevrilir.
+  `details`) `ApiException` mesajına çevrilir. **204 No Content** gövdesiz başarıdır → `null` döner
+  (`DELETE /email-templates/{key}`).
 - **Dinamik CRUD:** yönetim ekranları `ModulesConfig.allModules`'tan render edilir
   (`GenericCrudListScreen` / `GenericCrudFormScreen`). Yeni modül/alan = önce `modules_config.dart`.
   - Her modül backend'deki `Dto*IU` sınıfını yansıtır (`elly-backend/src/main/java/com/cms/dto`).
@@ -129,6 +137,37 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
   `/forms/{id}/submissions/paged?sort=submittedAt,desc` + `/count`; değerler şema etiketi/seçenek etiketiyle
   (`formatPayloadValue` = admin), detayda şemada olmayan payload anahtarları da görünür. Admin'de ve backend'de
   gönderim silme/dışa aktarma yok → mobilde de yok.
+- **İletişim (`screens/mail/`)** — generic CRUD'a sığmıyor (satır aksiyonları, yalnız-yazılır şifre, `templateKey`
+  kimliği, önizleme), ortak bileşenlerle özel ekranlar:
+  - **Mail hesapları** (`mail:*`): `GET /mail-accounts` (sayfasız; tenant çipleri veriden, istemci filtresi — admin
+    gibi), detay `GET /mail-accounts/{id}`'den düzenlenir. **SMTP şifresi yalnız yazılır:** backend asla döndürmez,
+    form asla doldurmaz/göstermez (obscure + göster/gizle, öneri/autocorrect kapalı); create'te zorunlu, edit'te
+    boşsa **anahtar hiç gönderilmez** (`mailAccountPayload`; backend boş/null'da da mevcut şifreyi korur) — yazılırsa
+    olduğu gibi (trim'siz) gider. Boş tenant → `null` (admin create'te `''` gönderiyor). Port 1–65535, metinler ≤255,
+    tenant ≤50. Aksiyonlar backend yetkisine göre: Düzenle `mail:update`, **Test Et `mail:create`** (`POST
+    /{id}/test {testTo}` gerçek e-posta gönderir; sonuç dialog içinde), Doğrula `mail:read` (`POST /{id}/verify`,
+    yalnız SMTP handshake; pasif hesabı backend reddeder; sonuç başarı/hata **dialog**'u, hata metni backend'den),
+    Sil `mail:delete`. Formdaki doğrulama **kayıtlı** ayarları test eder (kirliyken not gösterilir).
+    Admin/backend'de şifreleme (TLS/SSL) alanı yok — port'a göre (587/465).
+  - **E-posta şablonları** (`email_templates:read|manage`): `GET /email-templates?page&size` (Spring `Page`),
+    detay/PUT/DELETE `…/{templateKey}`. **PUT `templateKey`'i de gönderir** (`DtoEmailTemplateIU` `@NotBlank`;
+    admin formu bunu düşürüyor) + kayıttaki `optimisticLockVersion` (backend şu an kullanmıyor). Gövde monospace kod
+    alanı (smart quotes/dashes kapalı — Thymeleaf `"${…}"` bozulmasın). Kaydet edit'te ekranda kalır (admin gibi;
+    yanıttaki yeni sürümle), yeni kayıt kendi düzenleme ekranına geçer. `manage` yoksa salt okunur. Silme anahtarı
+    **yazarak** onaylatır (`requiredText`, admin `DestructiveConfirmDialog`). Global şablon (`tenantId == null`) "Genel
+    şablon" işaretli: düzenlemek tüm tenant'ları etkiler. Classpath şablon adları `GET /emails/templates`
+    (`emails:read`) sheet'te. Admin'de değişken listesi yok → mobilde de yok.
+  - **Önizleme:** `POST /email-templates/{key}/preview {data}` **kayıtlı** sürümü backend'de render eder (açılışta
+    admin varsayılan verisiyle; "Test verisi" JSON nesnesi). Dönen HTML **güvenilmez** → yalnız `SafeHtmlView`:
+    JavaScript kapalı, ilk `about:blank` yüklemesinden sonra her gezinme engelli (`isPreviewNavigationAllowed`),
+    `safePreviewDocument` → `<head>` başına CSP `default-src 'none'` (yalnız inline stil + `data:` görsel/font) +
+    viewport; script/noscript/iframe/object/embed/link/base/`meta[http-equiv]` silinir, `on*` ve URL öznitelikleri
+    düşer (`a/area href="#"`, yalnız `data:image/` `src` kalır). Uzak görseller bilerek görünmez. Widget testlerinde
+    WebView yerine `htmlViewBuilder` / `previewViewBuilder` seam'i.
+  - **E-posta logları** (`emails:read`): `GET /emails?status=&sort=id,desc` + page/size; durum çipi sunucu filtresi
+    (yeni liste), "Toplam N kayıt" `onLoad`'dan. Tekrar dene `POST /emails/{id}/retry` (`emails:retry`; SENT'te yok,
+    detayda devre dışı + sebep; hata backend mesajı). Detay ekranı liste satırından (backend'de detay endpoint'i yok);
+    `DtoEmailLog`'da hata mesajı / gövde yok → gösterilmez. Durum etiketleri `emailStatusLabels` (dashboard ile ortak).
 - **Zengin metin (posts `content`):** `RichTextField` + `rich_text_codec.dart`. Kodek yalnız admin Tiptap
   alt kümesini (p, h1–h6, ul/ol>li>p iç içe, blockquote>p, pre>code[language-*], hr, img[src,alt,title],
   br, strong/em/s/u/code/a) kabul eder; başka her şey (tablo, iframe, div, span, style/class…) →
@@ -140,8 +179,7 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
   **URL güvenliği** (site post HTML'ini sanitize etmeden basar): kodek `javascript:`/`vbscript:`/`data:`
   href/src'yi (boşluk/kontrol karakteri temizlenmiş şemada) reddeder → ham HTML modu; `opsToHtml` bunları
   yazmaz; editörde link `isAllowedUrl(link: true)` (http/https/mailto/tel/göreli), görsel http(s)/göreli.
-  `MaterialApp` `FlutterQuillLocalizations.localizationsDelegates`
-  ister (widget testlerinde de). `flutter_quill_delta_from_html` kullanma: Tiptap çıktısında inline code,
+  `MaterialApp` Quill delegate'ini ister (widget testlerinde `FlutterQuillLocalizations.localizationsDelegates`). `flutter_quill_delta_from_html` kullanma: Tiptap çıktısında inline code,
   kod satır sonları ve img alt'ı düşürüyor, `<br>`/`<hr>` sonrası paragrafları birleştiriyor.
 - **Dosya URL'leri:** `ApiService.fileUrl(path)` — `assets/t/…` → `<api origin>/assets/t/…` (admin/tenant
   `getImageUrl` ile aynı; `/assets/**` auth'suz). Asset seçici mutlak URL döner.
@@ -157,8 +195,12 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
   (Türkçe baş harfler + rol etiketi) + çıkış. Her bölüm ekranında drawer vardır (`AppScaffold(navId:)`,
   aktif öğe vurgulu). `openNavItem` yığını `[dashboard, bölüm]` tutar (popUntil(isFirst) + push); alt ekranlar
   (form vb.) `navId` vermez → geri butonu. Bottom nav yok: 16 hedef 5 sekmeye sığmaz ve menü admin ile
-  birebir kalır. Yeni alan = `nav_config.dart`'ta `NavItem` (CRUD ise `NavItem.crud(key)`);
-  `module == null` olan öğe "Yakında" ekranını açar — faz tamamlanınca gerçek ekrana bağlanır.
+  birebir kalır. Yeni alan = `nav_config.dart`'ta `NavItem` (CRUD ise `NavItem.crud(key)`); generic'e sığmayan
+  ekran `app_drawer.dart` → `navScreen(item)` eşlemesine eklenir (assets, mail-accounts, email-templates,
+  email-logs). `navScreen` null dönen öğe "Yakında" etiketi taşır ve yer tutucu ekranı açar.
+- **Yerelleştirme:** `MaterialApp(locale: tr, supportedLocales: [tr], localizationsDelegates: appLocalizationsDelegates)`
+  — Quill + `flutter_localizations` Global Material/Widgets/Cupertino, her biri bir kez. Cihaz dili ne olursa olsun
+  sistem metinleri (tarih seçici, ReorderableListView "Yukarı/Aşağı/Başa/Sona taşı" aksiyonları) Türkçe.
 - **Oturum sonu:** `EllyMobileApp.navigatorKey`; `AuthWrapper` oturum düşünce (logout ya da refresh başarısız)
   `popUntil(isFirst)` ile tüm ekran/dialog/sheet'leri kapatır — sonraki kullanıcı eski ekranı görmez.
 - **Ekran iskeleti:** yeni ekranlar `AppScaffold` (ya da yalnız arka plan için `AmbientBackground`) kullanır;

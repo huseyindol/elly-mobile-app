@@ -13,6 +13,7 @@ import 'package:elly_mobile_app/services/api_service.dart';
 import 'package:elly_mobile_app/screens/forms/form_submissions_screen.dart' show submissionPayload;
 import 'package:elly_mobile_app/services/crud_payload.dart';
 import 'package:elly_mobile_app/services/form_schema.dart';
+import 'package:elly_mobile_app/services/mail_payload.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -369,6 +370,101 @@ void main() {
           editKey: 'subFolder',
           editValue: 'mobile-test',
           editFiles: [UploadFile('file', f2.path)]);
+    });
+  });
+
+  // Communication screens. No scenario here sends an e-mail or opens an SMTP connection: /test is never called,
+  // /verify only on an inactive account (rejected before connecting), /retry only on a SENT log (rejected).
+  group('live communication contract', skip: !_live ? 'set LIVE_API=1' : null, () {
+    test('Mail accounts: create (inactive), password never returned, blank password on update, delete', () async {
+      final values = {
+        'name': 'mobile-live-$_ts',
+        'fromAddress': 'mobile-live-$_ts@example.com',
+        'smtpHost': 'smtp.invalid',
+        'smtpPort': '587',
+        'smtpUsername': 'mobile-live',
+        'tenantId': '',
+        'isPrimary': false,
+        'active': false,
+      };
+      final created = Map<String, dynamic>.from(
+          await api.post('/mail-accounts', mailAccountPayload(values, password: 'live-secret')) as Map);
+      final id = created['id'];
+      try {
+        final detail = Map<String, dynamic>.from(await api.get('/mail-accounts/$id') as Map);
+        expect(detail.containsKey('smtpPassword'), isFalse, reason: 'write-only');
+        expect(detail['tenantId'], isNull, reason: 'empty tenant is sent as null');
+        expect(extractItems(await api.get('/mail-accounts')).any((a) => a['id'] == id), isTrue);
+
+        final update = mailAccountPayload({...values, 'name': 'mobile-live-$_ts-2'}, password: '');
+        expect(update.containsKey('smtpPassword'), isFalse);
+        await api.put('/mail-accounts/$id', update);
+        expect((await api.get('/mail-accounts/$id') as Map)['name'], 'mobile-live-$_ts-2');
+
+        await expectLater(
+          api.post('/mail-accounts/$id/verify', const {}),
+          throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 400)),
+          reason: 'inactive account: rejected before any SMTP connection',
+        );
+      } finally {
+        await api.delete('/mail-accounts/$id');
+      }
+      expect(extractItems(await api.get('/mail-accounts')).any((a) => a['id'] == id), isFalse);
+    });
+
+    test('E-mail templates: create, PUT with key + lock, preview, delete (204)', () async {
+      final key = 'mobile-live-$_ts';
+      final path = '/email-templates/$key';
+      await api.post(
+          '/email-templates',
+          emailTemplatePayload(
+              templateKey: key,
+              subject: 'Canlı [[\${userName}]]',
+              htmlBody: '<p th:text="\${userName}">x</p>',
+              description: 'mobil canlı test',
+              active: false));
+      try {
+        final record = Map<String, dynamic>.from(await api.get(path) as Map);
+        expect(extractItems(await api.get(pagedEndpoint('/email-templates', 0, 100))).any((t) => t['templateKey'] == key),
+            isTrue);
+        await api.put(
+            path,
+            emailTemplatePayload(
+                templateKey: key,
+                subject: 'Güncel [[\${userName}]]',
+                htmlBody: record['htmlBody'] as String,
+                description: '',
+                active: false,
+                optimisticLockVersion: record['optimisticLockVersion']));
+        final updated = Map<String, dynamic>.from(await api.get(path) as Map);
+        expect(updated['subject'], 'Güncel [[\${userName}]]');
+        expect(updated['description'], isNull);
+
+        final preview = Map<String, dynamic>.from(await api.post('$path/preview', {
+          'data': {'userName': 'Zeynep'},
+        }) as Map);
+        expect(preview['html'], contains('Zeynep'));
+        expect(preview['subject'], 'Güncel Zeynep');
+      } finally {
+        expect(await api.delete(path), isNull);
+      }
+      await expectLater(api.get(path), throwsA(isA<ApiException>()));
+    });
+
+    test('E-mail logs: paged list, status filter; classpath templates', () async {
+      final all = await api.get(pagedEndpoint(emailLogsEndpoint(null), 0, 5));
+      expect(totalCount(all), isNotNull);
+      final failed = extractItems(await api.get(pagedEndpoint(emailLogsEndpoint('FAILED'), 0, 20)));
+      expect(failed.every((l) => l['status'] == 'FAILED'), isTrue);
+      expect(await api.get('/emails/templates'), isA<List>());
+    });
+
+    test('E-mail logs: retry of a SENT log is rejected (no side effect)', () async {
+      final sent = extractItems(await api.get(pagedEndpoint(emailLogsEndpoint('SENT'), 0, 1)));
+      if (sent.isEmpty) return markTestSkipped('no SENT log');
+      expect(canRetryEmail(sent.first), isFalse);
+      await expectLater(api.post('/emails/${sent.first['id']}/retry', const {}),
+          throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 400)));
     });
   });
 }
