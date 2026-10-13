@@ -11,7 +11,7 @@ import 'package:html/parser.dart' as html_parser;
 /// itself (comments stripped): no `<script`, no `on…=` token, no `javascript:`/`vbscript:`/`data:text/html`.
 /// Layer 2 is what catches mutation XSS (parser differential), which the html package's own re-parse cannot see.
 ///
-/// Bypasses found by this corpus are in the `KNOWN BYPASS` group as skipped tests (reason + severity).
+/// Bypasses found by this corpus and fixed since are in the `formerly KNOWN BYPASS` group (reason + severity).
 
 const _forbiddenTags = {
   'script', 'noscript', 'iframe', 'frame', 'frameset', 'object', 'embed', 'applet', 'portal', 'link', 'base', //
@@ -522,15 +522,17 @@ void main() {
       }
     });
 
-    test('network CSS (@import, url(), expression) is not stripped; the CSP is the barrier', () {
+    test('network CSS (@import, url(), expression, behavior, binding) is neutralised; the CSP stays as 2nd layer', () {
       const css = '''
 <style>@import url("https://evil.example/a.css"); @import "//evil.example/b.css";
 p { width: expression(alert(1)); behavior: url(x.htc); -moz-binding: url(x.xml#a); background: url(https://evil.example/p.png) }
 </style><div style="background-image:url('https://evil.example/d.png')">x</div>''';
       final out = neutralised(css, strictRaw: false);
-      // Documented behaviour: stylesheet text is passed through ...
-      expect(out, contains('@import'));
-      // ... so everything depends on these three directives (also asserted in "the policy itself").
+      final lower = out.toLowerCase();
+      for (final gone in ['@import', 'evil.example', 'expression(', 'behavior:', '-moz-binding:', 'x.htc']) {
+        expect(lower, isNot(contains(gone)), reason: gone);
+      }
+      // The CSP remains the second barrier (also asserted in "the policy itself").
       expect(previewCsp, contains("default-src 'none'"));
       expect(previewCsp, contains('img-src data:'));
       expect(previewCsp, contains("style-src 'unsafe-inline'"));
@@ -712,40 +714,40 @@ p { width: expression(alert(1)); behavior: url(x.htc); -moz-binding: url(x.xml#a
     });
   });
 
-  group('KNOWN BYPASS (found by this corpus; skipped until safe_html.dart is fixed)', () {
-    const svgAnimate =
-        'YÜKSEK/ORTA: <svg> animasyon öğeleri (<animate>/<set>/<animateTransform>) temizlenmiyor; attributeName=href + values=javascript: '
-        'ya da attributeName=onmouseover çalışma anında yasak özniteliği yazar (statik on*/URL temizliğini atlar). '
-        'JS kapalı + gezinme engeli + CSP sayesinde bugün sömürülemez, ama sanitizasyon tek başına yetmiyor.';
+  group('formerly KNOWN BYPASS (fixed in safe_html.dart; kept as regressions)', () {
+    // Fixed (was: YÜKSEK/ORTA: <svg> animasyon öğeleri (<animate>/<set>/<animateTransform>) temizlenmiyor;
+    // attributeName=href + values=javascript: ya da attributeName=onmouseover çalışma anında yasak özniteliği
+    // yazar (statik on*/URL temizliğini atlar). JS kapalı + gezinme engeli + CSP sayesinde bugün sömürülemez, ama
+    // sanitizasyon tek başına yetmiyor.)
     test('SVG <animate> writes href=javascript:', () {
       neutralised(
         '<svg><a><animate attributeName=href values=javascript:alert(1) /><text x=20 y=20>click</text></a></svg>',
       );
-    }, skip: svgAnimate);
+    });
     test('SVG <set> writes an on* handler', () {
       neutralised('<svg><set attributeName=onmouseover to=alert(1) /><rect width=100 height=100 /></svg>');
-    }, skip: svgAnimate);
+    });
     test('SVG <animate> via xlink:href / from-to', () {
       neutralised(
         '<svg><a><animate attributeName="xlink:href" from="x" to="javascript:alert(1)"/><text>x</text></a></svg>',
       );
-    }, skip: svgAnimate);
+    });
 
-    const mxss =
-        'YÜKSEK (sanitizer): mutation XSS. html paketi MathML/SVG ad alanını tarayıcıdan farklı ayrıştırıyor; <style> içeriği ham metin '
-        'sayılıp serileştiriliyor, tarayıcı yeniden ayrıştırınca içindeki <img onerror=…> canlı öğeye dönüşüyor (DOMPurify tarzı bypass). '
-        'JS kapalı + CSP ile bugün sömürülemez; çıktı yine de "on*/ağ içeriği kalmamalı" garantisini bozuyor.';
+    // Fixed (was: YÜKSEK (sanitizer): mutation XSS. html paketi MathML/SVG ad alanını tarayıcıdan farklı
+    // ayrıştırıyor; <style> içeriği ham metin sayılıp serileştiriliyor, tarayıcı yeniden ayrıştırınca içindeki
+    // <img onerror=…> canlı öğeye dönüşüyor (DOMPurify tarzı bypass). JS kapalı + CSP ile bugün sömürülemez; çıktı
+    // yine de "on*/ağ içeriği kalmamalı" garantisini bozuyor.)
     test('mXSS: <math><mtext><table><mglyph><style><!--', () {
       neutralised(
         '<math><mtext><table><mglyph><style><!--</style><img title="--&gt;&lt;/mglyph&gt;&lt;img src=1 onerror=alert(1)&gt;">',
       );
-    }, skip: mxss);
+    });
     test('mXSS: <svg></p><style><a id="', () {
       neutralised('<svg></p><style><a id="</style><img src=1 onerror=alert(1)>">');
-    }, skip: mxss);
+    });
     test('mXSS: <form><math><mtext></form><form><mglyph><style>', () {
       neutralised('<form><math><mtext></form><form><mglyph><style></math><img src onerror=alert(1)>');
-    }, skip: mxss);
+    });
 
     test(
       'style="…url(javascript:/remote)" and <style>@import are passed through',
@@ -754,10 +756,7 @@ p { width: expression(alert(1)); behavior: url(x.htc); -moz-binding: url(x.xml#a
         neutralised(
           '<style>@import url(https://evil.example/a.css);</style><div style="background:url(https://evil.example/p.png)">x</div>',
         );
-      },
-      skip:
-          'DÜŞÜK: CSS içindeki url()/@import/expression() temizlenmiyor; yalnız CSP (img-src data:, style-src inline) engelliyor. '
-          'Defense-in-depth katmanı eksik, bugün sömürülemez.',
+      }
     );
 
     test(
@@ -766,10 +765,7 @@ p { width: expression(alert(1)); behavior: url(x.htc); -moz-binding: url(x.xml#a
         final sw = Stopwatch()..start();
         safePreviewDocument('<div>' * 20000);
         expect(sw.elapsedMilliseconds, lessThan(5000));
-      },
-      skip:
-          'ORTA: derin iç içe etiket doğrusal değil ikinci dereceden yavaş (10k düzey ≈ 12 s, 20k ≈ 45 s) ve UI isolate\'ında çalışır; '
-          'kötü niyetli/bozuk şablon önizlemesi uygulamayı dondurur. Giriş boyutu/derinlik sınırı ya da isolate gerekir.',
+      }
     );
   });
 }

@@ -79,4 +79,110 @@ void main() {
     expect(isPreviewNavigationAllowed('https://example.com', loaded: false), isFalse);
     expect(isPreviewNavigationAllowed('data:text/html,x', loaded: false), isFalse);
   });
+
+  group('limits (DoS): checked before parsing', () {
+    test('over 1 MB → too big', () {
+      final html = '<p>${'a' * (maxPreviewBytes + 1)}</p>';
+      expect(previewLimitError(html), contains('çok büyük'));
+      final out = safePreviewDocument(html);
+      expect(out, contains('Önizleme için çok büyük'));
+      expect(out, contains(previewCsp));
+      expect(out.length, lessThan(1000));
+    });
+
+    test('nesting deeper than the limit → too complex, returned at once', () {
+      final html = '<div>' * (maxPreviewDepth + 1);
+      expect(previewLimitError(html), contains('çok karmaşık'));
+      final sw = Stopwatch()..start();
+      expect(safePreviewDocument('<div>' * 100000), contains('Önizleme için çok karmaşık'));
+      expect(sw.elapsedMilliseconds, lessThan(1000));
+    });
+
+    test('implied end tags (p, li, td, tr…), void and self-closed elements do not count as nesting', () {
+      final rows = '<table>${'<tr><td><p>x<br><img src=x><span/>' * (maxPreviewDepth * 2)}</table>';
+      expect(previewLimitError(rows), isNull);
+      expect(previewLimitError('${'<div>' * 100}${'</div>' * 100}' * 50), isNull, reason: 'siblings, not depth');
+    });
+
+    test('the error document escapes its message', () {
+      expect(previewErrorDocument('<b>&'), contains('&lt;b>&amp;'));
+    });
+  });
+
+  group('mXSS defenses', () {
+    test('svg, math and SVG animation elements are removed with their content', () {
+      final doc = html_parser.parse(
+        safePreviewDocument(
+          '<p>a</p><svg><style>x</style><text>t</text></svg><math><mi>m</mi></math>'
+          '<animate attributeName=href values=javascript:x></animate><set attributeName=onclick to=x></set><p>b</p>',
+        ),
+      );
+      for (final tag in ['svg', 'math', 'animate', 'set', 'style', 'mi', 'text']) {
+        expect(doc.querySelectorAll(tag), isEmpty, reason: tag);
+      }
+      expect(doc.body!.text, 'ab');
+    });
+
+    test('the output is a fixed point: sanitising it again changes nothing', () {
+      for (final html in [
+        '<form><math><mtext></form><form><mglyph><style></math><img src onerror=alert(1)>',
+        '<svg></p><style><a id="</style><img src=1 onerror=alert(1)>">',
+        '<!DOCTYPE html><html><head><meta name=viewport content=x><title>t</title></head><body>x</body></html>',
+        '<p>Merhaba</p>',
+      ]) {
+        final once = safePreviewDocument(html);
+        expect(safePreviewDocument(once), once, reason: html);
+        expect(RegExp('name="viewport"').allMatches(once), hasLength(1), reason: 'own viewport only');
+      }
+    });
+  });
+
+  group('cleanCss', () {
+    test('plain styling is unchanged', () {
+      for (final css in ['color:#6366f1;padding:8px 16px', '.btn{display:inline-block;background:#fff}', '']) {
+        expect(cleanCss(css), css);
+      }
+    });
+
+    test('@import dropped, remote / script url() → none, data:image url kept', () {
+      expect(cleanCss('@import url(https://e.x/a.css); p{color:red}'), ' p{color:red}');
+      expect(cleanCss('@IMPORT "//e.x/b.css"'), '');
+      expect(cleanCss('background:url(https://e.x/p.png)'), 'background:none');
+      expect(cleanCss("background:url( 'javascript:alert(1)' )"), 'background:none');
+      expect(cleanCss('background:url("data:image/png;base64,AA==")'), 'background:url("data:image/png;base64,AA==")');
+      expect(cleanCss('background:url(data:text/html,x)'), 'background:none');
+    });
+
+    test('expression(), behavior, -moz-binding disarmed', () {
+      for (final css in ['width:expression(alert(1))', 'behavior: url(x.htc)', '-moz-binding:url(x.xml#a)']) {
+        final out = cleanCss(css).toLowerCase();
+        expect(out, isNot(contains('expression(')), reason: css);
+        expect(out, isNot(contains('behavior:')), reason: css);
+        expect(out, isNot(contains('-moz-binding:')), reason: css);
+        expect(out, isNot(contains('url(')), reason: css);
+      }
+    });
+
+    test('CSS escapes and comments cannot hide url( / @import', () {
+      for (final css in [
+        r'background:u\72l(https://e.x/a.png)',
+        r'background:\75\72\6c(https://e.x/a.png)',
+        'background:u/**/rl(https://e.x/a.png)',
+        r'@\69mport "https://e.x/a.css";',
+        r'background:url\(x)',
+      ]) {
+        final out = cleanCss(css).toLowerCase();
+        expect(out, isNot(contains('e.x')), reason: css);
+        expect(out, isNot(contains('@import')), reason: css);
+      }
+    });
+
+    test('applied to style attributes and <style> blocks', () {
+      final doc = html_parser.parse(
+        safePreviewDocument('<style>@import "x.css";p{color:red}</style><div style="background:url(//e.x/p)">x</div>'),
+      );
+      expect(doc.querySelector('style')!.text, 'p{color:red}');
+      expect(doc.querySelector('div')!.attributes['style'], 'background:none');
+    });
+  });
 }
