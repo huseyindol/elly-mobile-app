@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../config/nav_config.dart';
 import '../providers/auth_provider.dart';
+import '../screens/assets_screen.dart';
 import '../screens/coming_soon_screen.dart';
 import '../screens/crud/generic_crud_list_screen.dart';
 import '../services/text_format.dart';
@@ -19,8 +20,11 @@ void openNavItem(BuildContext context, NavItem item) {
   navigator.push(
     MaterialPageRoute(
       settings: RouteSettings(name: item.id),
-      builder: (_) =>
-          module != null ? GenericCrudListScreen(module: module) : ComingSoonScreen(title: item.label, navId: item.id),
+      builder: (_) => switch (module?.permissionKey) {
+        null => ComingSoonScreen(title: item.label, navId: item.id),
+        'assets' => const AssetsScreen(),
+        _ => GenericCrudListScreen(module: module!),
+      },
     ),
   );
 }
