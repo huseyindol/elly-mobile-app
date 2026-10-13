@@ -34,3 +34,24 @@ final ThemeData appTheme = ThemeData(
   fontFamily: 'Inter',
   useMaterial3: true,
 );
+
+/// Form input look (CRUD forms, form builder): filled surface, rounded 16, primary focus border.
+InputDecoration fieldDecoration(ColorScheme scheme, {String? label, String? hint, String? helper}) {
+  OutlineInputBorder border(Color color) => OutlineInputBorder(
+    borderRadius: BorderRadius.circular(16),
+    borderSide: BorderSide(color: color),
+  );
+  return InputDecoration(
+    labelText: label,
+    hintText: hint,
+    helperText: helper,
+    helperMaxLines: 3,
+    hintStyle: TextStyle(color: scheme.onSurface.withValues(alpha: 0.45)),
+    labelStyle: TextStyle(color: scheme.onSurface.withValues(alpha: 0.7)),
+    filled: true,
+    fillColor: scheme.surface.withValues(alpha: 0.7),
+    border: border(scheme.onSurface.withValues(alpha: 0.1)),
+    enabledBorder: border(scheme.onSurface.withValues(alpha: 0.1)),
+    focusedBorder: border(scheme.primary),
+  );
+}

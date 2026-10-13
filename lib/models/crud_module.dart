@@ -1,10 +1,26 @@
 import 'package:flutter/material.dart';
 
+import '../services/api_service.dart';
+
 /// json: JSON editor (Map/List). file: picked file, sent as multipart part named [FieldConfig.key].
 /// relation: id list picker ([FieldConfig.relationEndpoint]). richText: HTML body (Quill editor, raw HTML
 /// fallback). date: `YYYY-MM-DD`. tags: `List<String>` typed comma separated. imageUrl: URL + preview +
-/// pick from assets.
-enum FieldType { text, longText, number, boolean, dropdown, json, file, relation, richText, date, tags, imageUrl }
+/// pick from assets. formSchema: form builder for a backend `FormSchema` map (forms `schema`).
+enum FieldType {
+  text,
+  longText,
+  number,
+  boolean,
+  dropdown,
+  json,
+  file,
+  relation,
+  richText,
+  date,
+  tags,
+  imageUrl,
+  formSchema,
+}
 
 /// How create/update requests are sent.
 /// - json: application/json body
@@ -32,6 +48,16 @@ class FieldConfig {
   final String optionValueKey;
   final String optionLabelKey;
 
+  /// Remote dropdown option label built from the whole item (wins over [optionLabelKey]).
+  final String Function(Map<String, dynamic> item)? optionLabelOf;
+
+  /// Remote dropdown: label for the record's current value when it is not among the loaded options
+  /// (e.g. an inactive mail account); null → such a value is not shown.
+  final String? Function(Map<String, dynamic>? record)? currentOptionLabel;
+
+  /// `<module>:<action>` needed to load [optionsEndpoint]; without it the options are not requested.
+  final String? optionsPermission;
+
   /// JSON field: template chosen by the current value of another field
   /// (e.g. metadata template by `contentType`). Applied when the editor is empty
   /// or still shows the previous template.
@@ -50,6 +76,9 @@ class FieldConfig {
   /// `{'type': 'BANNER'}`. A hidden relation is sent as `[]` (admin does the same; the backend
   /// rejects relations that don't match the type); other hidden fields are not written.
   final Map<String, Object>? visibleWhen;
+
+  /// Required while every `fieldKey: value` matches the form values (e.g. `{'notificationEnabled': true}`).
+  final Map<String, Object>? requiredWhen;
 
   /// Locked when editing (e.g. content type: admin does not let it change).
   final bool readOnlyOnEdit;
@@ -95,12 +124,16 @@ class FieldConfig {
     this.optionsEndpoint,
     this.optionValueKey = 'id',
     this.optionLabelKey = 'name',
+    this.optionLabelOf,
+    this.currentOptionLabel,
+    this.optionsPermission,
     this.templateFromField,
     this.templates,
     this.hint,
     this.maxLength,
     this.optionLabels,
     this.visibleWhen,
+    this.requiredWhen,
     this.readOnlyOnEdit = false,
     this.slugFrom,
     this.section,
@@ -125,6 +158,18 @@ class ListFilter {
   final String? key;
 
   const ListFilter({required this.label, this.optionsEndpoint, this.options, this.endpointTemplate, this.key});
+}
+
+/// Screen opened for one record from its list row and its edit screen (forms → submissions).
+class RecordLink {
+  final String label;
+  final IconData icon;
+
+  /// `<permissionKey>:<action>` needed to show the link.
+  final String action;
+  final Widget Function(Map<String, dynamic> record, ApiService api) builder;
+
+  const RecordLink({required this.label, required this.icon, this.action = 'read', required this.builder});
 }
 
 class CrudModule {
@@ -177,6 +222,8 @@ class CrudModule {
 
   final ListFilter? filter;
 
+  final RecordLink? recordLink;
+
   const CrudModule({
     required this.title,
     required this.crudEndpoint,
@@ -199,5 +246,6 @@ class CrudModule {
     this.thumbnailKey,
     this.listMeta,
     this.filter,
+    this.recordLink,
   });
 }

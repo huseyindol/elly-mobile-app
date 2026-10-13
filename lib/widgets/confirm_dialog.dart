@@ -36,3 +36,16 @@ Future<bool> showConfirmDialog(
   );
   return result == true;
 }
+
+/// Form back-navigation guard: unsaved edits (or a save still running) → "Çık / Kal".
+Future<bool> confirmLeaveForm(BuildContext context, {bool saving = false}) => showConfirmDialog(
+  context,
+  title: saving ? 'Kayıt sürüyor' : 'Kaydedilmemiş değişiklikler',
+  message: saving
+      ? 'Kayıt henüz tamamlanmadı. Çıkarsanız sonucu göremezsiniz.'
+      : 'Değişiklikler kaydedilmedi ve kaybolacak. Çıkılsın mı?',
+  confirmLabel: 'Çık',
+  cancelLabel: 'Kal',
+  destructive: true,
+  confirmKey: const ValueKey('confirm_leave_button'),
+);

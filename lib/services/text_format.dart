@@ -57,3 +57,13 @@ String slugify(String text) => text
     .replaceAll(RegExp(r'\s+'), '-')
     .replaceAll(RegExp(r'-+'), '-')
     .replaceAll(RegExp(r'^-|-$'), '');
+
+/// Backend date (ISO string or epoch millis) → "13.10.2026 14:05" in local time (admin `tr-TR` short
+/// date + time); unparseable → ''.
+String formatDateTimeTr(Object? value) {
+  final date = value is num ? DateTime.fromMillisecondsSinceEpoch(value.toInt()) : DateTime.tryParse('$value');
+  if (date == null) return '';
+  String two(int n) => n.toString().padLeft(2, '0');
+  final d = date.toLocal();
+  return '${two(d.day)}.${two(d.month)}.${d.year} ${two(d.hour)}:${two(d.minute)}';
+}

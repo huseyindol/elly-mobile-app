@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../config/app_theme.dart';
 import '../../models/crud_module.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
@@ -14,8 +15,10 @@ import '../../services/text_format.dart';
 import '../../widgets/app_scaffold.dart';
 import '../../widgets/asset_picker.dart';
 import '../../widgets/confirm_dialog.dart';
+import '../../widgets/form_schema_editor.dart';
 import '../../widgets/relation_multi_select.dart';
 import '../../widgets/rich_text_field.dart';
+import '../../widgets/save_bar.dart';
 import '../../widgets/state_views.dart';
 
 class GenericCrudFormScreen extends StatefulWidget {
@@ -58,8 +61,10 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
   @override
   void initState() {
     super.initState();
+    final auth = context.read<AuthProvider>();
     for (final field in _fields) {
-      if (field.optionsEndpoint != null) _loadOptions(field);
+      if (field.optionsEndpoint == null) continue;
+      if (field.optionsPermission == null || auth.has(field.optionsPermission!)) _loadOptions(field);
     }
     _loadRecord();
   }
@@ -128,7 +133,9 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
             if (item[field.optionValueKey] != null)
               MapEntry(
                 item[field.optionValueKey] as Object,
-                item[field.optionLabelKey]?.toString() ?? item[field.optionValueKey].toString(),
+                field.optionLabelOf?.call(item) ??
+                    item[field.optionLabelKey]?.toString() ??
+                    item[field.optionValueKey].toString(),
               ),
         ];
       });
@@ -269,30 +276,15 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
     );
   }
 
-  InputDecoration _decoration(FieldConfig field) => InputDecoration(
-    labelText: field.isRequired ? '${field.label} *' : field.label,
-    hintText: field.hint,
-    hintStyle: TextStyle(color: _scheme.onSurface.withValues(alpha: 0.45)),
-    labelStyle: TextStyle(color: _scheme.onSurface.withValues(alpha: 0.7)),
-    filled: true,
-    fillColor: _scheme.surface.withValues(alpha: 0.7),
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(16),
-      borderSide: BorderSide(color: _scheme.onSurface.withValues(alpha: 0.1)),
-    ),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(16),
-      borderSide: BorderSide(color: _scheme.onSurface.withValues(alpha: 0.1)),
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(16),
-      borderSide: BorderSide(color: _scheme.primary),
-    ),
-  );
+  bool _isRequired(FieldConfig field) =>
+      field.isRequired || (field.requiredWhen?.entries.every((e) => _values[e.key] == e.value) ?? false);
+
+  InputDecoration _decoration(FieldConfig field) =>
+      fieldDecoration(_scheme, label: _isRequired(field) ? '${field.label} *' : field.label, hint: field.hint);
 
   String? _validateText(FieldConfig field, String? raw) {
     final value = raw?.trim() ?? '';
-    if (value.isEmpty) return field.isRequired ? '${field.label} zorunlu' : null;
+    if (value.isEmpty) return _isRequired(field) ? '${field.label} zorunlu' : null;
     if (field.type == FieldType.number) {
       final number = int.tryParse(value);
       if (number == null) return 'Sayı girin';
@@ -319,9 +311,12 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
         ? (_remoteOptions[field.key] ?? const <MapEntry<Object, String>>[])
         : [for (final o in field.options ?? const <String>[]) MapEntry<Object, String>(o, field.optionLabels?[o] ?? o)];
     final current = _values[field.key];
-    // A stored value the form doesn't know (e.g. a legacy content type) stays visible and selected.
-    final known = current == null || options.any((o) => o.key == current) || field.optionsEndpoint != null;
-    final items = [...options, if (!known) MapEntry<Object, String>(current as Object, current.toString())];
+    // A stored value the form doesn't know (e.g. a legacy content type) stays visible and selected;
+    // a remote one only with a [FieldConfig.currentOptionLabel] (no bare id while options load).
+    final unknownLabel = current == null || options.any((o) => o.key == current)
+        ? null
+        : (field.optionsEndpoint == null ? current.toString() : field.currentOptionLabel?.call(_original));
+    final items = [...options, if (unknownLabel != null) MapEntry<Object, String>(current as Object, unknownLabel)];
     final hasCurrent = items.any((o) => o.key == current);
     final locked = _isEditing && field.readOnlyOnEdit;
     return DropdownButtonFormField<Object>(
@@ -333,7 +328,7 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
       isExpanded: true,
       items: [for (final o in items) DropdownMenuItem<Object>(value: o.key, child: Text(o.value))],
       onChanged: locked ? null : (val) => _onDropdownChanged(field, val),
-      validator: (val) => field.isRequired && val == null ? '${field.label} zorunlu' : null,
+      validator: (val) => _isRequired(field) && val == null ? '${field.label} zorunlu' : null,
     );
   }
 
@@ -493,6 +488,7 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
         child = SwitchListTile(
           key: ValueKey('field_${field.key}'),
           title: Text(field.label),
+          subtitle: field.hint == null ? null : Text(field.hint!),
           value: _values[field.key] == true,
           onChanged: (val) {
             _dirty = true;
@@ -521,6 +517,16 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
           initialValue: List<Object>.from(_values[field.key] as List? ?? const []),
           onChanged: (ids) {
             _values[field.key] = ids;
+            _markDirty();
+          },
+        );
+      case FieldType.formSchema:
+        child = FormSchemaEditor(
+          key: ValueKey('field_${field.key}'),
+          initialValue: _values[field.key] as Map<String, dynamic>?,
+          title: () => _controllers['title']?.text ?? '',
+          onChanged: (schema) {
+            _values[field.key] = schema;
             _markDirty();
           },
         );
@@ -586,47 +592,14 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
 
   /// Back with unsaved edits (or while saving) asks first.
   Future<void> _confirmLeave() async {
-    final leave = await showConfirmDialog(
-      context,
-      title: _isLoading ? 'Kayıt sürüyor' : 'Kaydedilmemiş değişiklikler',
-      message: _isLoading
-          ? 'Kayıt henüz tamamlanmadı. Çıkarsanız sonucu göremezsiniz.'
-          : 'Değişiklikler kaydedilmedi ve kaybolacak. Çıkılsın mı?',
-      confirmLabel: 'Çık',
-      cancelLabel: 'Kal',
-      destructive: true,
-      confirmKey: const ValueKey('confirm_leave_button'),
-    );
-    if (leave && mounted) Navigator.of(context).pop();
+    if (await confirmLeaveForm(context, saving: _isLoading) && mounted) Navigator.of(context).pop();
   }
-
-  Widget _saveBar() => SafeArea(
-    top: false,
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 12),
-      child: SizedBox(
-        width: double.infinity,
-        height: 56,
-        child: ElevatedButton(
-          key: const ValueKey('crud_save_button'),
-          onPressed: _isLoading ? null : _submit,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: _scheme.primary,
-            foregroundColor: _scheme.onPrimary,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            elevation: 0,
-          ),
-          child: _isLoading
-              ? CircularProgressIndicator(color: _scheme.onPrimary, semanticsLabel: 'Kaydediliyor')
-              : const Text('Kaydet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        ),
-      ),
-    ),
-  );
 
   @override
   Widget build(BuildContext context) {
-    final canPickAssets = context.watch<AuthProvider>().can('assets', 'read');
+    final auth = context.watch<AuthProvider>();
+    final canPickAssets = auth.can('assets', 'read');
+    final link = widget.module.recordLink;
     return PopScope(
       canPop: !_dirty && !_isLoading,
       onPopInvokedWithResult: (didPop, _) {
@@ -634,6 +607,16 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
       },
       child: AppScaffold(
         title: _isEditing ? '${widget.module.title} · Düzenle' : '${widget.module.title} · Yeni',
+        actions: [
+          if (link != null && _original != null && auth.can(widget.module.permissionKey, link.action))
+            IconButton(
+              key: const ValueKey('record_link_button'),
+              tooltip: link.label,
+              icon: Icon(link.icon),
+              onPressed: () =>
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => link.builder(_original!, _apiService))),
+            ),
+        ],
         body: !_ready
             ? (_loadError == null ? const LoadingView() : ErrorView(message: _loadError!, onRetry: _loadRecord))
             // Save stays reachable at the bottom while the long form scrolls.
@@ -652,7 +635,7 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
                       ),
                     ),
                   ),
-                  _saveBar(),
+                  SaveBar(onPressed: _submit, loading: _isLoading),
                 ],
               ),
       ),

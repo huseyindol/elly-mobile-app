@@ -101,15 +101,16 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
       _snack('Silindi');
     } catch (e) {
       final force = widget.module.forceDeleteSuffix;
-      if (force == null || !mounted) {
+      // 409 = related records (form submissions: FK conflict) → offer the cascade delete like elly-admin.
+      if (force == null || e is! ApiException || e.statusCode != 409 || !mounted) {
         _snack(e.toString(), error: true);
         return;
       }
-      // e.g. form has submissions → FK conflict; offer cascade delete like elly-admin.
       final ok = await _confirm(
-        'Silinemedi',
-        '$e\n\nBağlı kayıtlarla (örn. form gönderimleri) birlikte zorla silinsin mi?',
-        'Zorla Sil',
+        'İlişkili kayıtlar mevcut',
+        '"$name" ile ilişkili kayıtlar (örn. form gönderimleri) bulunuyor. Tümünü sil seçeneği kaydı ve '
+            'bağlı tüm kayıtları kalıcı olarak siler. Bu işlem geri alınamaz.',
+        'Evet, Tümünü Sil',
       );
       if (!ok) return;
       try {
@@ -136,7 +137,12 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
     }
   }
 
-  Widget _buildItem(Map<String, dynamic> item, {required bool canEdit, required bool canDelete}) {
+  Widget _buildItem(
+    Map<String, dynamic> item, {
+    required bool canEdit,
+    required bool canDelete,
+    required bool canOpenLink,
+  }) {
     final module = widget.module;
     final title = resolveListText(item, module.listTitleKey) ?? '#${item['id']}';
     final subtitle = resolveListText(item, module.listSubtitleKey) ?? '';
@@ -169,6 +175,15 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (canOpenLink)
+              IconButton(
+                key: ValueKey('record_link_${item['id']}'),
+                tooltip: module.recordLink!.label,
+                icon: Icon(module.recordLink!.icon, color: scheme.onSurface.withValues(alpha: 0.75)),
+                onPressed: () =>
+                    Navigator.of(context)
+                        .push(MaterialPageRoute(builder: (_) => module.recordLink!.builder(item, _apiService))),
+              ),
             if (canEdit)
               IconButton(
                 key: ValueKey('edit_${item['id']}'),
@@ -217,6 +232,8 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
     final canCreate = module.canCreate && auth.can(module.permissionKey, 'create');
     final canEdit = module.canEdit && auth.can(module.permissionKey, 'update');
     final canDelete = module.canDelete && auth.can(module.permissionKey, 'delete');
+    final link = module.recordLink;
+    final canOpenLink = link != null && auth.can(module.permissionKey, link.action);
     return AppScaffold(
       title: module.title,
       navId: module.permissionKey,
@@ -238,7 +255,8 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
                   ? null
                   : (item) => getPath(item, module.filter!.key!)?.toString() == _filterValue,
               compare: module.sortKey == null ? null : (a, b) => compareByKey(a, b, module.sortKey!),
-              itemBuilder: (context, item) => _buildItem(item, canEdit: canEdit, canDelete: canDelete),
+              itemBuilder: (context, item) =>
+                  _buildItem(item, canEdit: canEdit, canDelete: canDelete, canOpenLink: canOpenLink),
             ),
           ),
         ],

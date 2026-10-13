@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../models/crud_module.dart';
+import '../screens/forms/form_submissions_screen.dart';
+import '../services/api_service.dart';
 import '../services/crud_payload.dart';
 
 /// Each module mirrors its backend `Dto*IU` (elly-backend/src/main/java/com/cms/dto) and its elly-admin
@@ -495,7 +497,7 @@ class ModulesConfig {
         FieldConfig(key: 'images.mobile', label: 'Mobile Görsel URL', type: FieldType.imageUrl, visibleWhen: _url),
       ],
     ),
-    // DtoFormDefinitionIU
+    // DtoFormDefinitionIU — admin forms/new + forms/[id]; the schema is edited with the form builder.
     CrudModule(
       title: 'Formlar',
       crudEndpoint: '/forms',
@@ -503,8 +505,12 @@ class ModulesConfig {
       listEndpoint: '/forms/list',
       icon: Icons.dynamic_form_rounded,
       listTitleKey: 'title',
-      listSubtitleKey: 'recipientEmail|senderMailAccountName',
+      listSubtitleKey: 'recipientEmail',
+      sortKey: 'title',
+      statusKey: 'active',
+      listMeta: _formMeta,
       forceDeleteSuffix: '/force',
+      recordLink: RecordLink(label: 'Yanıtlar', icon: Icons.inbox_rounded, builder: _formSubmissions),
       payloadKeys: [
         'title',
         'version',
@@ -516,39 +522,53 @@ class ModulesConfig {
         'notificationEnabled',
       ],
       fields: [
-        FieldConfig(key: 'title', label: 'Form Başlığı', isRequired: true),
+        FieldConfig(key: 'title', label: 'Form Başlığı', isRequired: true, maxLength: 200, section: 'Temel Bilgiler'),
         FieldConfig(key: 'active', label: 'Aktif', type: FieldType.boolean, defaultValue: true),
-        FieldConfig(key: 'notificationEnabled', label: 'Mail Bildirimi', type: FieldType.boolean, defaultValue: true),
+        FieldConfig(
+          key: 'schema',
+          label: 'Form Şeması',
+          type: FieldType.formSchema,
+          isRequired: true,
+          section: 'Form Yapısı',
+          defaultValue: {
+            'config': {'layout': 'vertical', 'submitLabel': 'Gönder'},
+            'fields': <Object>[],
+          },
+        ),
+        // Backend (FormDefinitionService.validateNotificationConfig): sender + recipient required only while
+        // notifications are on.
+        FieldConfig(
+          key: 'notificationEnabled',
+          label: "Bildirim mail'i gönder",
+          type: FieldType.boolean,
+          defaultValue: true,
+          section: 'Bildirim Ayarları',
+          hint: 'Kapalıysa gönderimler yalnız kaydedilir, mail gönderilmez.',
+        ),
         FieldConfig(
           key: 'senderMailAccountId',
           label: 'Gönderici Mail Hesabı',
           type: FieldType.dropdown,
-          optionsEndpoint: '/mail-accounts',
-          optionValueKey: 'id',
-          optionLabelKey: 'name',
-          hint: 'Bildirim açıksa zorunlu',
+          optionsEndpoint: '/mail-accounts/active',
+          optionsPermission: 'mail:read',
+          optionLabelOf: _mailAccountLabel,
+          currentOptionLabel: _currentSenderLabel,
+          requiredWhen: _notify,
         ),
         FieldConfig(
           key: 'recipientEmail',
           label: 'Alıcı E-posta',
           pattern: _emailListPattern,
           patternMessage: 'Geçerli e-posta girin (birden fazlası için virgül)',
-          hint: 'Bildirim açıksa zorunlu',
+          hint: 'notifications@firma.com',
+          maxLength: 1000,
+          requiredWhen: _notify,
         ),
-        FieldConfig(key: 'notificationSubject', label: 'Bildirim Konusu'),
         FieldConfig(
-          key: 'schema',
-          label: 'Form Şeması (JSON)',
-          type: FieldType.json,
-          isRequired: true,
-          defaultValue: {
-            'config': {'layout': 'vertical', 'submitLabel': 'Gönder'},
-            'fields': [
-              {'id': 'name', 'type': 'text', 'label': 'Ad Soyad', 'required': true},
-              {'id': 'email', 'type': 'email', 'label': 'E-posta', 'required': true},
-              {'id': 'message', 'type': 'textarea', 'label': 'Mesaj', 'required': false},
-            ],
-          },
+          key: 'notificationSubject',
+          label: 'Konu (opsiyonel)',
+          maxLength: 255,
+          hint: 'Boşsa: "Yeni form gönderimi: [form başlığı]"',
         ),
       ],
     ),
@@ -575,6 +595,7 @@ class ModulesConfig {
   static const _experience = {'contentType': 'experience'};
   static const _upload = {'_imageMode': 'upload'};
   static const _url = {'_imageMode': 'url'};
+  static const _notify = {'notificationEnabled': true};
   static const _contentTypes = {'skills': 'Yetenekler', 'experience': 'Deneyimler'};
 
   /// Module by its backend permission key (`posts`, `pages`, ...).
@@ -587,6 +608,23 @@ Object? _bannerImageMode(Map<String, dynamic>? record) {
   final hasImage = images is Map && images.values.any((v) => v != null && v.toString().trim().isNotEmpty);
   return hasImage ? 'url' : 'upload';
 }
+
+Widget _formSubmissions(Map<String, dynamic> form, ApiService api) =>
+    FormSubmissionsScreen(form: form, apiService: api);
+
+/// Admin `forms/[id]` sender option: "id • name (fromAddress)".
+String _mailAccountLabel(Map<String, dynamic> a) => '${a['id']} • ${a['name']} (${a['fromAddress']})';
+
+/// Sender not in the active list (inactive, or no `mail:read`): admin "Mevcut hesap: name (from)".
+String? _currentSenderLabel(Map<String, dynamic>? form) => form?['senderMailAccountName'] == null
+    ? null
+    : 'Mevcut hesap: ${form!['senderMailAccountName']} (${form['senderFromAddress'] ?? '-'})';
+
+/// Admin forms table: version, sender, notification on/off.
+List<String> _formMeta(Map<String, dynamic> item) => [
+  'v${item['version'] ?? 1} · Gönderici: ${item['senderMailAccountName'] ?? '—'}',
+  'Bildirim: ${item['notificationEnabled'] == false ? 'Kapalı' : 'Açık'}',
+];
 
 String _order(Map<String, dynamic> item) => 'Sıra: ${item['orderIndex'] ?? 0}';
 
