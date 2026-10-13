@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_quill/flutter_quill.dart' show FlutterQuillLocalizations;
 import 'package:provider/provider.dart';
 
 import 'config/app_theme.dart';
@@ -31,6 +32,9 @@ class EllyMobileApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       navigatorKey: navigatorKey,
       theme: appTheme,
+      // Material (date picker, …) and the rich text editor's toolbar strings; Turkish first like the admin.
+      localizationsDelegates: FlutterQuillLocalizations.localizationsDelegates,
+      supportedLocales: const [Locale('tr'), Locale('en')],
       home: AuthWrapper(apiService: apiService),
     );
   }

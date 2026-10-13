@@ -87,6 +87,13 @@ class ApiService {
 
   Uri _uri(String endpoint) => Uri.parse('$baseUrl$endpoint');
 
+  /// Absolute URL of a stored file path (`assets/t/…` → `https://api…/assets/t/…`; served without auth),
+  /// same rule as the admin/tenant `getImageUrl`. Full and data URLs are returned as they are.
+  static String fileUrl(String path) {
+    if (RegExp(r'^(https?:|data:)').hasMatch(path)) return path;
+    return '${Uri.parse(baseUrl).origin}/${path.replaceFirst(RegExp(r'^/+'), '')}';
+  }
+
   Future<dynamic> _send(Future<http.Response> Function() request, String endpoint) async {
     var response = await request();
     if (response.statusCode == 401 && !endpoint.startsWith('/auth/')) {

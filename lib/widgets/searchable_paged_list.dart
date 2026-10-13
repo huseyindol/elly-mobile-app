@@ -27,6 +27,10 @@ class SearchablePagedList extends StatefulWidget {
   final String Function(Map<String, dynamic> item)? searchText;
 
   final Widget Function(BuildContext context, Map<String, dynamic> item) itemBuilder;
+
+  /// Client-side filter (e.g. a filter chip) and order (admin tables sort on the client too).
+  final bool Function(Map<String, dynamic> item)? itemFilter;
+  final int Function(Map<String, dynamic> a, Map<String, dynamic> b)? compare;
   final String emptyMessage;
 
   /// Default bottom inset keeps the last row clear of a FloatingActionButton.
@@ -40,6 +44,8 @@ class SearchablePagedList extends StatefulWidget {
     this.paged = false,
     this.pageSize = 20,
     this.searchText,
+    this.itemFilter,
+    this.compare,
     this.emptyMessage = 'Kayıt bulunamadı.',
     this.padding = const EdgeInsets.fromLTRB(16, 16, 16, 88),
   });
@@ -198,9 +204,12 @@ class SearchablePagedListState extends State<SearchablePagedList> {
 
     final scheme = Theme.of(context).colorScheme;
     final search = widget.searchText;
-    final visible = search == null || _query.isEmpty
-        ? _items
-        : _items.where((item) => foldTr(search(item)).contains(_query)).toList();
+    final filter = widget.itemFilter;
+    final visible = _items
+        .where((item) => filter == null || filter(item))
+        .where((item) => search == null || _query.isEmpty || foldTr(search(item)).contains(_query))
+        .toList();
+    if (widget.compare != null) visible.sort(widget.compare);
     final showFooter = _hasMore;
 
     return Column(

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
+import '../../config/app_theme.dart';
 import '../../models/crud_module.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/crud_payload.dart';
 import '../../widgets/app_scaffold.dart';
+import '../../widgets/asset_picker.dart';
 import '../../widgets/confirm_dialog.dart';
 import '../../widgets/searchable_paged_list.dart';
 import 'generic_crud_form_screen.dart';
@@ -23,26 +26,68 @@ class GenericCrudListScreen extends StatefulWidget {
 
 class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
   late final ApiService _apiService = widget.apiService ?? ApiService();
-  final _listKey = GlobalKey<SearchablePagedListState>();
+  var _listKey = GlobalKey<SearchablePagedListState>();
+
+  /// Filter chip options (value → label) and the selected value (null = Tümü).
+  Map<String, String> _filterOptions = const {};
+  String? _filterValue;
 
   Future<void> _fetchItems() async => _listKey.currentState?.reload();
 
-  Future<bool> _confirm(String title, String message, String action) => showConfirmDialog(
-        context,
-        title: title,
-        message: message,
-        confirmLabel: action,
-        destructive: true,
-        confirmKey: const ValueKey('confirm_delete_button'),
+  @override
+  void initState() {
+    super.initState();
+    final filter = widget.module.filter;
+    if (filter?.options != null) _filterOptions = filter!.options!;
+    if (filter?.optionsEndpoint != null) _loadFilterOptions(filter!.optionsEndpoint!);
+  }
+
+  /// Like the admin: no chips when the options can't be loaded or there are none.
+  Future<void> _loadFilterOptions(String endpoint) async {
+    try {
+      final data = await _apiService.get(endpoint);
+      if (!mounted || data is! List) return;
+      setState(
+        () => _filterOptions = {
+          for (final v in data)
+            if (v != null && '$v'.isNotEmpty) '$v': '$v',
+        },
       );
+    } catch (_) {}
+  }
+
+  void _selectFilter(String? value) {
+    setState(() {
+      _filterValue = value;
+      if (widget.module.filter?.endpointTemplate != null) _listKey = GlobalKey(); // new endpoint → fresh list
+    });
+  }
+
+  String get _endpoint {
+    final template = widget.module.filter?.endpointTemplate;
+    final value = _filterValue;
+    if (template == null || value == null) return widget.module.listEndpoint;
+    return template.replaceAll('{value}', Uri.encodeComponent(value));
+  }
+
+  Future<bool> _confirm(String title, String message, String action) => showConfirmDialog(
+    context,
+    title: title,
+    message: message,
+    confirmLabel: action,
+    destructive: true,
+    confirmKey: const ValueKey('confirm_delete_button'),
+  );
 
   void _snack(String message, {bool error = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message),
-      backgroundColor: error ? Theme.of(context).colorScheme.error : null,
-      duration: Duration(seconds: error ? 6 : 2),
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: error ? Theme.of(context).colorScheme.error : null,
+        duration: Duration(seconds: error ? 6 : 2),
+      ),
+    );
   }
 
   Future<void> _deleteItem(Map<String, dynamic> item) async {
@@ -82,10 +127,7 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (ctx) => GenericCrudFormScreen(
-          module: widget.module,
-          initialData: item,
-        ),
+        builder: (ctx) => GenericCrudFormScreen(module: widget.module, initialData: item, apiService: _apiService),
       ),
     );
 
@@ -95,9 +137,13 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
   }
 
   Widget _buildItem(Map<String, dynamic> item, {required bool canEdit, required bool canDelete}) {
-    final title = resolveListText(item, widget.module.listTitleKey) ?? '#${item['id']}';
-    final subtitle = resolveListText(item, widget.module.listSubtitleKey) ?? '';
+    final module = widget.module;
+    final title = resolveListText(item, module.listTitleKey) ?? '#${item['id']}';
+    final subtitle = resolveListText(item, module.listSubtitleKey) ?? '';
+    final meta = module.listMeta?.call(item) ?? const <String>[];
+    final status = module.statusKey == null ? null : getPath(item, module.statusKey!);
     final scheme = Theme.of(context).colorScheme;
+    final muted = TextStyle(color: scheme.onSurface.withValues(alpha: 0.65));
     return Container(
       key: ValueKey('crud_item_${item['id']}'),
       margin: const EdgeInsets.only(bottom: 12),
@@ -108,8 +154,18 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        leading: module.thumbnailKey == null
+            ? null
+            : AssetThumbnail(url: resolveListText(item, module.thumbnailKey!), semanticLabel: title),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(subtitle, style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.65))),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (subtitle.isNotEmpty) Text(subtitle, style: muted),
+            for (final line in meta) Text(line, style: muted.copyWith(fontSize: 12)),
+            if (status is bool) ...[const SizedBox(height: 4), _StatusBadge(active: status)],
+          ],
+        ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -133,6 +189,29 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
     );
   }
 
+  Widget _filterChips(ListFilter filter) {
+    Widget chip(String? value, String label) => Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        key: ValueKey('filter_${value ?? 'all'}'),
+        label: Text(label),
+        selected: _filterValue == value,
+        onSelected: (_) => _selectFilter(value),
+      ),
+    );
+    return Semantics(
+      label: filter.label,
+      child: SizedBox(
+        height: 48,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          children: [chip(null, 'Tümü'), for (final o in _filterOptions.entries) chip(o.key, o.value)],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -144,14 +223,27 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
       title: module.title,
       navId: module.permissionKey,
       actions: [IconButton(tooltip: 'Yenile', icon: const Icon(Icons.refresh_rounded), onPressed: _fetchItems)],
-      body: SearchablePagedList(
-        key: _listKey,
-        api: _apiService,
-        endpoint: module.listEndpoint,
-        paged: module.paged,
-        searchText: (item) =>
-            [module.listTitleKey, module.listSubtitleKey].map((key) => resolveListText(item, key) ?? '').join(' '),
-        itemBuilder: (context, item) => _buildItem(item, canEdit: canEdit, canDelete: canDelete),
+      body: Column(
+        children: [
+          if (_filterOptions.isNotEmpty) _filterChips(module.filter!),
+          Expanded(
+            child: SearchablePagedList(
+              key: _listKey,
+              api: _apiService,
+              endpoint: _endpoint,
+              paged: module.paged,
+              searchText: (item) => [
+                module.listTitleKey,
+                module.listSubtitleKey,
+              ].map((key) => resolveListText(item, key) ?? '').join(' '),
+              itemFilter: module.filter?.key == null || _filterValue == null
+                  ? null
+                  : (item) => getPath(item, module.filter!.key!)?.toString() == _filterValue,
+              compare: module.sortKey == null ? null : (a, b) => compareByKey(a, b, module.sortKey!),
+              itemBuilder: (context, item) => _buildItem(item, canEdit: canEdit, canDelete: canDelete),
+            ),
+          ),
+        ],
       ),
       floatingActionButton: canCreate
           ? FloatingActionButton(
@@ -160,6 +252,24 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
               child: const Icon(Icons.add_rounded),
             )
           : null,
+    );
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  final bool active;
+  const _StatusBadge({required this.active});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = active ? AppColors.success : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+      child: Text(
+        active ? 'Aktif' : 'Pasif',
+        style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600),
+      ),
     );
   }
 }

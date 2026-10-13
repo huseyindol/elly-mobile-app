@@ -26,6 +26,9 @@ class RelationMultiSelect extends FormField<List<Object>> {
 
     /// Dot-path; `a|b` = first non-empty wins (see [resolveListText]).
     String labelKey = 'title|name',
+
+    /// Optional second line in the picker (e.g. banner `subFolder`, component `type`); searchable too.
+    String? subtitleKey,
     int maxChips = 6,
     bool isRequired = false,
     List<Object> initialValue = const [],
@@ -48,6 +51,7 @@ class RelationMultiSelect extends FormField<List<Object>> {
            paged: paged,
            valueKey: valueKey,
            labelKey: labelKey,
+           subtitleKey: subtitleKey,
            maxChips: maxChips,
            onChanged: onChanged,
          ),
@@ -65,6 +69,7 @@ class _RelationInput extends StatefulWidget {
   final bool paged;
   final String valueKey;
   final String labelKey;
+  final String? subtitleKey;
   final int maxChips;
   final ValueChanged<List<Object>>? onChanged;
 
@@ -76,6 +81,7 @@ class _RelationInput extends StatefulWidget {
     required this.paged,
     required this.valueKey,
     required this.labelKey,
+    required this.subtitleKey,
     required this.maxChips,
     required this.onChanged,
   });
@@ -87,6 +93,7 @@ class _RelationInput extends StatefulWidget {
 class _RelationInputState extends State<_RelationInput> {
   /// id → label, in endpoint order (Dart maps keep insertion order).
   Map<Object, String>? _options;
+  Map<Object, String> _subtitles = const {};
   String? _error;
   int _generation = 0; // ignores a load superseded by an endpoint change
 
@@ -102,7 +109,8 @@ class _RelationInputState extends State<_RelationInput> {
     if (old.endpoint != widget.endpoint ||
         old.paged != widget.paged ||
         old.valueKey != widget.valueKey ||
-        old.labelKey != widget.labelKey) {
+        old.labelKey != widget.labelKey ||
+        old.subtitleKey != widget.subtitleKey) {
       _load();
     }
   }
@@ -133,6 +141,14 @@ class _RelationInputState extends State<_RelationInput> {
             if (o[widget.valueKey] != null)
               o[widget.valueKey] as Object: resolveListText(o, widget.labelKey) ?? '#${o[widget.valueKey]}',
         };
+        final subtitleKey = widget.subtitleKey;
+        _subtitles = subtitleKey == null
+            ? const {}
+            : {
+                for (final o in items)
+                  if (o[widget.valueKey] != null && resolveListText(o, subtitleKey) != null)
+                    o[widget.valueKey] as Object: resolveListText(o, subtitleKey)!,
+              };
       });
     } catch (e) {
       if (mounted && generation == _generation) setState(() => _error = e.toString());
@@ -151,7 +167,8 @@ class _RelationInputState extends State<_RelationInput> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
-      builder: (_) => _RelationPickerSheet(title: widget.label, options: _options!, selected: _selected),
+      builder: (_) =>
+          _RelationPickerSheet(title: widget.label, options: _options!, subtitles: _subtitles, selected: _selected),
     );
     if (result != null) _set(result);
   }
@@ -224,9 +241,15 @@ class _RelationInputState extends State<_RelationInput> {
 class _RelationPickerSheet extends StatefulWidget {
   final String title;
   final Map<Object, String> options;
+  final Map<Object, String> subtitles;
   final List<Object> selected;
 
-  const _RelationPickerSheet({required this.title, required this.options, required this.selected});
+  const _RelationPickerSheet({
+    required this.title,
+    required this.options,
+    required this.subtitles,
+    required this.selected,
+  });
 
   @override
   State<_RelationPickerSheet> createState() => _RelationPickerSheetState();
@@ -247,7 +270,9 @@ class _RelationPickerSheetState extends State<_RelationPickerSheet> {
   Widget build(BuildContext context) {
     final visible = _query.isEmpty
         ? widget.options.entries.toList()
-        : widget.options.entries.where((o) => foldTr(o.value).contains(_query)).toList();
+        : widget.options.entries
+              .where((o) => foldTr('${o.value} ${widget.subtitles[o.key] ?? ''}').contains(_query))
+              .toList();
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
@@ -282,6 +307,7 @@ class _RelationPickerSheetState extends State<_RelationPickerSheet> {
                             key: ValueKey('relation_option_${option.key}'),
                             value: _checked.contains(option.key),
                             title: Text(option.value),
+                            subtitle: widget.subtitles[option.key] == null ? null : Text(widget.subtitles[option.key]!),
                             onChanged: (on) =>
                                 setState(() => on == true ? _checked.add(option.key) : _checked.remove(option.key)),
                           );

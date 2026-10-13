@@ -1,17 +1,28 @@
 import 'dart:convert';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
 import '../../models/crud_module.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/crud_payload.dart';
+import '../../services/text_format.dart';
 import '../../widgets/app_scaffold.dart';
+import '../../widgets/asset_picker.dart';
+import '../../widgets/relation_multi_select.dart';
+import '../../widgets/rich_text_field.dart';
 import '../../widgets/state_views.dart';
 
 class GenericCrudFormScreen extends StatefulWidget {
   final CrudModule module;
   final Map<String, dynamic>? initialData;
 
-  const GenericCrudFormScreen({super.key, required this.module, this.initialData});
+  /// Test seam: lets tests inject an [ApiService] with a mock http client.
+  final ApiService? apiService;
+
+  const GenericCrudFormScreen({super.key, required this.module, this.initialData, this.apiService});
 
   @override
   State<GenericCrudFormScreen> createState() => _GenericCrudFormScreenState();
@@ -21,11 +32,13 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
   static const _jsonEncoder = JsonEncoder.withIndent('  ');
 
   final _formKey = GlobalKey<FormState>();
-  final ApiService _apiService = ApiService();
+  late final ApiService _apiService = widget.apiService ?? ApiService();
   final Map<String, dynamic> _values = {};
   final Map<String, TextEditingController> _controllers = {};
+  final Map<String, GlobalKey<RichTextFieldState>> _richKeys = {};
   final Map<String, PlatformFile> _files = {};
   final Map<String, List<MapEntry<Object, String>>> _remoteOptions = {};
+  final Set<String> _editedSlugs = {}; // slug fields the user typed into (no more auto-fill)
   Map<String, dynamic>? _original;
   bool _ready = false;
   String? _loadError;
@@ -64,8 +77,10 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
         ..addAll(initialFormValues(widget.module, original));
       for (final field in _fields) {
         if (_usesController(field)) {
-          _controllers[field.key] = TextEditingController(text: _toText(field, _values[field.key]));
+          // putIfAbsent: per-type fields may share a key (contents metadata.sortOrder).
+          _controllers.putIfAbsent(field.key, () => TextEditingController(text: _toText(field, _values[field.key])));
         }
+        if (field.type == FieldType.richText) _richKeys[field.key] = GlobalKey<RichTextFieldState>();
       }
       _ready = true;
       _loadError = null;
@@ -80,12 +95,19 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
     super.dispose();
   }
 
-  bool _usesController(FieldConfig f) =>
-      f.type == FieldType.text || f.type == FieldType.longText || f.type == FieldType.number || f.type == FieldType.json;
+  bool _usesController(FieldConfig f) => const {
+    FieldType.text,
+    FieldType.longText,
+    FieldType.number,
+    FieldType.json,
+    FieldType.tags,
+    FieldType.imageUrl,
+  }.contains(f.type);
 
   String _toText(FieldConfig field, dynamic value) {
     if (value == null) return '';
     if (field.type == FieldType.json) return _jsonEncoder.convert(value);
+    if (field.type == FieldType.tags && value is List) return value.join(', ');
     return value.toString();
   }
 
@@ -97,8 +119,10 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
         _remoteOptions[field.key] = [
           for (final item in items)
             if (item[field.optionValueKey] != null)
-              MapEntry(item[field.optionValueKey] as Object,
-                  item[field.optionLabelKey]?.toString() ?? item[field.optionValueKey].toString()),
+              MapEntry(
+                item[field.optionValueKey] as Object,
+                item[field.optionLabelKey]?.toString() ?? item[field.optionValueKey].toString(),
+              ),
         ];
       });
     } catch (e) {
@@ -109,14 +133,23 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
   void _onDropdownChanged(FieldConfig field, Object? value) {
     final previous = _values[field.key];
     setState(() => _values[field.key] = value);
-    // Swap JSON templates bound to this dropdown (only if user hasn't customised them).
-    for (final jsonField in _fields.where((f) => f.templateFromField == field.key)) {
-      final controller = _controllers[jsonField.key]!;
-      final previousTemplate = jsonField.templates?[previous];
-      final untouched = controller.text.trim().isEmpty ||
-          (previousTemplate != null && controller.text == _jsonEncoder.convert(previousTemplate));
-      final next = jsonField.templates?[value];
-      if (untouched && next != null) controller.text = _jsonEncoder.convert(next);
+    // Swap templates bound to this dropdown (only if the user hasn't customised the field).
+    for (final bound in _fields.where((f) => f.templateFromField == field.key)) {
+      final controller = _controllers[bound.key]!;
+      final previousTemplate = bound.templates?[previous];
+      final untouched =
+          controller.text.trim().isEmpty ||
+          (previousTemplate != null && controller.text == _toText(bound, previousTemplate));
+      final next = bound.templates?[value];
+      if (untouched && next != null) controller.text = _toText(bound, next);
+    }
+  }
+
+  void _onTextChanged(FieldConfig field, String text) {
+    if (field.slugFrom != null) _editedSlugs.add(field.key);
+    if (_isEditing) return; // admin keeps the slug of existing records unless typed
+    for (final slug in _fields.where((f) => f.slugFrom == field.key && !_editedSlugs.contains(f.key))) {
+      _controllers[slug.key]!.text = slugify(text);
     }
   }
 
@@ -126,8 +159,25 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
     setState(() => _files[field.key] = picked.first);
   }
 
+  Future<void> _pickDate(FieldConfig field) async {
+    final current = DateTime.tryParse(_values[field.key]?.toString() ?? '');
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null) return;
+    final date =
+        '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}-'
+        '${picked.day.toString().padLeft(2, '0')}';
+    setState(() => _values[field.key] = date);
+  }
+
   void _collectControllerValues() {
     for (final field in _fields) {
+      final rich = _richKeys[field.key]?.currentState;
+      if (rich != null) _values[field.key] = rich.html;
       final controller = _controllers[field.key];
       if (controller == null) continue;
       final text = controller.text;
@@ -136,6 +186,11 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
           _values[field.key] = text.trim().isEmpty ? null : int.tryParse(text.trim());
         case FieldType.json:
           _values[field.key] = text.trim().isEmpty ? null : jsonDecode(text);
+        case FieldType.tags:
+          _values[field.key] = [
+            for (final tag in text.split(','))
+              if (tag.trim().isNotEmpty) tag.trim(),
+          ];
         default:
           _values[field.key] = text;
       }
@@ -152,7 +207,11 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
     final id = _original?['id'];
     final endpoint = _isEditing ? '${module.crudEndpoint}/$id' : module.crudEndpoint;
     final method = _isEditing ? 'PUT' : 'POST';
-    final files = [for (final e in _files.entries) UploadFile(e.key, e.value.path!)];
+    final files = [
+      for (final field in _fields)
+        if (_files[field.key] != null && isFieldVisible(field, _values))
+          UploadFile(field.key, _files[field.key]!.path!),
+    ];
 
     try {
       switch (module.requestMode) {
@@ -164,9 +223,7 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
           await _apiService.multipart(method, endpoint, fields: toMultipartFields(payload), files: files);
       }
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(_isEditing ? 'Güncellendi' : 'Oluşturuldu'),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_isEditing ? 'Güncellendi' : 'Oluşturuldu')));
       Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) _showError(e.toString());
@@ -176,38 +233,44 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message.replaceFirst('Exception: ', '')),
-      backgroundColor: _scheme.error,
-      duration: const Duration(seconds: 6),
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message.replaceFirst('Exception: ', '')),
+        backgroundColor: _scheme.error,
+        duration: const Duration(seconds: 6),
+      ),
+    );
   }
 
   InputDecoration _decoration(FieldConfig field) => InputDecoration(
-        labelText: field.isRequired ? '${field.label} *' : field.label,
-        hintText: field.hint,
-        hintStyle: TextStyle(color: _scheme.onSurface.withValues(alpha: 0.45)),
-        labelStyle: TextStyle(color: _scheme.onSurface.withValues(alpha: 0.7)),
-        filled: true,
-        fillColor: _scheme.surface.withValues(alpha: 0.7),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: _scheme.onSurface.withValues(alpha: 0.1)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: _scheme.onSurface.withValues(alpha: 0.1)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: _scheme.primary),
-        ),
-      );
+    labelText: field.isRequired ? '${field.label} *' : field.label,
+    hintText: field.hint,
+    hintStyle: TextStyle(color: _scheme.onSurface.withValues(alpha: 0.45)),
+    labelStyle: TextStyle(color: _scheme.onSurface.withValues(alpha: 0.7)),
+    filled: true,
+    fillColor: _scheme.surface.withValues(alpha: 0.7),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(16),
+      borderSide: BorderSide(color: _scheme.onSurface.withValues(alpha: 0.1)),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(16),
+      borderSide: BorderSide(color: _scheme.onSurface.withValues(alpha: 0.1)),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(16),
+      borderSide: BorderSide(color: _scheme.primary),
+    ),
+  );
 
   String? _validateText(FieldConfig field, String? raw) {
     final value = raw?.trim() ?? '';
     if (value.isEmpty) return field.isRequired ? '${field.label} zorunlu' : null;
-    if (field.type == FieldType.number && int.tryParse(value) == null) return 'Sayı girin';
+    if (field.type == FieldType.number) {
+      final number = int.tryParse(value);
+      if (number == null) return 'Sayı girin';
+      if (number < 0) return '0 veya daha büyük olmalı';
+    }
     if (field.type == FieldType.json) {
       try {
         jsonDecode(value);
@@ -215,13 +278,143 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
         return 'Geçersiz JSON';
       }
     }
+    if (field.maxLength != null && value.length > field.maxLength!) {
+      return '${field.label} ${field.maxLength} karakteri geçemez';
+    }
     if (field.pattern != null && !RegExp(field.pattern!).hasMatch(value)) {
       return field.patternMessage ?? 'Geçersiz format';
     }
     return null;
   }
 
-  Widget _buildField(FieldConfig field) {
+  Widget _buildDropdown(FieldConfig field) {
+    final options = field.optionsEndpoint != null
+        ? (_remoteOptions[field.key] ?? const <MapEntry<Object, String>>[])
+        : [for (final o in field.options ?? const <String>[]) MapEntry<Object, String>(o, field.optionLabels?[o] ?? o)];
+    final current = _values[field.key];
+    // A stored value the form doesn't know (e.g. a legacy content type) stays visible and selected.
+    final known = current == null || options.any((o) => o.key == current) || field.optionsEndpoint != null;
+    final items = [...options, if (!known) MapEntry<Object, String>(current as Object, current.toString())];
+    final hasCurrent = items.any((o) => o.key == current);
+    final locked = _isEditing && field.readOnlyOnEdit;
+    return DropdownButtonFormField<Object>(
+      key: ValueKey('field_${field.key}_${items.length}'),
+      initialValue: hasCurrent ? current as Object : null,
+      decoration: _decoration(field),
+      dropdownColor: _scheme.surface,
+      style: TextStyle(color: _scheme.onSurface),
+      isExpanded: true,
+      items: [for (final o in items) DropdownMenuItem<Object>(value: o.key, child: Text(o.value))],
+      onChanged: locked ? null : (val) => _onDropdownChanged(field, val),
+      validator: (val) => field.isRequired && val == null ? '${field.label} zorunlu' : null,
+    );
+  }
+
+  Widget _buildFile(FieldConfig field) {
+    final picked = _files[field.key];
+    return FormField<PlatformFile>(
+      key: ValueKey('field_${field.key}'),
+      validator: (_) => field.isRequired && _files[field.key] == null ? '${field.label} seçin' : null,
+      builder: (state) => InputDecorator(
+        decoration: _decoration(field).copyWith(errorText: state.errorText),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                picked?.name ?? 'Dosya seçilmedi',
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: _scheme.onSurface.withValues(alpha: picked == null ? 0.6 : 1)),
+              ),
+            ),
+            if (picked != null)
+              IconButton(
+                tooltip: 'Dosyayı kaldır',
+                icon: const Icon(Icons.close_rounded, size: 18),
+                onPressed: () => setState(() => _files.remove(field.key)),
+              ),
+            TextButton.icon(
+              onPressed: () async {
+                await _pickFile(field);
+                state.didChange(_files[field.key]);
+              },
+              icon: const Icon(Icons.upload_file_rounded),
+              label: const Text('Seç'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDate(FieldConfig field) {
+    final value = _values[field.key]?.toString() ?? '';
+    final date = value.split('T').first;
+    return InputDecorator(
+      key: ValueKey('field_${field.key}'),
+      decoration: _decoration(field),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              date.isEmpty ? 'Tarih seçilmedi' : date,
+              style: TextStyle(color: _scheme.onSurface.withValues(alpha: date.isEmpty ? 0.6 : 1)),
+            ),
+          ),
+          if (date.isNotEmpty)
+            IconButton(
+              tooltip: 'Tarihi temizle',
+              icon: const Icon(Icons.close_rounded, size: 18),
+              onPressed: () => setState(() => _values[field.key] = null),
+            ),
+          TextButton.icon(
+            onPressed: () => _pickDate(field),
+            icon: const Icon(Icons.event_rounded),
+            label: const Text('Seç'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildImageUrl(FieldConfig field, bool canPickAssets) {
+    final controller = _controllers[field.key]!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextFormField(
+          key: ValueKey('field_${field.key}'),
+          controller: controller,
+          keyboardType: TextInputType.url,
+          style: TextStyle(color: _scheme.onSurface),
+          decoration: _decoration(field).copyWith(
+            suffixIcon: canPickAssets
+                ? IconButton(
+                    key: ValueKey('asset_pick_button_${field.key}'),
+                    tooltip: 'Assetlerden seç',
+                    icon: const Icon(Icons.photo_library_outlined),
+                    onPressed: () async {
+                      final url = await showAssetPicker(context, _apiService);
+                      if (url != null) controller.text = url;
+                    },
+                  )
+                : null,
+          ),
+          validator: (val) => _validateText(field, val),
+        ),
+        ValueListenableBuilder<TextEditingValue>(
+          valueListenable: controller,
+          builder: (_, value, _) => value.text.trim().isEmpty
+              ? const SizedBox.shrink()
+              : Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: AssetThumbnail(url: value.text, size: 96, semanticLabel: '${field.label} önizleme'),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildField(FieldConfig field, {required bool canPickAssets}) {
     final Widget child;
     switch (field.type) {
       case FieldType.boolean:
@@ -233,79 +426,88 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
           activeThumbColor: _scheme.primary,
         );
       case FieldType.dropdown:
-        final options = field.optionsEndpoint != null
-            ? (_remoteOptions[field.key] ?? const <MapEntry<Object, String>>[])
-            : [for (final o in field.options ?? const <String>[]) MapEntry<Object, String>(o, o)];
-        final current = _values[field.key];
-        final hasCurrent = options.any((o) => o.key == current);
-        child = DropdownButtonFormField<Object>(
-          key: ValueKey('field_${field.key}_${options.length}'),
-          initialValue: hasCurrent ? current as Object : null,
-          decoration: _decoration(field),
-          dropdownColor: _scheme.surface,
-          style: TextStyle(color: _scheme.onSurface),
-          isExpanded: true,
-          items: [for (final o in options) DropdownMenuItem<Object>(value: o.key, child: Text(o.value))],
-          onChanged: (val) => _onDropdownChanged(field, val),
-          validator: (val) => field.isRequired && val == null ? '${field.label} zorunlu' : null,
-        );
+        child = _buildDropdown(field);
       case FieldType.file:
-        final picked = _files[field.key];
-        child = FormField<PlatformFile>(
+        child = _buildFile(field);
+      case FieldType.date:
+        child = _buildDate(field);
+      case FieldType.imageUrl:
+        child = _buildImageUrl(field, canPickAssets);
+      case FieldType.relation:
+        child = RelationMultiSelect(
           key: ValueKey('field_${field.key}'),
-          validator: (_) => field.isRequired && _files[field.key] == null ? '${field.label} seçin' : null,
-          builder: (state) => InputDecorator(
-            decoration: _decoration(field).copyWith(errorText: state.errorText),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    picked?.name ?? 'Dosya seçilmedi',
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: _scheme.onSurface.withValues(alpha: picked == null ? 0.6 : 1)),
-                  ),
-                ),
-                if (picked != null)
-                  IconButton(
-                    tooltip: 'Dosyayı kaldır',
-                    icon: const Icon(Icons.close_rounded, size: 18),
-                    onPressed: () => setState(() => _files.remove(field.key)),
-                  ),
-                TextButton.icon(
-                  onPressed: () async {
-                    await _pickFile(field);
-                    state.didChange(_files[field.key]);
-                  },
-                  icon: const Icon(Icons.upload_file_rounded),
-                  label: const Text('Seç'),
-                ),
-              ],
-            ),
-          ),
+          api: _apiService,
+          label: field.label,
+          endpoint: field.relationEndpoint!,
+          valueKey: field.optionValueKey,
+          labelKey: field.optionLabelKey,
+          subtitleKey: field.optionSubtitleKey,
+          isRequired: field.isRequired,
+          initialValue: List<Object>.from(_values[field.key] as List? ?? const []),
+          onChanged: (ids) => _values[field.key] = ids,
+        );
+      case FieldType.richText:
+        child = RichTextField(
+          key: _richKeys[field.key],
+          label: field.label,
+          initialHtml: _values[field.key]?.toString() ?? '',
+          api: _apiService,
+          canPickAssets: canPickAssets,
         );
       default:
+        final isJson = field.type == FieldType.json;
         child = TextFormField(
           key: ValueKey('field_${field.key}'),
           controller: _controllers[field.key],
-          minLines: field.type == FieldType.json ? 6 : 1,
-          maxLines: field.type == FieldType.longText ? 6 : (field.type == FieldType.json ? 16 : 1),
+          minLines: isJson ? 6 : 1,
+          maxLines: field.type == FieldType.longText ? 6 : (isJson ? 16 : 1),
+          maxLength: field.maxLength,
           keyboardType: field.type == FieldType.number
               ? TextInputType.number
-              : (field.type == FieldType.text ? TextInputType.text : TextInputType.multiline),
+              : (field.type == FieldType.text || field.type == FieldType.tags
+                    ? TextInputType.text
+                    : TextInputType.multiline),
           style: TextStyle(
             color: _scheme.onSurface,
-            fontFamily: field.type == FieldType.json ? 'Courier' : null,
-            fontSize: field.type == FieldType.json ? 13 : null,
+            fontFamily: isJson ? 'Courier' : null,
+            fontSize: isJson ? 13 : null,
           ),
-          decoration: _decoration(field),
+          decoration: _decoration(field).copyWith(helperText: field.type == FieldType.tags ? 'Virgülle ayırın' : null),
+          onChanged: (text) => _onTextChanged(field, text),
           validator: (val) => _validateText(field, val),
         );
     }
     return Padding(padding: const EdgeInsets.only(bottom: 16), child: child);
   }
 
+  /// Visible fields with a header above each new [FieldConfig.section].
+  List<Widget> _formFields(bool canPickAssets) {
+    final widgets = <Widget>[];
+    String? section;
+    for (final field in _fields.where((f) => isFieldVisible(f, _values))) {
+      if (field.section != null && field.section != section) {
+        section = field.section;
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 12),
+            child: Semantics(
+              header: true,
+              child: Text(
+                section!,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+        );
+      }
+      widgets.add(_buildField(field, canPickAssets: canPickAssets));
+    }
+    return widgets;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final canPickAssets = context.watch<AuthProvider>().can('assets', 'read');
     return AppScaffold(
       title: _isEditing ? '${widget.module.title} · Düzenle' : '${widget.module.title} · Yeni',
       body: !_ready
@@ -315,8 +517,9 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
               child: Form(
                 key: _formKey,
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    ..._fields.map(_buildField),
+                    ..._formFields(canPickAssets),
                     const SizedBox(height: 16),
                     SizedBox(
                       width: double.infinity,

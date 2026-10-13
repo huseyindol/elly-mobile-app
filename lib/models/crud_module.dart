@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
 /// json: JSON editor (Map/List). file: picked file, sent as multipart part named [FieldConfig.key].
-enum FieldType { text, longText, number, boolean, dropdown, json, file }
+/// relation: id list picker ([FieldConfig.relationEndpoint]). richText: HTML body (Quill editor, raw HTML
+/// fallback). date: `YYYY-MM-DD`. tags: `List<String>` typed comma separated. imageUrl: URL + preview +
+/// pick from assets.
+enum FieldType { text, longText, number, boolean, dropdown, json, file, relation, richText, date, tags, imageUrl }
 
 /// How create/update requests are sent.
 /// - json: application/json body
@@ -37,6 +40,39 @@ class FieldConfig {
 
   final String? hint;
 
+  /// Max characters (admin Zod `.max`).
+  final int? maxLength;
+
+  /// Dropdown option → label (options are the raw values otherwise).
+  final Map<String, String>? optionLabels;
+
+  /// Shown (and sent) only while every `fieldKey: value` matches the form values, e.g.
+  /// `{'type': 'BANNER'}`. A hidden relation is sent as `[]` (admin does the same; the backend
+  /// rejects relations that don't match the type); other hidden fields are not written.
+  final Map<String, Object>? visibleWhen;
+
+  /// Locked when editing (e.g. content type: admin does not let it change).
+  final bool readOnlyOnEdit;
+
+  /// Slug field filled from this field while creating, until the user edits the slug.
+  final String? slugFrom;
+
+  /// Header shown above the first field of a new section.
+  final String? section;
+
+  /// Relation: options endpoint (e.g. `/components/list/summary`), shown as [optionLabelKey] /
+  /// [optionSubtitleKey].
+  final String? relationEndpoint;
+  final String? optionSubtitleKey;
+
+  /// Relation: dot-path in the record holding the related objects or ids (default: [key]).
+  final String? relationSource;
+
+  /// Relation: backend treats a missing (null) list as "leave untouched" (pages.componentIds), so the list
+  /// is sent only when the selection changed. Otherwise null CLEARS the relation (components, widgets) and
+  /// the current ids are always sent.
+  final bool relationKeepsOnNull;
+
   const FieldConfig({
     required this.key,
     required this.label,
@@ -52,7 +88,30 @@ class FieldConfig {
     this.templateFromField,
     this.templates,
     this.hint,
+    this.maxLength,
+    this.optionLabels,
+    this.visibleWhen,
+    this.readOnlyOnEdit = false,
+    this.slugFrom,
+    this.section,
+    this.relationEndpoint,
+    this.optionSubtitleKey,
+    this.relationSource,
+    this.relationKeepsOnNull = false,
   });
+}
+
+/// List filter chips. [optionsEndpoint] returns a list of strings (e.g. `/banners/sub-folders`);
+/// with [endpointTemplate] the list is re-fetched from it (`{value}` URL-encoded), otherwise loaded
+/// items are filtered by [key].
+class ListFilter {
+  final String label;
+  final String? optionsEndpoint;
+  final Map<String, String>? options;
+  final String? endpointTemplate;
+  final String? key;
+
+  const ListFilter({required this.label, this.optionsEndpoint, this.options, this.endpointTemplate, this.key});
 }
 
 class CrudModule {
@@ -91,6 +150,20 @@ class CrudModule {
   /// editing from list data would send those nulls back and wipe the fields.
   final String? detailEndpoint;
 
+  /// Client-side list order like the admin tables: `a|b` dot-path, numbers numerically, text with foldTr.
+  final String? sortKey;
+
+  /// Boolean dot-path shown as an Aktif/Pasif badge.
+  final String? statusKey;
+
+  /// Image dot-path (`a|b`) shown as the list thumbnail.
+  final String? thumbnailKey;
+
+  /// Extra list line(s) (admin table columns: order, relation counts, SEO flags, …).
+  final List<String> Function(Map<String, dynamic> item)? listMeta;
+
+  final ListFilter? filter;
+
   const CrudModule({
     required this.title,
     required this.crudEndpoint,
@@ -108,5 +181,10 @@ class CrudModule {
     this.canDelete = true,
     this.forceDeleteSuffix,
     this.detailEndpoint,
+    this.sortKey,
+    this.statusKey,
+    this.thumbnailKey,
+    this.listMeta,
+    this.filter,
   });
 }

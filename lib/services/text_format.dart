@@ -29,3 +29,31 @@ String formatBytes(num bytes, {int decimals = 1}) {
   if (text.contains('.')) text = text.replaceFirst(RegExp(r'\.?0+$'), ''); // like maximumFractionDigits
   return '${text.replaceAll('.', ',')} ${units[i]}';
 }
+
+const _slugChars = {
+  'ğ': 'g',
+  'ü': 'u',
+  'ş': 's',
+  'ı': 'i',
+  'ö': 'o',
+  'ç': 'c',
+  'Ğ': 'G',
+  'Ü': 'U',
+  'Ş': 'S',
+  'İ': 'I',
+  'Ö': 'O',
+  'Ç': 'C',
+};
+
+/// Admin `generateSlug`: "Merhaba Dünya!" → "merhaba-dunya" (Turkish letters to ASCII, other symbols
+/// dropped, spaces to single dashes; leading/trailing dashes removed so the slug pattern passes).
+String slugify(String text) => text
+    .split('')
+    .map((c) => _slugChars[c] ?? c)
+    .join()
+    .toLowerCase()
+    .replaceAll(RegExp(r'[^a-z0-9\s-]'), '')
+    .trim()
+    .replaceAll(RegExp(r'\s+'), '-')
+    .replaceAll(RegExp(r'-+'), '-')
+    .replaceAll(RegExp(r'^-|-$'), '');
