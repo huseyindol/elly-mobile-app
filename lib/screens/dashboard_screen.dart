@@ -6,6 +6,7 @@ import '../config/nav_config.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../services/crud_payload.dart';
+import '../services/mail_payload.dart';
 import '../services/text_format.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/app_scaffold.dart';
@@ -36,8 +37,6 @@ const _stats = [
   _Stat('banners', 'Bannerlar', 'banners:read', '/banners/list/summary', Color(0xFF0EA5E9)),
   _Stat('assets', 'Medya', 'assets:read', '/assets/list/paged?page=0&size=1', Color(0xFF84CC16)),
 ];
-
-const _emailStatusLabel = {'SENT': 'Gönderildi', 'FAILED': 'Başarısız', 'PENDING': 'Beklemede'};
 
 /// Storage usage color, same thresholds as the admin StorageUsageWidget: <70 ok, 70–90 warning, ≥90 critical.
 Color quotaColor(double percent, ColorScheme scheme) =>
@@ -192,7 +191,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               _recentRow(
                 title: (log['subject']?.toString() ?? '').isEmpty ? '(konu yok)' : log['subject'].toString(),
                 subtitle: '${log['recipient'] ?? ''} · ${_formatDateTime(log['createdAt'])}',
-                badge: _emailStatusLabel[log['status']] ?? '${log['status'] ?? ''}',
+                badge: emailStatusLabels[log['status']] ?? '${log['status'] ?? ''}',
                 badgeColor: switch (log['status']) {
                   'SENT' => AppColors.success,
                   'FAILED' => Theme.of(context).colorScheme.onErrorContainer,

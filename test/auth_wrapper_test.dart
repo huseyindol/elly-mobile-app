@@ -29,7 +29,7 @@ void main() {
     tester.view.physicalSize = const Size(800, 2400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
-    await tester.runAsync(() => backend.signIn(auth, ['mail:read']));
+    await tester.runAsync(() => backend.signIn(auth, ['chat:read']));
     await tester.pumpWidget(
       ChangeNotifierProvider<AuthProvider>.value(
         value: auth,
@@ -40,7 +40,7 @@ void main() {
 
     tester.state<ScaffoldState>(find.byType(Scaffold)).openDrawer();
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('nav_mail-accounts')));
+    await tester.tap(find.byKey(const ValueKey('nav_chat')));
     await tester.pumpAndSettle();
     showDialog<void>(
       context: tester.element(find.byType(ComingSoonScreen)),

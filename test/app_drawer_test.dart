@@ -80,14 +80,14 @@ void main() {
   });
 
   testWidgets('admin areas not on mobile yet open the "yakında" placeholder', (tester) async {
-    await openDrawer(tester, ['mail:read']);
-    expect(find.descendant(of: nav('mail-accounts'), matching: find.text('Yakında')), findsOneWidget);
+    await openDrawer(tester, ['chat:read']);
+    expect(find.descendant(of: nav('chat'), matching: find.text('Yakında')), findsOneWidget);
 
-    await tester.tap(nav('mail-accounts'));
+    await tester.tap(nav('chat'));
     await tester.pumpAndSettle();
 
     expect(find.byType(ComingSoonScreen), findsOneWidget);
-    expect(find.descendant(of: find.byType(AppBar), matching: find.text('Mail Hesapları')), findsOneWidget);
+    expect(find.descendant(of: find.byType(AppBar), matching: find.text('Chat')), findsOneWidget);
     expect(find.textContaining('yakında'), findsOneWidget);
   });
 

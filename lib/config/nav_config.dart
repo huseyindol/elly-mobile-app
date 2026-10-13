@@ -13,7 +13,7 @@ class NavItem {
   /// `<module>:<action>` from PermissionConstants.java; null = every signed-in user (like the admin).
   final String? permission;
 
-  /// CRUD screen; null = not on mobile yet → "yakında" placeholder screen.
+  /// CRUD screen; null = custom screen (`navScreen` in app_drawer.dart) or not on mobile yet → "yakında".
   final CrudModule? module;
 
   const NavItem({required this.id, required this.label, required this.icon, this.permission, this.module});

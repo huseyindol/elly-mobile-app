@@ -87,14 +87,14 @@ void main() {
       expect(item.module, same(module));
     });
 
-    test('every CRUD nav item is wired to a module; the others are "yakında" placeholders', () {
+    test('every CRUD nav item is wired to a module; the others have none (custom screen or "yakında")', () {
       final crudIds = ModulesConfig.allModules.map((m) => m.permissionKey).toSet();
       for (final item in [for (final g in NavConfig.groups) ...g.items]) {
         if (crudIds.contains(item.id)) {
           expect(item.module, isNotNull, reason: item.id);
           expect(item.permission, '${item.id}:read', reason: item.id);
         } else {
-          expect(item.module, isNull, reason: '${item.id} has no mobile screen yet');
+          expect(item.module, isNull, reason: '${item.id} is not a generic CRUD module');
         }
       }
     });

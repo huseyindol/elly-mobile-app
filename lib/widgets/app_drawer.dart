@@ -6,9 +6,21 @@ import '../providers/auth_provider.dart';
 import '../screens/assets_screen.dart';
 import '../screens/coming_soon_screen.dart';
 import '../screens/crud/generic_crud_list_screen.dart';
+import '../screens/mail/email_logs_screen.dart';
+import '../screens/mail/email_templates_screen.dart';
+import '../screens/mail/mail_accounts_screen.dart';
 import '../services/text_format.dart';
 
 bool isNavItemVisible(AuthProvider auth, NavItem item) => item.permission == null || auth.has(item.permission!);
+
+/// Mobile screen of [item]; null = not on mobile yet ("yakında" placeholder).
+Widget? navScreen(NavItem item) => switch (item.id) {
+  'assets' => const AssetsScreen(),
+  'mail-accounts' => const MailAccountsScreen(),
+  'email-templates' => const EmailTemplatesScreen(),
+  'email-logs' => const EmailLogsScreen(),
+  _ => item.module == null ? null : GenericCrudListScreen(module: item.module!),
+};
 
 /// Opens [item]. Sections replace each other: the stack is always [dashboard] or [dashboard, section],
 /// however long the user browses (system back from a section → dashboard).
@@ -16,15 +28,10 @@ void openNavItem(BuildContext context, NavItem item) {
   final navigator = Navigator.of(context);
   navigator.popUntil((route) => route.isFirst);
   if (item.id == NavConfig.dashboard.id) return;
-  final module = item.module;
   navigator.push(
     MaterialPageRoute(
       settings: RouteSettings(name: item.id),
-      builder: (_) => switch (module?.permissionKey) {
-        null => ComingSoonScreen(title: item.label, navId: item.id),
-        'assets' => const AssetsScreen(),
-        _ => GenericCrudListScreen(module: module!),
-      },
+      builder: (_) => navScreen(item) ?? ComingSoonScreen(title: item.label, navId: item.id),
     ),
   );
 }
@@ -68,7 +75,7 @@ class AppDrawer extends StatelessWidget {
           leading: Icon(item.icon),
           title: Text(item.label),
           selected: item.id == currentId,
-          trailing: item.module == null && item.id != NavConfig.dashboard.id
+          trailing: navScreen(item) == null && item.id != NavConfig.dashboard.id
               ? Text('Yakında', style: TextStyle(color: muted, fontSize: 12))
               : null,
           onTap: () => _open(context, item),
