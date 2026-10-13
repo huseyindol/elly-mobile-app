@@ -46,10 +46,16 @@ class _EmailTemplateFormScreenState extends State<EmailTemplateFormScreen> {
   bool _ready = false;
   String? _loadError;
   bool _saving = false;
+  bool _deleting = false;
   bool _dirty = false;
 
-  bool get _isEditing => widget.templateKey != null;
-  String get _path => '/email-templates/${Uri.encodeComponent(widget.templateKey!)}';
+  /// Key of the record being edited; set after a create so the same screen continues as its edit screen (admin
+  /// goes to `/email-templates/{key}`) — the list awaiting this route then reloads once the user leaves.
+  late String? _key = widget.templateKey;
+
+  bool get _isEditing => _key != null;
+  bool get _busy => _saving || _deleting;
+  String get _path => '/email-templates/${Uri.encodeComponent(_key!)}';
 
   @override
   void initState() {
@@ -102,7 +108,7 @@ class _EmailTemplateFormScreenState extends State<EmailTemplateFormScreen> {
       return;
     }
     final payload = emailTemplatePayload(
-      templateKey: _isEditing ? widget.templateKey! : _controllers['templateKey']!.text,
+      templateKey: _key ?? _controllers['templateKey']!.text,
       subject: _controllers['subject']!.text,
       htmlBody: _controllers['htmlBody']!.text,
       description: _controllers['description']!.text,
@@ -122,24 +128,31 @@ class _EmailTemplateFormScreenState extends State<EmailTemplateFormScreen> {
         });
       } else {
         showAppSnackBar(context, 'Template oluşturuldu');
-        _dirty = false;
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (_) => EmailTemplateFormScreen(
-              templateKey: payload['templateKey'] as String,
-              apiService: _api,
-              previewViewBuilder: widget.previewViewBuilder,
-            ),
-          ),
-        );
+        setState(() {
+          _key = payload['templateKey'] as String;
+          _dirty = false;
+          _ready = false;
+        });
+        await _load(); // the stored record (lock version, timestamps) like the admin's detail page
       }
     } on ApiException catch (e) {
       if (!mounted) return;
-      showAppSnackBar(
-        context,
-        e.statusCode == 409 ? 'Başka biri bu template\'i güncellemiş. Yenileyip tekrar deneyin.' : e.message,
-        error: true,
-      );
+      if (e.statusCode == 409) {
+        showAppSnackBar(
+          context,
+          'Başka biri bu template\'i güncellemiş. Yenilerseniz buradaki düzenlemeleriniz kaybolur.',
+          error: true,
+          action: SnackBarAction(
+            label: 'Yenile',
+            onPressed: () {
+              _dirty = false;
+              _load();
+            },
+          ),
+        );
+      } else {
+        showAppSnackBar(context, e.message, error: true);
+      }
     } catch (e) {
       if (mounted) showAppSnackBar(context, e.toString(), error: true);
     } finally {
@@ -148,8 +161,9 @@ class _EmailTemplateFormScreenState extends State<EmailTemplateFormScreen> {
   }
 
   Future<void> _delete() async {
-    final key = widget.templateKey!;
+    final key = _key!;
     if (!await confirmDeleteTemplate(context, key) || !mounted) return;
+    setState(() => _deleting = true);
     try {
       await _api.delete(_path);
       if (!mounted) return;
@@ -157,14 +171,17 @@ class _EmailTemplateFormScreenState extends State<EmailTemplateFormScreen> {
       _dirty = false;
       Navigator.of(context).pop(true);
     } catch (e) {
-      if (mounted) showAppSnackBar(context, e.toString(), error: true);
+      if (mounted) {
+        setState(() => _deleting = false);
+        showAppSnackBar(context, e.toString(), error: true);
+      }
     }
   }
 
   void _preview() => Navigator.of(context).push(
     MaterialPageRoute(
       builder: (_) => EmailTemplatePreviewScreen(
-        templateKey: widget.templateKey!,
+        templateKey: _key!,
         apiService: _api,
         unsavedChanges: _dirty,
         htmlViewBuilder: widget.previewViewBuilder,
@@ -185,29 +202,35 @@ class _EmailTemplateFormScreenState extends State<EmailTemplateFormScreen> {
     String? hint,
     String? helper,
     bool code = false,
+    bool literal = false,
     int minLines = 1,
+    double? height,
     String? Function(String value)? validator,
-  }) => Padding(
-    padding: const EdgeInsets.only(bottom: 16),
-    child: TextFormField(
+  }) {
+    // code: monospace; code or literal: typed text is kept exactly — iOS smart punctuation would turn " into “
+    // and -- into — inside HTML / Thymeleaf expressions, autocorrect would rewrite variable names.
+    final exact = code || literal;
+    final multiline = minLines > 1 || height != null;
+    final field = TextFormField(
       key: ValueKey('template_field_$key'),
       controller: _controllers[key],
       readOnly: readOnly,
-      minLines: minLines,
-      maxLines: minLines == 1 ? 1 : null,
-      keyboardType: minLines == 1 ? null : TextInputType.multiline,
-      autocorrect: !code,
-      enableSuggestions: !code,
-      // iOS smart punctuation would turn " into “ and -- into — inside HTML / Thymeleaf expressions.
-      smartQuotesType: code ? SmartQuotesType.disabled : null,
-      smartDashesType: code ? SmartDashesType.disabled : null,
+      expands: height != null,
+      minLines: height != null ? null : minLines,
+      maxLines: height != null || multiline ? null : 1,
+      textAlignVertical: height != null ? TextAlignVertical.top : null,
+      keyboardType: multiline ? TextInputType.multiline : null,
+      autocorrect: !exact,
+      enableSuggestions: !exact,
+      smartQuotesType: exact ? SmartQuotesType.disabled : null,
+      smartDashesType: exact ? SmartDashesType.disabled : null,
       style: code ? const TextStyle(fontFamily: 'monospace', fontSize: 13) : null,
       decoration: fieldDecoration(
         Theme.of(context).colorScheme,
         label: required ? '${_labels[key]} *' : _labels[key],
         hint: hint,
         helper: helper,
-      ).copyWith(alignLabelWithHint: minLines > 1),
+      ).copyWith(alignLabelWithHint: multiline),
       validator: (raw) {
         final v = key == 'htmlBody' ? raw ?? '' : raw?.trim() ?? '';
         if (v.trim().isEmpty) return required ? '${_labels[key]} zorunlu' : null;
@@ -215,8 +238,12 @@ class _EmailTemplateFormScreenState extends State<EmailTemplateFormScreen> {
         return validator?.call(v);
       },
       onChanged: (_) => _markDirty(),
-    ),
-  );
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: height == null ? field : SizedBox(height: height, child: field),
+    );
+  }
 
   Widget _form(bool readOnly) {
     final muted = TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7));
@@ -229,7 +256,7 @@ class _EmailTemplateFormScreenState extends State<EmailTemplateFormScreen> {
             Padding(
               padding: const EdgeInsets.only(bottom: 16),
               child: SelectableText(
-                widget.templateKey!,
+                _key!,
                 style: const TextStyle(fontFamily: 'monospace', fontSize: 16, fontWeight: FontWeight.w600),
               ),
             )
@@ -245,7 +272,13 @@ class _EmailTemplateFormScreenState extends State<EmailTemplateFormScreen> {
                   ? 'Minimum 2 karakter'
                   : (templateKeyPattern.hasMatch(v) ? null : 'Sadece küçük harf, rakam ve tire (-) kullanılabilir'),
             ),
-          _field('subject', readOnly: readOnly, max: 255, hint: r'Thymeleaf değişkenleri: [[${userName}]]'),
+          _field(
+            'subject',
+            readOnly: readOnly,
+            literal: true,
+            max: 255,
+            hint: r'Thymeleaf değişkenleri: [[${userName}]]',
+          ),
           _field(
             'description',
             readOnly: readOnly,
@@ -267,7 +300,14 @@ class _EmailTemplateFormScreenState extends State<EmailTemplateFormScreen> {
                   },
           ),
           const SizedBox(height: 8),
-          _field('htmlBody', readOnly: readOnly, code: true, minLines: 14, hint: '<html>…</html>'),
+          // Fixed height, scrolls inside (long templates; the rest of the form stays reachable, also in landscape).
+          _field(
+            'htmlBody',
+            readOnly: readOnly,
+            code: true,
+            height: MediaQuery.sizeOf(context).height * 0.6,
+            hint: '<html>…</html>',
+          ),
           if (readOnly) Text('Düzenleme yetkiniz yok (email_templates:manage).', style: muted),
         ],
       ),
@@ -286,9 +326,9 @@ class _EmailTemplateFormScreenState extends State<EmailTemplateFormScreen> {
       body = _form(!canManage);
     }
     return PopScope(
-      canPop: !_dirty && !_saving,
+      canPop: !_dirty && !_busy,
       onPopInvokedWithResult: (didPop, _) async {
-        if (!didPop && await confirmLeaveForm(context, saving: _saving) && context.mounted) Navigator.of(context).pop();
+        if (!didPop && await confirmLeaveForm(context, saving: _busy) && context.mounted) Navigator.of(context).pop();
       },
       child: AppScaffold(
         title: _isEditing ? 'Template Düzenle' : 'Yeni Email Template',
@@ -305,12 +345,14 @@ class _EmailTemplateFormScreenState extends State<EmailTemplateFormScreen> {
                 key: const ValueKey('template_delete_button'),
                 tooltip: 'Sil',
                 icon: const Icon(Icons.delete_outline_rounded),
-                onPressed: _saving ? null : _delete,
+                onPressed: _busy ? null : _delete,
               ),
           ],
         ],
         body: body,
-        bottomNavigationBar: _ready && canManage ? SaveBar(onPressed: _save, loading: _saving) : null,
+        bottomNavigationBar: _ready && canManage
+            ? SaveBar(onPressed: _deleting ? null : _save, loading: _saving)
+            : null,
       ),
     );
   }

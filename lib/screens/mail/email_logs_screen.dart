@@ -9,6 +9,7 @@ import '../../services/mail_payload.dart';
 import '../../services/text_format.dart';
 import '../../widgets/app_scaffold.dart';
 import '../../widgets/app_snack_bar.dart';
+import '../../widgets/confirm_dialog.dart';
 import '../../widgets/searchable_paged_list.dart';
 import '../../widgets/status_badge.dart';
 
@@ -39,6 +40,7 @@ class _EmailLogsScreenState extends State<EmailLogsScreen> {
   });
 
   Future<void> _retry(Map<String, dynamic> log) async {
+    if (!await confirmEmailRetry(context, log) || !mounted) return;
     setState(() => _retrying.add(log['id']));
     final ok = await retryEmail(context, _api, log);
     if (!mounted) return;
@@ -55,8 +57,9 @@ class _EmailLogsScreenState extends State<EmailLogsScreen> {
     if (retried == true) _reload();
   }
 
-  Widget _item(BuildContext context, Map<String, dynamic> log, bool canRetry) {
-    final scheme = Theme.of(context).colorScheme;
+  // Retry results use the screen's context (this.context via _retry): a list reload may dispose the row.
+  Widget _item(BuildContext itemContext, Map<String, dynamic> log, bool canRetry) {
+    final scheme = Theme.of(itemContext).colorScheme;
     final muted = TextStyle(color: scheme.onSurface.withValues(alpha: 0.65));
     final id = log['id'];
     final retrying = _retrying.contains(id);
@@ -89,7 +92,7 @@ class _EmailLogsScreenState extends State<EmailLogsScreen> {
           trailing: canRetry && canRetryEmail(log)
               ? IconButton(
                   key: ValueKey('retry_$id'),
-                  tooltip: 'Yeniden kuyruğa al',
+                  tooltip: 'Yeniden kuyruğa al: #$id',
                   onPressed: retrying ? null : () => _retry(log),
                   icon: retrying
                       ? const SizedBox.square(
@@ -155,7 +158,7 @@ class _EmailLogsScreenState extends State<EmailLogsScreen> {
               searchText: (log) =>
                   [log['recipient'], log['subject'], log['templateName']].map((v) => v ?? '').join(' '),
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-              itemBuilder: (context, log) => _item(context, log, canRetry),
+              itemBuilder: (itemContext, log) => _item(itemContext, log, canRetry),
             ),
           ),
         ],
@@ -166,6 +169,19 @@ class _EmailLogsScreenState extends State<EmailLogsScreen> {
 
 /// `POST /emails/{id}/retry`: re-queues a FAILED / stuck PENDING e-mail (status → PENDING, retry count 0). The
 /// backend refuses SENT logs, logs without a mail account and inactive accounts (400, message shown).
+/// A PENDING mail may still be in the queue: re-queueing it can send it twice, so that asks first (true = go on).
+Future<bool> confirmEmailRetry(BuildContext context, Map<String, dynamic> log) async =>
+    log['status'] != 'PENDING' ||
+    await showConfirmDialog(
+      context,
+      title: 'Yeniden kuyruğa alınsın mı?',
+      message:
+          'Bu mail hâlâ "Beklemede"; kuyrukta olabilir. Yeniden kuyruğa almak iki kez gönderilmesine yol açabilir.',
+      confirmLabel: 'Kuyruğa al',
+      confirmKey: const ValueKey('confirm_retry_button'),
+    );
+
+/// Pass the screen's context (not a list row's).
 Future<bool> retryEmail(BuildContext context, ApiService api, Map<String, dynamic> log) async {
   try {
     await api.post('/emails/${log['id']}/retry', const {});
@@ -209,6 +225,7 @@ class _EmailLogDetailScreenState extends State<EmailLogDetailScreen> {
   bool _retrying = false;
 
   Future<void> _retry() async {
+    if (!await confirmEmailRetry(context, widget.log) || !mounted) return;
     setState(() => _retrying = true);
     final ok = await retryEmail(context, _api, widget.log);
     if (!mounted) return;

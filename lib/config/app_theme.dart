@@ -8,6 +8,9 @@ abstract final class AppColors {
   static const primary = Color(0xFF6366F1); // indigo
   static const secondary = Color(0xFFEC4899); // pink
 
+  /// Primary-tinted text / badge on dark surfaces (indigo-300, ≈9:1 on [surface]; [primary] itself is below AA).
+  static const primaryLight = Color(0xFFA5B4FC);
+
   /// Filled destructive actions / error snackbars; white text on it is 5.0:1 (WCAG AA).
   static const error = Color(0xFFD32F2F);
 

@@ -105,8 +105,9 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
     `PopScope` kirliyken ya da kayıt sürerken çıkışta yıkıcı onay ister. Doğrulama hatasında
     `validateGranularly` → `reportInvalidFields`: ilk hatalı alana kaydırma + "N alan hatalı: <ilk alanın
     etiketi>". Kaydet sabit alt çubukta: `AppScaffold(bottomNavigationBar: SaveBar(...))` — Scaffold
-    SnackBar'ı çubuğun **üstünde** gösterir (butonu örtmez), çubuk klavyenin üstüne çıkar; SaveBar'ı body'ye
-    koyma. Başarılı kayıt/uygula pop'tan önce `clearSnackBars()` (eski hata sonraki ekrana taşınmaz).
+    SnackBar'ı çubuğun **üstünde** gösterir (butonu örtmez); **klavye açıkken** `AppScaffold` SaveBar'ı gizleyip
+    aynı key'le AppBar'da kaydet ikonu gösterir (alan görünür kalır, landscape'te de; iOS çok satırlı alanda "bitti"
+    tuşu yok). SaveBar'ı body'ye koyma. Başarılı kayıt/uygula pop'tan önce `clearSnackBars()` (eski hata sonraki ekrana taşınmaz).
     Yeni form ekranları aynı parçaları kullanır: `SaveBar`, `confirmLeaveForm`, `fieldDecoration` (app_theme;
     `"Etiket *"` etiketi ekran okuyucuda "zorunlu" okunur).
   - Banner görselleri: backend dosya gelince URL'leri yok sayar (create'te tamamen düşürür) → admin gibi
@@ -147,26 +148,40 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
     tenant ≤50. Aksiyonlar backend yetkisine göre: Düzenle `mail:update`, **Test Et `mail:create`** (`POST
     /{id}/test {testTo}` gerçek e-posta gönderir; sonuç dialog içinde), Doğrula `mail:read` (`POST /{id}/verify`,
     yalnız SMTP handshake; pasif hesabı backend reddeder; sonuç başarı/hata **dialog**'u, hata metni backend'den),
-    Sil `mail:delete`. Formdaki doğrulama **kayıtlı** ayarları test eder (kirliyken not gösterilir).
+    Sil `mail:delete`. Formdaki doğrulama **kayıtlı** ayarları test eder (kirliyken not gösterilir; sürerken Kaydet
+    kilitli). Doğrula/Test `smtpTimeout` (30 sn) sonra anlaşılır hata verir. Test dialog'u gönderim sürerken
+    kapanmaz (PopScope + `barrierDismissible: false` + "Kapat" kilitli), sonuç ikon + "Başarılı:/Hata:" önekiyle.
+    Sonuç dialog'ları ve SnackBar'lar **ekran State'inin context'iyle** (liste yenilenince satır context'i ölür).
+    Kart aksiyonlarının semantik etiketi kayıt adını içerir ("Sil: Hesap 1"); tenant rozeti `AppColors.primaryLight`.
     Admin/backend'de şifreleme (TLS/SSL) alanı yok — port'a göre (587/465).
   - **E-posta şablonları** (`email_templates:read|manage`): `GET /email-templates?page&size` (Spring `Page`),
     detay/PUT/DELETE `…/{templateKey}`. **PUT `templateKey`'i de gönderir** (`DtoEmailTemplateIU` `@NotBlank`;
     admin formu bunu düşürüyor) + kayıttaki `optimisticLockVersion` (backend şu an kullanmıyor). Gövde monospace kod
-    alanı (smart quotes/dashes kapalı — Thymeleaf `"${…}"` bozulmasın). Kaydet edit'te ekranda kalır (admin gibi;
-    yanıttaki yeni sürümle), yeni kayıt kendi düzenleme ekranına geçer. `manage` yoksa salt okunur. Silme anahtarı
+    alanı, ekranın ~%60'ı sabit yükseklikte kendi içinde kayar; gövde ve konu alanında autocorrect/öneri/smart
+    quotes-dashes kapalı (Thymeleaf `"${…}"` bozulmasın). Kaydet edit'te ekranda kalır (admin gibi; yanıttaki yeni
+    sürümle); yeni kayıt **aynı ekranda** düzenleme moduna geçer (pushReplacement yok → liste, kullanıcı çıkınca
+    yenilenir). 409'da "Yenile" aksiyonlu SnackBar (düzenlemeler kaybolur). Silme sürerken Sil/Kaydet kilitli. `manage` yoksa salt okunur. Silme anahtarı
     **yazarak** onaylatır (`requiredText`, admin `DestructiveConfirmDialog`). Global şablon (`tenantId == null`) "Genel
     şablon" işaretli: düzenlemek tüm tenant'ları etkiler. Classpath şablon adları `GET /emails/templates`
     (`emails:read`) sheet'te. Admin'de değişken listesi yok → mobilde de yok.
   - **Önizleme:** `POST /email-templates/{key}/preview {data}` **kayıtlı** sürümü backend'de render eder (açılışta
     admin varsayılan verisiyle; "Test verisi" JSON nesnesi). Dönen HTML **güvenilmez** → yalnız `SafeHtmlView`:
     JavaScript kapalı, ilk `about:blank` yüklemesinden sonra her gezinme engelli (`isPreviewNavigationAllowed`),
-    `safePreviewDocument` → `<head>` başına CSP `default-src 'none'` (yalnız inline stil + `data:` görsel/font) +
-    viewport; script/noscript/iframe/object/embed/link/base/`meta[http-equiv]` silinir, `on*` ve URL öznitelikleri
-    düşer (`a/area href="#"`, yalnız `data:image/` `src` kalır). Uzak görseller bilerek görünmez. Widget testlerinde
-    WebView yerine `htmlViewBuilder` / `previewViewBuilder` seam'i.
+    `safePreviewDocument` (**`compute` ile arka plan isolate'ında**) → `<head>` başına CSP `default-src 'none'` (yalnız
+    inline stil + `data:` görsel/font) + kendi viewport'umuz; script/noscript/iframe/frame/object/embed/applet/portal/
+    link/base/`meta[http-equiv]`/şablonun viewport'u ile **svg, math** (html paketi foreign content `<style>`'ını
+    tarayıcıdan farklı ayrıştırıyor → mXSS) ve SVG animasyon öğeleri (`animate`, `set`, `animateTransform`,
+    `animateMotion`) silinir; `on*` ve URL öznitelikleri düşer (`a/area href="#"`, yalnız `data:image/` `src` kalır).
+    CSS (`style` özniteliği + `<style>`): `cleanCss` önce CSS kaçışlarını çözer/yorumları siler, sonra `@import`
+    kuralını düşürür, `data:image/` dışı `url()` → `none`, `expression(`/`behavior:`/`-moz-binding:` etkisiz. Çıktı
+    yeniden parse + sanitize edilir, **sabit nokta** olana kadar (en çok 3 tur; olmazsa güvenli hata belgesi).
+    **Sınırlar** (parse'tan önce, `previewLimitError`): >1 MB "çok büyük", iç içelik >2000 (`p/li/td/tr…` ve void
+    öğeler sayılmaz) "çok karmaşık" → ekranda mesaj, WebView açılmaz. Uzak görseller bilerek görünmez; ekrandaki
+    daraltılabilir not "yerleşim bozuk görünebilir" der. Widget testlerinde WebView yerine `htmlViewBuilder` /
+    `previewViewBuilder` seam'i.
   - **E-posta logları** (`emails:read`): `GET /emails?status=&sort=id,desc` + page/size; durum çipi sunucu filtresi
     (yeni liste), "Toplam N kayıt" `onLoad`'dan. Tekrar dene `POST /emails/{id}/retry` (`emails:retry`; SENT'te yok,
-    detayda devre dışı + sebep; hata backend mesajı). Detay ekranı liste satırından (backend'de detay endpoint'i yok);
+    detayda devre dışı + sebep; PENDING'de önce onay — iki kez gönderilebilir; hata backend mesajı). Detay ekranı liste satırından (backend'de detay endpoint'i yok);
     `DtoEmailLog`'da hata mesajı / gövde yok → gösterilmez. Durum etiketleri `emailStatusLabels` (dashboard ile ortak).
 - **Zengin metin (posts `content`):** `RichTextField` + `rich_text_codec.dart`. Kodek yalnız admin Tiptap
   alt kümesini (p, h1–h6, ul/ol>li>p iç içe, blockquote>p, pre>code[language-*], hr, img[src,alt,title],
@@ -200,7 +215,8 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
   email-logs). `navScreen` null dönen öğe "Yakında" etiketi taşır ve yer tutucu ekranı açar.
 - **Yerelleştirme:** `MaterialApp(locale: tr, supportedLocales: [tr], localizationsDelegates: appLocalizationsDelegates)`
   — Quill + `flutter_localizations` Global Material/Widgets/Cupertino, her biri bir kez. Cihaz dili ne olursa olsun
-  sistem metinleri (tarih seçici, ReorderableListView "Yukarı/Aşağı/Başa/Sona taşı" aksiyonları) Türkçe.
+  sistem metinleri (tarih seçici, ReorderableListView "Yukarı/Aşağı/Başa/Sona taşı" aksiyonları) Türkçe; iOS
+  `Info.plist` `CFBundleLocalizations: [tr]`.
 - **Oturum sonu:** `EllyMobileApp.navigatorKey`; `AuthWrapper` oturum düşünce (logout ya da refresh başarısız)
   `popUntil(isFirst)` ile tüm ekran/dialog/sheet'leri kapatır — sonraki kullanıcı eski ekranı görmez.
 - **Ekran iskeleti:** yeni ekranlar `AppScaffold` (ya da yalnız arka plan için `AmbientBackground`) kullanır;

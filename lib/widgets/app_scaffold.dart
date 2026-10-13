@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import 'app_drawer.dart';
+import 'save_bar.dart';
 
 /// The app's soft background glows (primary top-left, secondary bottom-right) behind [child].
 /// Radial gradients instead of BackdropFilter blobs: same look, no full-screen blur pass.
@@ -43,7 +44,7 @@ class AppScaffold extends StatelessWidget {
   final Widget? floatingActionButton;
 
   /// Pinned under the body (form [SaveBar]). Scaffold shows SnackBars above it, so they never cover the
-  /// button; it rides above the keyboard.
+  /// button. While the keyboard is open a [SaveBar] becomes a save icon in the app bar instead.
   final Widget? bottomNavigationBar;
 
   /// Drawer item this screen represents (`NavItem.id`); null = no drawer, the app bar shows a
@@ -66,6 +67,11 @@ class AppScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Keyboard open: a SaveBar moves into the app bar (keeps the visible area for the field, also in landscape;
+    // iOS multi-line fields have no "done" key to get the bar back).
+    final saveBar = bottomNavigationBar is SaveBar ? bottomNavigationBar as SaveBar : null;
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+    final saveInAppBar = saveBar != null && keyboardOpen;
     return Scaffold(
       extendBodyBehindAppBar: true,
       drawer: navId == null ? null : AppDrawer(currentId: navId!),
@@ -79,14 +85,31 @@ class AppScaffold extends StatelessWidget {
               elevation: 0,
               scrolledUnderElevation: 0,
               title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-              actions: actions,
+              actions: [
+                ...?actions,
+                if (saveInAppBar)
+                  saveBar.loading
+                      ? const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16),
+                          child: SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, semanticsLabel: 'Kaydediliyor'),
+                          ),
+                        )
+                      : IconButton(
+                          key: saveBar.buttonKey,
+                          tooltip: saveBar.label,
+                          icon: const Icon(Icons.save_rounded),
+                          onPressed: saveBar.onPressed,
+                        ),
+              ],
             ),
           ),
         ),
       ),
       body: AmbientBackground(child: safeArea ? SafeArea(child: body) : body),
       floatingActionButton: floatingActionButton,
-      bottomNavigationBar: bottomNavigationBar == null
+      bottomNavigationBar: bottomNavigationBar == null || saveInAppBar
           ? null
           : Padding(
               padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),

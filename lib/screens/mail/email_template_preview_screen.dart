@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../config/app_theme.dart';
 import '../../services/api_service.dart';
 import '../../widgets/app_scaffold.dart';
+import '../../services/safe_html.dart' show previewLimitError;
 import '../../widgets/safe_html_view.dart';
 import '../../widgets/state_views.dart';
 
@@ -90,6 +91,12 @@ class _EmailTemplatePreviewScreenState extends State<EmailTemplatePreviewScreen>
       content = ErrorView(message: _error!, onRetry: _render);
     } else if (html == null) {
       content = const LoadingView(label: 'Render ediliyor');
+    } else if (previewLimitError(html) case final limit?) {
+      content = EmptyView(
+        key: const ValueKey('preview_too_complex'),
+        icon: Icons.warning_amber_rounded,
+        message: limit,
+      );
     } else {
       content = (widget.htmlViewBuilder ?? (h) => SafeHtmlView(key: ValueKey(h), html: h))(html);
     }
@@ -111,7 +118,8 @@ class _EmailTemplatePreviewScreenState extends State<EmailTemplatePreviewScreen>
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_loading) const LinearProgressIndicator(minHeight: 2, semanticsLabel: 'Render ediliyor'),
+          // One indicator: the centred spinner on the first render, this bar on re-renders.
+          if (_loading && html != null) const LinearProgressIndicator(minHeight: 2, semanticsLabel: 'Render ediliyor'),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: Column(
@@ -133,8 +141,24 @@ class _EmailTemplatePreviewScreenState extends State<EmailTemplatePreviewScreen>
                     style: muted.copyWith(color: AppColors.warning),
                   ),
                 ],
-                const SizedBox(height: 4),
-                Text('Güvenlik için betikler, bağlantılar ve uzak görseller kapalı.', style: muted),
+                Theme(
+                  data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    key: const ValueKey('preview_security_note'),
+                    tilePadding: EdgeInsets.zero,
+                    childrenPadding: const EdgeInsets.only(bottom: 4),
+                    expandedAlignment: Alignment.centerLeft,
+                    dense: true,
+                    title: Text('Neden bazı öğeler görünmüyor?', style: muted),
+                    children: [
+                      Text(
+                        'Güvenlik için betikler, bağlantılar, uzak görseller, SVG/MathML ve harici CSS kapalı; '
+                        'yerleşim e-posta istemcisindekinden farklı (bozuk) görünebilir.',
+                        style: muted,
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -194,7 +218,10 @@ class _TestDataDialogState extends State<_TestDataDialog> {
           smartDashesType: SmartDashesType.disabled,
           keyboardType: TextInputType.multiline,
           style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
-          decoration: fieldDecoration(scheme).copyWith(errorText: _error, errorMaxLines: 3),
+          decoration: fieldDecoration(
+            scheme,
+            label: 'Değişkenler (JSON nesnesi)',
+          ).copyWith(errorText: _error, errorMaxLines: 3),
           onChanged: (_) {
             if (_error != null) setState(() => _error = null);
           },

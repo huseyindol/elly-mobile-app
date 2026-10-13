@@ -31,13 +31,16 @@ Future<bool> showConfirmDialog(
                     children: [
                       Text(message),
                       const SizedBox(height: 16),
+                      // Instruction as its own Text: a floating label would cut a long key to one line.
+                      Text('Onaylamak için "$requiredText" yazın'),
+                      const SizedBox(height: 8),
                       TextField(
                         key: const ValueKey('confirm_dialog_text'),
                         autofocus: true,
                         autocorrect: false,
                         enableSuggestions: false,
                         style: const TextStyle(fontFamily: 'monospace'),
-                        decoration: InputDecoration(labelText: 'Onaylamak için "$requiredText" yazın'),
+                        decoration: InputDecoration(hintText: requiredText),
                         onChanged: (value) => setState(() => typed = value),
                       ),
                     ],

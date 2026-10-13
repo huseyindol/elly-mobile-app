@@ -330,7 +330,7 @@ class _MailAccountFormScreenState extends State<MailAccountFormScreen> {
       child: AppScaffold(
         title: _isEditing ? 'Mail Hesabı Düzenle' : 'Yeni Mail Hesabı',
         body: body,
-        bottomNavigationBar: _ready ? SaveBar(onPressed: _save, loading: _saving) : null,
+        bottomNavigationBar: _ready ? SaveBar(onPressed: _verifying ? null : _save, loading: _saving) : null,
       ),
     );
   }

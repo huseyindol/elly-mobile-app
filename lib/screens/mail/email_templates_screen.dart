@@ -26,6 +26,7 @@ class EmailTemplatesScreen extends StatefulWidget {
 class _EmailTemplatesScreenState extends State<EmailTemplatesScreen> {
   late final ApiService _api = widget.apiService ?? ApiService();
   final _listKey = GlobalKey<SearchablePagedListState>();
+  final Set<String> _deleting = {};
 
   Future<void> _reload() async => _listKey.currentState?.reload();
 
@@ -40,12 +41,15 @@ class _EmailTemplatesScreenState extends State<EmailTemplatesScreen> {
 
   Future<void> _delete(String key) async {
     if (await confirmDeleteTemplate(context, key) && mounted) {
+      setState(() => _deleting.add(key));
       try {
         await _api.delete('/email-templates/${Uri.encodeComponent(key)}');
         if (mounted) showAppSnackBar(context, 'Template silindi');
         _reload();
       } catch (e) {
         if (mounted) showAppSnackBar(context, e.toString(), error: true);
+      } finally {
+        if (mounted) setState(() => _deleting.remove(key));
       }
     }
   }
@@ -92,9 +96,9 @@ class _EmailTemplatesScreenState extends State<EmailTemplatesScreen> {
           trailing: canManage
               ? IconButton(
                   key: ValueKey('delete_$key'),
-                  tooltip: 'Sil',
+                  tooltip: 'Sil: $key',
                   icon: Icon(Icons.delete_outline_rounded, color: scheme.onErrorContainer),
-                  onPressed: () => _delete(key),
+                  onPressed: _deleting.contains(key) ? null : () => _delete(key),
                 )
               : null,
           onTap: () => _open(key),
@@ -172,7 +176,9 @@ class _ClasspathTemplatesState extends State<_ClasspathTemplates> {
         child: FutureBuilder<dynamic>(
           future: _future,
           builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const SizedBox(height: 160, child: LoadingView());
+            }
             if (snapshot.hasError) {
               return ErrorView(
                 message: '${snapshot.error}',

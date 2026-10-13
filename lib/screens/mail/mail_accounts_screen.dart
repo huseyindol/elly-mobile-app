@@ -82,8 +82,11 @@ class _MailAccountsScreenState extends State<MailAccountsScreen> {
     }
   }
 
-  Widget _card(BuildContext context, Map<String, dynamic> account, AuthProvider auth) {
-    final scheme = Theme.of(context).colorScheme;
+  // Dialogs and results use the screen's context (this.context), not the row's: a list reload may dispose the row.
+  Widget _card(BuildContext itemContext, Map<String, dynamic> account, AuthProvider auth) {
+    final scheme = Theme.of(itemContext).colorScheme;
+    final name = '${account['name'] ?? ''}';
+    Text label(String action) => Text(action, semanticsLabel: '$action: $name');
     final muted = TextStyle(color: scheme.onSurface.withValues(alpha: 0.65));
     final id = account['id'];
     final active = account['active'] == true;
@@ -105,7 +108,7 @@ class _MailAccountsScreenState extends State<MailAccountsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${account['name'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+          Text(name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
           Text('${account['fromAddress'] ?? ''}', style: muted),
           const SizedBox(height: 8),
           Wrap(
@@ -113,7 +116,10 @@ class _MailAccountsScreenState extends State<MailAccountsScreen> {
             runSpacing: 6,
             children: [
               if (account['isPrimary'] == true) const StatusBadge(label: 'Ana Hesap', color: AppColors.success),
-              StatusBadge(label: tenant.isEmpty ? 'Atanmamış' : tenant, color: tenant.isEmpty ? null : scheme.primary),
+              StatusBadge(
+                label: tenant.isEmpty ? 'Atanmamış' : tenant,
+                color: tenant.isEmpty ? null : AppColors.primaryLight,
+              ),
               StatusBadge.active(active),
             ],
           ),
@@ -131,7 +137,7 @@ class _MailAccountsScreenState extends State<MailAccountsScreen> {
                   key: ValueKey('edit_$id'),
                   onPressed: () => _openForm(account),
                   icon: const Icon(Icons.edit_rounded),
-                  label: const Text('Düzenle'),
+                  label: label('Düzenle'),
                 ),
               // Backend: /test needs mail:create (it sends a real e-mail), /verify mail:read.
               if (auth.can('mail', 'create'))
@@ -139,7 +145,7 @@ class _MailAccountsScreenState extends State<MailAccountsScreen> {
                   key: ValueKey('test_$id'),
                   onPressed: () => showSmtpTestDialog(context, _api, account),
                   icon: const Icon(Icons.send_rounded),
-                  label: const Text('Test Et'),
+                  label: label('Test Et'),
                 ),
               TextButton.icon(
                 key: ValueKey('verify_$id'),
@@ -150,7 +156,7 @@ class _MailAccountsScreenState extends State<MailAccountsScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2, semanticsLabel: 'Doğrulanıyor'),
                       )
                     : const Icon(Icons.verified_rounded),
-                label: const Text('Doğrula'),
+                label: label('Doğrula'),
               ),
               if (auth.can('mail', 'delete'))
                 TextButton.icon(
@@ -158,7 +164,7 @@ class _MailAccountsScreenState extends State<MailAccountsScreen> {
                   style: TextButton.styleFrom(foregroundColor: scheme.onErrorContainer),
                   onPressed: () => _delete(account),
                   icon: const Icon(Icons.delete_outline_rounded),
-                  label: const Text('Sil'),
+                  label: label('Sil'),
                 ),
             ],
           ),
@@ -209,7 +215,7 @@ class _MailAccountsScreenState extends State<MailAccountsScreen> {
               searchText: (a) =>
                   [a['name'], a['fromAddress'], a['smtpHost'], a['smtpUsername']].map((v) => v ?? '').join(' '),
               itemFilter: _tenant == null ? null : (a) => a['tenantId'] == _tenant,
-              itemBuilder: (context, account) => _card(context, account, auth),
+              itemBuilder: (itemContext, account) => _card(itemContext, account, auth),
             ),
           ),
         ],
@@ -225,14 +231,21 @@ class _MailAccountsScreenState extends State<MailAccountsScreen> {
   }
 }
 
+/// SMTP calls wait on a remote mail server: give up after this and say so.
+const smtpTimeout = Duration(seconds: 30);
+
+String smtpErrorText(Object e) => e is TimeoutException
+    ? 'SMTP sunucusu ${smtpTimeout.inSeconds} sn içinde yanıt vermedi. Sunucu, port ve ağ bağlantısını kontrol edin.'
+    : e.toString();
+
 /// `POST /mail-accounts/{id}/verify` (SMTP handshake with the saved settings, no e-mail) → result dialog.
-/// The backend rejects inactive accounts and returns the SMTP error text on failure.
+/// The backend rejects inactive accounts and returns the SMTP error text on failure. Pass the screen's context.
 Future<void> verifyMailAccount(BuildContext context, ApiService api, Map<String, dynamic> account) async {
   String? error;
   try {
-    await api.post('/mail-accounts/${account['id']}/verify', const {});
+    await api.post('/mail-accounts/${account['id']}/verify', const {}).timeout(smtpTimeout);
   } catch (e) {
-    error = e.toString();
+    error = smtpErrorText(e);
   }
   if (!context.mounted) return;
   // Not awaited: the caller's "Doğrulanıyor" state ends when the result is on screen.
@@ -275,6 +288,7 @@ class _ResultDialog extends StatelessWidget {
 /// the dialog.
 Future<void> showSmtpTestDialog(BuildContext context, ApiService api, Map<String, dynamic> account) => showDialog<void>(
   context: context,
+  barrierDismissible: false, // a send in flight must not lose its result; "Kapat" closes
   builder: (_) => _SmtpTestDialog(api: api, account: account),
 );
 
@@ -307,11 +321,13 @@ class _SmtpTestDialogState extends State<_SmtpTestDialog> {
       _result = null;
     });
     try {
-      final data = await widget.api.post('/mail-accounts/${widget.account['id']}/test', {'testTo': _to.text.trim()});
+      final data = await widget.api
+          .post('/mail-accounts/${widget.account['id']}/test', {'testTo': _to.text.trim()})
+          .timeout(smtpTimeout);
       _result = data is String && data.isNotEmpty ? data : 'Test maili başarıyla gönderildi';
       _failed = false;
     } catch (e) {
-      _result = e.toString();
+      _result = smtpErrorText(e);
       _failed = true;
     }
     if (mounted) setState(() => _sending = false);
@@ -320,55 +336,79 @@ class _SmtpTestDialogState extends State<_SmtpTestDialog> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return AlertDialog(
-      backgroundColor: scheme.surface,
-      title: const Text('SMTP Bağlantı Testi'),
-      content: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('${widget.account['name'] ?? ''}', style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.7))),
-              const SizedBox(height: 16),
-              if (_result != null) ...[
-                Semantics(
-                  liveRegion: true,
-                  child: Text(
-                    _result!,
-                    key: const ValueKey('smtp_test_result'),
-                    style: TextStyle(color: _failed ? scheme.onErrorContainer : AppColors.success),
-                  ),
+    return PopScope(
+      canPop: !_sending,
+      child: AlertDialog(
+        backgroundColor: scheme.surface,
+        title: const Text('SMTP Bağlantı Testi'),
+        content: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${widget.account['name'] ?? ''}',
+                  style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.7)),
                 ),
                 const SizedBox(height: 16),
+                if (_result != null) ...[
+                  Semantics(
+                    liveRegion: true,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          _failed ? Icons.error_outline_rounded : Icons.check_circle_rounded,
+                          size: 20,
+                          color: _failed ? scheme.onErrorContainer : AppColors.success,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '${_failed ? 'Hata' : 'Başarılı'}: $_result',
+                            key: const ValueKey('smtp_test_result'),
+                            style: TextStyle(color: _failed ? scheme.onErrorContainer : AppColors.success),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                TextFormField(
+                  key: const ValueKey('smtp_test_to'),
+                  controller: _to,
+                  keyboardType: TextInputType.emailAddress,
+                  autocorrect: false,
+                  decoration: fieldDecoration(scheme, label: 'Test E-posta Adresi *', hint: 'test@ornek.com'),
+                  validator: (v) =>
+                      emailPattern.hasMatch(v?.trim() ?? '') ? null : 'Geçerli bir e-posta adresi giriniz',
+                  onFieldSubmitted: (_) => _sending ? null : _send(),
+                ),
               ],
-              TextFormField(
-                key: const ValueKey('smtp_test_to'),
-                controller: _to,
-                keyboardType: TextInputType.emailAddress,
-                autocorrect: false,
-                decoration: fieldDecoration(scheme, label: 'Test E-posta Adresi *', hint: 'test@ornek.com'),
-                validator: (v) => emailPattern.hasMatch(v?.trim() ?? '') ? null : 'Geçerli bir e-posta adresi giriniz',
-                onFieldSubmitted: (_) => _sending ? null : _send(),
-              ),
-            ],
+            ),
           ),
         ),
+        actions: [
+          TextButton(
+            key: const ValueKey('smtp_test_close'),
+            onPressed: _sending ? null : () => Navigator.of(context).pop(),
+            child: const Text('Kapat'),
+          ),
+          ElevatedButton(
+            key: const ValueKey('smtp_test_send'),
+            onPressed: _sending ? null : _send,
+            child: _sending
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, semanticsLabel: 'Gönderiliyor'),
+                  )
+                : const Text('Test Gönder'),
+          ),
+        ],
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Kapat')),
-        ElevatedButton(
-          key: const ValueKey('smtp_test_send'),
-          onPressed: _sending ? null : _send,
-          child: _sending
-              ? const SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2, semanticsLabel: 'Gönderiliyor'),
-                )
-              : const Text('Test Gönder'),
-        ),
-      ],
     );
   }
 }

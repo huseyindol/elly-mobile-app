@@ -161,7 +161,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('smtp_test_send')));
       await settle(tester);
       expect(lastBody('POST', '/mail-accounts/1/test'), {'testTo': 'a@b.co'});
-      expect(find.text('Test maili basariyla gonderildi -> a@b.co'), findsOneWidget);
+      expect(find.text('Başarılı: Test maili basariyla gonderildi -> a@b.co'), findsOneWidget);
       expect(find.text('SMTP Bağlantı Testi'), findsOneWidget, reason: 'dialog stays open');
     });
 
@@ -173,7 +173,7 @@ void main() {
       await tester.enterText(find.byKey(const ValueKey('smtp_test_to')), 'a@b.co');
       await tester.tap(find.byKey(const ValueKey('smtp_test_send')));
       await settle(tester);
-      expect(find.text('Authentication failed'), findsOneWidget);
+      expect(find.text('Hata: Authentication failed'), findsOneWidget);
     });
 
     testWidgets('delete: confirm → DELETE → list reloads', (tester) async {
