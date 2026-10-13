@@ -72,9 +72,10 @@ void main() {
     await settle(tester);
   }
 
-  /// Error SnackBars sit over the bottom bars, so buttons are pressed directly (like the other form tests).
+  /// Real taps: the save bars live in Scaffold.bottomNavigationBar, so error SnackBars show above them and
+  /// never block the button (a tap that misses would fail the test).
   Future<void> press(WidgetTester tester, Key key) async {
-    tester.widget<ElevatedButton>(find.byKey(key)).onPressed!();
+    await tester.tap(find.byKey(key));
     await settle(tester);
   }
 
@@ -280,7 +281,7 @@ void main() {
       expect(find.text('Bu ID zaten kullanılıyor'), findsOneWidget);
       expect(find.text('Etiket zorunludur'), findsOneWidget);
       expect(find.text('Seçim kutusu ve radyo buton için en az bir seçenek gereklidir'), findsOneWidget);
-      expect(find.text('3 alan hatalı'), findsOneWidget);
+      expect(find.text('3 alan hatalı: Alan ID'), findsOneWidget);
 
       await tester.enterText(find.byKey(const ValueKey('field_id')), '1bad');
       await press(tester, const ValueKey('field_apply_button'));

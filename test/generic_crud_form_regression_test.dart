@@ -196,7 +196,7 @@ void main() {
         final field = tester.widget<TextField>(
           find.descendant(of: find.byKey(ValueKey('field_${first.key}')), matching: find.byType(TextField)),
         );
-        expect(field.decoration!.labelText, '${first.label} *');
+        expect(_labelText(field.decoration!), '${first.label} *');
         expect(field.decoration!.filled, isTrue);
         await tester.pump(const Duration(seconds: 5));
       });
@@ -331,7 +331,7 @@ void main() {
       final rect = tester.getRect(target);
       expect(rect.top, greaterThanOrEqualTo(viewport.top - 1));
       expect(rect.bottom, lessThanOrEqualTo(viewport.bottom + 1));
-      expect(find.text('1 alan hatalı'), findsOneWidget);
+      expect(find.textContaining(RegExp(r'^1 alan hatalı')), findsOneWidget);
     });
 
     testWidgets('forms: the schema error (no fields) is scrolled into view', (tester) async {
@@ -361,7 +361,7 @@ void main() {
       await tester.pumpAndSettle(); // the focused field scrolls itself into view first
       await save(tester);
 
-      expect(find.text('2 alan hatalı'), findsOneWidget);
+      expect(find.textContaining(RegExp(r'^2 alan hatalı')), findsOneWidget);
       final viewport = tester.getRect(find.byType(SingleChildScrollView).first);
       expect(
         tester.getRect(find.byKey(const ValueKey('field_title'))).top,
@@ -373,7 +373,7 @@ void main() {
 
   group('generic requiredWhen / optionsPermission / currentOptionLabel / RecordLink', () {
     Finder labelOf(String key) => find.descendant(of: find.byKey(ValueKey('field_$key')), matching: find.byType(TextField));
-    String? label(WidgetTester tester, String key) => tester.widget<TextField>(labelOf(key)).decoration!.labelText;
+    String? label(WidgetTester tester, String key) => _labelText(tester.widget<TextField>(labelOf(key)).decoration!);
 
     setUp(() {
       backend.ok('/owners', [
@@ -642,7 +642,13 @@ void main() {
       final scheme = ColorScheme.fromSeed(seedColor: Colors.teal, brightness: Brightness.dark);
       final d = fieldDecoration(scheme, label: 'Ad *', hint: 'ipucu', helper: 'yardım');
 
-      expect(d.labelText, 'Ad *');
+      expect(_labelText(d), 'Ad *');
+      expect(
+        ((d.label as Text).textSpan as TextSpan).children!.single,
+        isA<TextSpan>().having((t) => t.semanticsLabel, 'semanticsLabel', ', zorunlu'),
+        reason: 'screen readers say "zorunlu", not "star"',
+      );
+      expect(fieldDecoration(scheme, label: 'Ad').labelText, 'Ad');
       expect(d.hintText, 'ipucu');
       expect(d.helperText, 'yardım');
       expect(d.filled, isTrue);
@@ -653,4 +659,10 @@ void main() {
       expect(fieldDecoration(scheme).labelText, isNull);
     });
   });
+}
+
+/// Label of a field decoration: plain `labelText`, or the rich label `fieldDecoration` builds for "… *".
+String? _labelText(InputDecoration d) {
+  final label = d.label;
+  return d.labelText ?? (label is Text ? label.data ?? label.textSpan?.toPlainText(includeSemanticsLabels: false) : null);
 }

@@ -6,6 +6,7 @@ import '../screens/forms/form_preview_screen.dart';
 import '../services/crud_payload.dart';
 import '../services/form_schema.dart';
 import 'confirm_dialog.dart';
+import 'reorder_controls.dart';
 
 /// Form builder for a form's `schema` (admin `forms/[id]`: layout, submit label, wizard steps, fields).
 /// A [FormField]: the save-time checks of the admin (≥1 field; wizard: steps and every field on a step)
@@ -59,6 +60,7 @@ class _SchemaEditorState extends State<_SchemaEditor> {
     final next = deepCopy(_schema);
     change(next);
     widget.field.didChange(next);
+    if (widget.field.hasError) widget.field.validate(); // a fixed problem clears right away
     widget.onChanged(next);
   }
 
@@ -151,6 +153,13 @@ class _SchemaEditorState extends State<_SchemaEditor> {
 
   Widget _steps(ThemeData theme) {
     final steps = schemaSteps(_schema);
+    // `to` is the index after removing `from` (onReorderItem semantics).
+    void moveStep(int from, int to) {
+      final next = [...steps];
+      next.insert(to, next.removeAt(from));
+      _setSteps(next);
+    }
+
     final muted = TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.65));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -178,42 +187,43 @@ class _SchemaEditorState extends State<_SchemaEditor> {
           )
         else
           ReorderableListView(
+            key: const ValueKey('steps_list'),
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             buildDefaultDragHandles: false,
-            onReorderItem: (from, to) {
-              final next = [...steps];
-              next.insert(to, next.removeAt(from)); // `to` is already the index after the removal
-              _setSteps(next);
-            },
+            onReorderItem: moveStep,
             children: [
               for (final (i, step) in steps.indexed)
                 ReorderableDelayedDragStartListener(
                   key: ObjectKey(step),
                   index: i,
-                  child: ListTile(
-                    key: ValueKey('step_$i'),
-                    contentPadding: EdgeInsets.zero,
-                    leading: CircleAvatar(radius: 14, child: Text('${i + 1}')),
-                    title: Text('${step['title'] ?? ''}'),
-                    subtitle: '${step['description'] ?? ''}'.isEmpty ? null : Text('${step['description']}'),
-                    onTap: () => _editStep(i),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          tooltip: 'Adımı sil',
-                          icon: Icon(Icons.delete_outline_rounded, color: theme.colorScheme.onErrorContainer),
-                          onPressed: () => _deleteStep(i),
-                        ),
-                        ReorderableDragStartListener(
-                          index: i,
-                          child: const Padding(
-                            padding: EdgeInsets.all(8),
-                            child: Icon(Icons.drag_handle_rounded, semanticLabel: 'Sürükleyerek sırala'),
+                  child: ReorderableRow(
+                    index: i,
+                    count: steps.length,
+                    onMove: (delta) => moveStep(i, i + delta),
+                    child: ListTile(
+                      key: ValueKey('step_$i'),
+                      contentPadding: EdgeInsets.zero,
+                      leading: CircleAvatar(radius: 14, child: Text('${i + 1}')),
+                      title: Text('${step['title'] ?? ''}'),
+                      subtitle: '${step['description'] ?? ''}'.isEmpty ? null : Text('${step['description']}'),
+                      onTap: () => _editStep(i),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: 'Adımı sil',
+                            icon: Icon(Icons.delete_outline_rounded, color: theme.colorScheme.onErrorContainer),
+                            onPressed: () => _deleteStep(i),
                           ),
-                        ),
-                      ],
+                          ReorderControls(
+                            index: i,
+                            count: steps.length,
+                            onMove: (delta) => moveStep(i, i + delta),
+                            menuKey: ValueKey('move_step_$i'),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),

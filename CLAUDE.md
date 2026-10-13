@@ -42,7 +42,9 @@ lib/
 │   ├── forms/                     # form builder alt ekranları: alanlar + alan düzenleme, önizleme, gönderimler (+ detay)
 │   └── crud/generic_crud_{list,form}_screen.dart
 └── widgets/                       # ortak bileşenler — yeni ekranlar bunları kullanır
-    ├── app_scaffold.dart          # AppScaffold (cam AppBar + AmbientBackground + opsiyonel drawer)
+    ├── app_scaffold.dart          # AppScaffold (cam AppBar + AmbientBackground + opsiyonel drawer + bottomNavigationBar)
+    ├── app_snack_bar.dart         # showAppSnackBar (tek SnackBar yolu) · reportInvalidFields (kaydır + "N alan hatalı: Etiket")
+    ├── reorder_controls.dart      # ReorderableRow (ekran okuyucu "Yukarı/Aşağı taşı") · ReorderControls (Taşı menüsü + tutamaç)
     ├── app_drawer.dart            # AppDrawer(currentId) + openNavItem + isNavItemVisible + avatarInitials
     ├── state_views.dart           # LoadingView (semanticsLabel) · ErrorView (Tekrar Dene) · EmptyView
     ├── confirm_dialog.dart        # showConfirmDialog (destructive: kırmızı onay) · confirmLeaveForm (Çık/Kal)
@@ -93,8 +95,12 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
   - Tamamen boş SEO bloğu, kayıtta `seoInfo` yoksa gönderilmez; varsa düzenlendiği gibi gider.
   - **Form UX:** her değişiklik (metin, dropdown, switch, tarih, dosya, ilişki, zengin metin) formu kirletir;
     `PopScope` kirliyken ya da kayıt sürerken çıkışta yıkıcı onay ister. Doğrulama hatasında
-    `validateGranularly` → ilk hatalı alana kaydırma + "N alan hatalı". Kaydet sabit alt çubukta.
-    Yeni form ekranları aynı parçaları kullanır: `SaveBar`, `confirmLeaveForm`, `fieldDecoration` (app_theme).
+    `validateGranularly` → `reportInvalidFields`: ilk hatalı alana kaydırma + "N alan hatalı: <ilk alanın
+    etiketi>". Kaydet sabit alt çubukta: `AppScaffold(bottomNavigationBar: SaveBar(...))` — Scaffold
+    SnackBar'ı çubuğun **üstünde** gösterir (butonu örtmez), çubuk klavyenin üstüne çıkar; SaveBar'ı body'ye
+    koyma. Başarılı kayıt/uygula pop'tan önce `clearSnackBars()` (eski hata sonraki ekrana taşınmaz).
+    Yeni form ekranları aynı parçaları kullanır: `SaveBar`, `confirmLeaveForm`, `fieldDecoration` (app_theme;
+    `"Etiket *"` etiketi ekran okuyucuda "zorunlu" okunur).
   - Banner görselleri: backend dosya gelince URL'leri yok sayar (create'te tamamen düşürür) → admin gibi
     "Dosya yükle / URL gir" modu; yalnız görünen dosya alanları gönderilir.
   - İçerikler: metadata alanları `contentType`'a göre (admin `schemas/dynamic` skills/experience); tip
@@ -110,8 +116,11 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
   değişince ona bakan koşullar taşınır (admin taşımaz). Kayıt kontrolü (`schemaError`): ≥1 alan; sihirbazda ≥1
   adım ve her alan **var olan** bir adımda. Sihirbazdan çıkınca `steps` gönderilmez (admin gibi), geri dönünce
   geri gelir. Alan listesi ayrı ekranda (`FormFieldsScreen`, sürükle-sırala otomatik kaydırsın diye
-  ReorderableListView ekranın kaydırıcısı); alan düzenleme tam ekran (`FieldEditScreen`, "Uygula"; değişiklik
-  yoksa alana dokunmaz). Önizleme `evaluateCondition`/`isFormFieldVisible` ile (admin/tenant
+  ReorderableListView ekranın kaydırıcısı; "Değişiklikler formu Kaydet'te gönderilir" notu; silme/taşıma sonrası
+  "Geri al" SnackBar'ı); alan düzenleme tam ekran (`FieldEditScreen`, "Uygula"; mevcut alanda değişiklik yoksa
+  alana dokunmaz, **yeni alan her zaman doğrulanır**; min > max reddedilir). Şema hatası gösterilirken her
+  değişiklikte yeniden doğrulanır (düzelen hata hemen kalkar). Zorunlu uzak dropdown boşsa sebep helper metninde
+  (`emptyOptionsHint` / izin yok). Önizleme `evaluateCondition`/`isFormFieldVisible` ile (admin/tenant
   `condition-evaluator.ts` JavaScript `String()`/`Number()` anlamı; fixture testi 1875 vaka) — doğrulama ve
   adım sayfalama yok, "Gönder" görünür alanların payload'ını gösterir. Bildirim: gönderici/alıcı yalnız
   `notificationEnabled` açıkken zorunlu (backend `validateNotificationConfig`; admin Zod her zaman istiyor),
@@ -202,6 +211,13 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
   (`error` = #D32F2F dolu yıkıcı buton/SnackBar, beyaz metin AA; hata metni/ikonu `onErrorContainer`);
   colorScheme'da karşılığı olmayan durum renkleri `AppColors.success/warning`. Sabit `Color(0x…)` /
   `Colors.redAccent` kopyalama.
+- **SnackBar yalnız `showAppSnackBar(context, mesaj, error:, action:)` ile** (önceki SnackBar'ı kapatır, hata →
+  `colorScheme.error` zemin). Metin/aksiyon rengi tek yerde: `appTheme.snackBarTheme` (zemin
+  `AppColors.snackBar`, beyaz metin; hata zemininde de beyaz, AA). `ScaffoldMessenger…showSnackBar(SnackBar(…))`
+  ve dağınık `backgroundColor` yazma.
+- Sıralanabilir listeler (ReorderableListView) sürüklemeye ek olarak `ReorderableRow` (satır odağında
+  "Yukarı/Aşağı taşı" semantik aksiyonları) + `ReorderControls` (görünür "Taşı" menüsü; tutamaç 48 dp,
+  `ExcludeSemantics`) kullanır. Kod/ID alanlarında yazı tipi `'monospace'`.
 - Yükleme/hata/boş durumları ve onaylar için `lib/widgets/` bileşenlerini kullan; ilerleme göstergelerine
   `semanticsLabel` ver. Türkçe metinde `toUpperCase()`/`toLowerCase()` yerine `upperTr` / `foldTr` kullan;
   baş harf gibi kesmelerde `characters` kullan.

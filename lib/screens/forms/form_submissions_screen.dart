@@ -72,7 +72,7 @@ class _FormSubmissionsScreenState extends State<FormSubmissionsScreen> {
               if (lines.length > 3) Text('+${lines.length - 3} alan', style: muted.copyWith(fontSize: 12)),
             ],
           ),
-          trailing: Text('#${submission['id']}', style: muted.copyWith(fontFamily: 'Courier', fontSize: 12)),
+          trailing: Text('#${submission['id']}', style: muted.copyWith(fontFamily: 'monospace', fontSize: 12)),
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute(
               builder: (_) => FormSubmissionDetailScreen(submission: submission, fields: _fields),
@@ -109,6 +109,7 @@ class _FormSubmissionsScreenState extends State<FormSubmissionsScreen> {
               endpoint: '/forms/$_id/submissions/paged?sort=submittedAt,desc',
               paged: true,
               emptyMessage: 'Henüz yanıt yok.',
+              onRefresh: _loadCount,
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               itemBuilder: _item,
             ),

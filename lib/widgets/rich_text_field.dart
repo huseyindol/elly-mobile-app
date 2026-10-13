@@ -6,6 +6,7 @@ import 'package:flutter_quill/quill_delta.dart';
 
 import '../services/api_service.dart';
 import '../services/rich_text_codec.dart';
+import 'app_snack_bar.dart';
 import 'asset_picker.dart';
 
 /// HTML body editor (posts `content`): Quill editor over the Tiptap subset elly-admin writes
@@ -115,12 +116,7 @@ class RichTextFieldState extends State<RichTextField> {
     }
     final analysis = analyzeHtml(_raw.text);
     if (!analysis.supported) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Editörde açılamaz: ${analysis.problem}. Ham HTML olarak kalıyor.'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
+      showAppSnackBar(context, 'Editörde açılamaz: ${analysis.problem}. Ham HTML olarak kalıyor.', error: true);
       return;
     }
     setState(() {
@@ -206,7 +202,7 @@ class RichTextFieldState extends State<RichTextField> {
             minLines: 8,
             maxLines: 30,
             keyboardType: TextInputType.multiline,
-            style: const TextStyle(fontFamily: 'Courier', fontSize: 13),
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
             decoration: InputDecoration(
               labelText: '${widget.label} (HTML)',
               hintText: '<p>...</p>',

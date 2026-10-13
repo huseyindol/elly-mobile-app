@@ -51,7 +51,7 @@ class _FormPreviewScreenState extends State<FormPreviewScreen> {
       firstDate: DateTime(1900),
       lastDate: DateTime(2100),
     );
-    if (picked == null) return;
+    if (picked == null || !mounted) return;
     String two(int n) => n.toString().padLeft(2, '0');
     _set(field, '${picked.year}-${two(picked.month)}-${two(picked.day)}');
   }
@@ -65,7 +65,7 @@ class _FormPreviewScreenState extends State<FormPreviewScreen> {
       case 'checkbox':
         return CheckboxListTile(
           key: ValueKey('preview_$id'),
-          title: Text(label),
+          title: decoration.label ?? Text(label),
           value: value == true,
           onChanged: (v) => _set(field, v ?? false),
         );
@@ -167,7 +167,7 @@ class _FormPreviewScreenState extends State<FormPreviewScreen> {
               SelectableText(
                 const JsonEncoder.withIndent('  ').convert(payload),
                 key: const ValueKey('preview_payload'),
-                style: const TextStyle(fontFamily: 'Courier', fontSize: 13),
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
               ),
             ],
           ),

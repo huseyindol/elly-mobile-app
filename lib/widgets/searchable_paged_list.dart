@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/crud_payload.dart';
 import '../services/text_format.dart';
+import 'app_snack_bar.dart';
 import 'state_views.dart';
 
 /// List screen body for a backend list endpoint: loading / error / empty states,
@@ -33,6 +34,9 @@ class SearchablePagedList extends StatefulWidget {
   final int Function(Map<String, dynamic> a, Map<String, dynamic> b)? compare;
   final String emptyMessage;
 
+  /// Extra work for pull-to-refresh besides reloading the list (e.g. a count shown above it).
+  final Future<void> Function()? onRefresh;
+
   /// Default bottom inset keeps the last row clear of a FloatingActionButton.
   final EdgeInsetsGeometry padding;
 
@@ -47,6 +51,7 @@ class SearchablePagedList extends StatefulWidget {
     this.itemFilter,
     this.compare,
     this.emptyMessage = 'Kayıt bulunamadı.',
+    this.onRefresh,
     this.padding = const EdgeInsets.fromLTRB(16, 16, 16, 88),
   });
 
@@ -114,9 +119,7 @@ class SearchablePagedListState extends State<SearchablePagedList> {
         _loading = false;
       });
       if (keepItems) {
-        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          SnackBar(content: Text('Yenilenemedi: $e'), backgroundColor: Theme.of(context).colorScheme.error),
-        );
+        showAppSnackBar(context, 'Yenilenemedi: $e', error: true);
       }
     }
   }
@@ -248,7 +251,7 @@ class SearchablePagedListState extends State<SearchablePagedList> {
           ),
         Expanded(
           child: RefreshIndicator(
-            onRefresh: reload,
+            onRefresh: () => Future.wait([reload(), if (widget.onRefresh != null) widget.onRefresh!()]),
             child: visible.isEmpty && !showFooter
                 ? ListView(
                     physics: const AlwaysScrollableScrollPhysics(),

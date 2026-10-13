@@ -11,6 +11,7 @@ import '../../widgets/asset_picker.dart';
 import '../../widgets/confirm_dialog.dart';
 import '../../widgets/searchable_paged_list.dart';
 import 'generic_crud_form_screen.dart';
+import '../../widgets/app_snack_bar.dart';
 
 class GenericCrudListScreen extends StatefulWidget {
   final CrudModule module;
@@ -81,13 +82,7 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
 
   void _snack(String message, {bool error = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: error ? Theme.of(context).colorScheme.error : null,
-        duration: Duration(seconds: error ? 6 : 2),
-      ),
-    );
+    showAppSnackBar(context, message, error: error);
   }
 
   Future<void> _deleteItem(Map<String, dynamic> item) async {

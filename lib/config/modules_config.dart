@@ -553,6 +553,7 @@ class ModulesConfig {
           optionsPermission: 'mail:read',
           optionLabelOf: _mailAccountLabel,
           currentOptionLabel: _currentSenderLabel,
+          emptyOptionsHint: 'Aktif mail hesabı yok. Önce bir mail hesabı oluşturun ya da bildirimi kapatın.',
           requiredWhen: _notify,
         ),
         FieldConfig(

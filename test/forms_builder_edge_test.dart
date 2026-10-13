@@ -564,8 +564,7 @@ void main() {
         expect(jsonEncode(body()['schema']), jsonEncode(_adminForm()['schema']));
       });
 
-      // KNOWN BUG (skip): form_fields_screen.dart yalnız tam sayı ve RegEx doğruluyor; min>max kabul ediliyor.
-      // Admin de doğrulamıyor ama tenant formu hiçbir değerle gönderilemez hale gelir.
+      // Admin doesn't check it, but min > max makes the tenant form impossible to submit.
       testWidgets('min greater than max is rejected', (tester) async {
         await pumpForm(tester, form: _adminForm());
         await openFields(tester);
@@ -575,7 +574,8 @@ void main() {
         await press(tester, const ValueKey('field_apply_button'));
 
         expect(find.byType(FieldEditScreen), findsOneWidget, reason: 'min 50 / max 5 can never be satisfied');
-      }, skip: true); // BULGU: FieldEditScreen min>max'i kabul ediyor (admin de doğrulamıyor)
+        expect(find.text("Min, Max'ten büyük olamaz"), findsOneWidget);
+      });
     });
   });
 }

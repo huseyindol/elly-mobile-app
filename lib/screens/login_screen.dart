@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
 import '../widgets/app_scaffold.dart';
+import '../widgets/app_snack_bar.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -42,9 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // mfaPending after login = code step shown, not an error.
       if (!success && authProvider.errorMessage != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(authProvider.errorMessage ?? 'Giriş başarısız'), backgroundColor: _scheme.error),
-        );
+        showAppSnackBar(context, authProvider.errorMessage ?? 'Giriş başarısız', error: true);
       }
     }
   }

@@ -42,6 +42,10 @@ class AppScaffold extends StatelessWidget {
   final List<Widget>? actions;
   final Widget? floatingActionButton;
 
+  /// Pinned under the body (form [SaveBar]). Scaffold shows SnackBars above it, so they never cover the
+  /// button; it rides above the keyboard.
+  final Widget? bottomNavigationBar;
+
   /// Drawer item this screen represents (`NavItem.id`); null = no drawer, the app bar shows a
   /// back button instead (forms and other sub-screens).
   final String? navId;
@@ -55,6 +59,7 @@ class AppScaffold extends StatelessWidget {
     required this.body,
     this.actions,
     this.floatingActionButton,
+    this.bottomNavigationBar,
     this.navId,
     this.safeArea = true,
   });
@@ -81,6 +86,12 @@ class AppScaffold extends StatelessWidget {
       ),
       body: AmbientBackground(child: safeArea ? SafeArea(child: body) : body),
       floatingActionButton: floatingActionButton,
+      bottomNavigationBar: bottomNavigationBar == null
+          ? null
+          : Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+              child: bottomNavigationBar,
+            ),
     );
   }
 }

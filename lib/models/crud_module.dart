@@ -58,6 +58,9 @@ class FieldConfig {
   /// `<module>:<action>` needed to load [optionsEndpoint]; without it the options are not requested.
   final String? optionsPermission;
 
+  /// Helper under a required remote dropdown whose options loaded empty (e.g. no active mail account).
+  final String? emptyOptionsHint;
+
   /// JSON field: template chosen by the current value of another field
   /// (e.g. metadata template by `contentType`). Applied when the editor is empty
   /// or still shows the previous template.
@@ -127,6 +130,7 @@ class FieldConfig {
     this.optionLabelOf,
     this.currentOptionLabel,
     this.optionsPermission,
+    this.emptyOptionsHint,
     this.templateFromField,
     this.templates,
     this.hint,

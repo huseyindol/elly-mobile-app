@@ -271,7 +271,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(sent, isEmpty);
-    expect(find.text('2 alan hatalı'), findsOneWidget, reason: 'title + slug required');
+    expect(find.text('2 alan hatalı: Başlık'), findsOneWidget, reason: 'title + slug required, first named');
     expect(find.text('Başlık zorunlu'), findsOneWidget);
   });
 

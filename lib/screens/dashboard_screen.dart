@@ -10,6 +10,7 @@ import '../services/text_format.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/app_scaffold.dart';
 import '../widgets/state_views.dart';
+import '../widgets/app_snack_bar.dart';
 
 /// A summary card of the elly-admin dashboard (`(baseLayout)/dashboard/page.tsx`).
 class _Stat {
@@ -102,12 +103,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (!mounted) return;
       if (auth.permissionsError != null && auth.permissionsLoaded) {
         // The last known permissions stay in effect; tell the user they may be stale.
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Yetkiler yenilenemedi: ${auth.permissionsError}'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
+        showAppSnackBar(context, 'Yetkiler yenilenemedi: ${auth.permissionsError}', error: true);
       }
       setState(() {
         _futures.clear();

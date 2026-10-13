@@ -11,6 +11,7 @@ import '../widgets/asset_picker.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/searchable_paged_list.dart';
 import '../widgets/state_views.dart';
+import '../widgets/app_snack_bar.dart';
 
 /// Backend paged asset list for a folder and/or name search (admin `assets/page.tsx` + folder browsing
 /// via `/assets/list/{subFolder}/paged`). Newest first like the previous mobile list.
@@ -117,13 +118,7 @@ class _AssetsScreenState extends State<AssetsScreen> {
 
   void _snack(String message, {bool error = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: error ? Theme.of(context).colorScheme.error : null,
-        duration: Duration(seconds: error ? 6 : 2),
-      ),
-    );
+    showAppSnackBar(context, message, error: error);
   }
 
   String _urlOf(Map<String, dynamic> asset) => ApiService.fileUrl(asset['path']?.toString() ?? '');

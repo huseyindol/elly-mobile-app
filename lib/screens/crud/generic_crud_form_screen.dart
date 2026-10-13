@@ -13,6 +13,7 @@ import '../../services/crud_payload.dart';
 import '../../services/rich_text_codec.dart' show isAllowedUrl;
 import '../../services/text_format.dart';
 import '../../widgets/app_scaffold.dart';
+import '../../widgets/app_snack_bar.dart';
 import '../../widgets/asset_picker.dart';
 import '../../widgets/confirm_dialog.dart';
 import '../../widgets/form_schema_editor.dart';
@@ -44,6 +45,7 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
   final Map<String, GlobalKey<RichTextFieldState>> _richKeys = {};
   final Map<String, PlatformFile> _files = {};
   final Map<String, List<MapEntry<Object, String>>> _remoteOptions = {};
+  final Set<String> _optionsDenied = {}; // remote dropdowns not loaded: missing optionsPermission
   final Set<String> _editedSlugs = {}; // slug fields the user typed into (no more auto-fill)
   Map<String, dynamic>? _original;
   bool _ready = false;
@@ -64,7 +66,11 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
     final auth = context.read<AuthProvider>();
     for (final field in _fields) {
       if (field.optionsEndpoint == null) continue;
-      if (field.optionsPermission == null || auth.has(field.optionsPermission!)) _loadOptions(field);
+      if (field.optionsPermission == null || auth.has(field.optionsPermission!)) {
+        _loadOptions(field);
+      } else {
+        _optionsDenied.add(field.key);
+      }
     }
     _loadRecord();
   }
@@ -228,8 +234,7 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
   Future<void> _submit() async {
     final invalid = _formKey.currentState?.validateGranularly() ?? const {};
     if (invalid.isNotEmpty) {
-      Scrollable.ensureVisible(invalid.first.context, alignment: 0.2, duration: const Duration(milliseconds: 250));
-      _showError('${invalid.length} alan hatalı');
+      reportInvalidFields(context, invalid, labelOf: _labelOf);
       return;
     }
     _collectControllerValues();
@@ -256,7 +261,8 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
           await _apiService.multipart(method, endpoint, fields: toMultipartFields(payload), files: files);
       }
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_isEditing ? 'Güncellendi' : 'Oluşturuldu')));
+      ScaffoldMessenger.of(context).clearSnackBars(); // stale errors must not follow onto the list
+      showAppSnackBar(context, _isEditing ? 'Güncellendi' : 'Oluşturuldu');
       _dirty = false;
       Navigator.of(context).pop(true);
     } catch (e) {
@@ -266,14 +272,16 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
     }
   }
 
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message.replaceFirst('Exception: ', '')),
-        backgroundColor: _scheme.error,
-        duration: const Duration(seconds: 6),
-      ),
-    );
+  void _showError(String message) => showAppSnackBar(context, message, error: true);
+
+  /// Field widgets are keyed `field_<key>` (dropdowns `field_<key>_<n>`).
+  String? _labelOf(FormFieldState<Object?> state) {
+    final key = state.widget.key;
+    if (key is! ValueKey<String>) return null;
+    return _fields
+        .where((f) => key.value == 'field_${f.key}' || key.value.startsWith('field_${f.key}_'))
+        .firstOrNull
+        ?.label;
   }
 
   bool _isRequired(FieldConfig field) =>
@@ -319,10 +327,19 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
     final items = [...options, if (unknownLabel != null) MapEntry<Object, String>(current as Object, unknownLabel)];
     final hasCurrent = items.any((o) => o.key == current);
     final locked = _isEditing && field.readOnlyOnEdit;
+    // A required remote dropdown with nothing to pick says why.
+    String? helper;
+    if (field.optionsEndpoint != null && options.isEmpty && _isRequired(field)) {
+      if (_optionsDenied.contains(field.key)) {
+        helper = '${field.label} listesini görme yetkiniz yok (${field.optionsPermission}).';
+      } else if (_remoteOptions.containsKey(field.key)) {
+        helper = field.emptyOptionsHint ?? 'Seçilebilecek kayıt yok.';
+      }
+    }
     return DropdownButtonFormField<Object>(
       key: ValueKey('field_${field.key}_${items.length}'),
       initialValue: hasCurrent ? current as Object : null,
-      decoration: _decoration(field),
+      decoration: _decoration(field).copyWith(helperText: helper),
       dropdownColor: _scheme.surface,
       style: TextStyle(color: _scheme.onSurface),
       isExpanded: true,
@@ -554,7 +571,7 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
                     : TextInputType.multiline),
           style: TextStyle(
             color: _scheme.onSurface,
-            fontFamily: isJson ? 'Courier' : null,
+            fontFamily: isJson ? 'monospace' : null,
             fontSize: isJson ? 13 : null,
           ),
           decoration: _decoration(field).copyWith(helperText: field.type == FieldType.tags ? 'Virgülle ayırın' : null),
@@ -619,25 +636,16 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
         ],
         body: !_ready
             ? (_loadError == null ? const LoadingView() : ErrorView(message: _loadError!, onRetry: _loadRecord))
-            // Save stays reachable at the bottom while the long form scrolls.
-            : Column(
-                children: [
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-                      child: Form(
-                        key: _formKey,
-                        onChanged: _markDirty,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: _formFields(canPickAssets),
-                        ),
-                      ),
-                    ),
-                  ),
-                  SaveBar(onPressed: _submit, loading: _isLoading),
-                ],
+            : SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+                child: Form(
+                  key: _formKey,
+                  onChanged: _markDirty,
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: _formFields(canPickAssets)),
+                ),
               ),
+        // Save stays reachable at the bottom while the long form scrolls; SnackBars show above it.
+        bottomNavigationBar: _ready ? SaveBar(onPressed: _submit, loading: _isLoading) : null,
       ),
     );
   }

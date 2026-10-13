@@ -4,7 +4,9 @@ import '../../config/app_theme.dart';
 import '../../services/crud_payload.dart';
 import '../../services/form_schema.dart';
 import '../../widgets/app_scaffold.dart';
+import '../../widgets/app_snack_bar.dart';
 import '../../widgets/confirm_dialog.dart';
+import '../../widgets/reorder_controls.dart';
 import '../../widgets/save_bar.dart';
 import '../../widgets/state_views.dart';
 
@@ -87,14 +89,38 @@ class _FormFieldsScreenState extends State<FormFieldsScreen> {
       destructive: true,
       confirmKey: const ValueKey('confirm_field_delete'),
     );
-    if (!ok) return;
+    if (!ok || !mounted) return;
+    final before = [..._fields];
     _fields.removeAt(index);
-    _emit();
+    _commit(before, '"${fieldLabel(field)}" silindi');
   }
 
+  /// [to] is the index after removing [from] (ReorderableListView.onReorderItem).
   void _reorder(int from, int to) {
+    if (from == to) return;
+    final before = [..._fields];
     _fields.insert(to, _fields.removeAt(from));
+    _commit(before, '"${fieldLabel(_fields[to])}" taşındı');
+  }
+
+  /// Applies a delete / move and offers to take it back.
+  void _commit(List<Map<String, dynamic>> before, String message) {
     _emit();
+    showAppSnackBar(
+      context,
+      message,
+      duration: const Duration(seconds: 5),
+      action: SnackBarAction(
+        label: 'Geri al',
+        onPressed: () {
+          if (!mounted) return;
+          _fields
+            ..clear()
+            ..addAll(before);
+          _emit();
+        },
+      ),
+    );
   }
 
   String _subtitle(Map<String, dynamic> field) {
@@ -129,69 +155,88 @@ class _FormFieldsScreenState extends State<FormFieldsScreen> {
         icon: const Icon(Icons.add_rounded),
         label: const Text('Alan Ekle'),
       ),
-      body: _fields.isEmpty
-          ? EmptyView(message: 'Henüz alan eklenmedi', actionLabel: 'İlk alanı ekle', onAction: _edit)
-          : ReorderableListView(
-              buildDefaultDragHandles: false,
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
-              onReorderItem: _reorder,
-              children: [
-                for (final (i, field) in _fields.indexed)
-                  ReorderableDelayedDragStartListener(
-                    key: ObjectKey(field),
-                    index: i,
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Material(
-                        color: scheme.surface.withValues(alpha: 0.7),
-                        shape: _cardShape(scheme),
-                        clipBehavior: Clip.antiAlias,
-                        child: ListTile(
-                          key: ValueKey('field_row_$i'),
-                          title: Text.rich(
-                            TextSpan(
-                              text: fieldLabel(field),
-                              children: [
-                                if (field['required'] == true)
-                                  TextSpan(
-                                    text: ' *',
-                                    style: TextStyle(color: scheme.onErrorContainer),
-                                  ),
-                              ],
-                            ),
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          subtitle: Text(
-                            _subtitle(field),
-                            style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.65)),
-                          ),
-                          onTap: () => _edit(i),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Text(
+              'Değişiklikler formu Kaydet\'te gönderilir.',
+              style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.65)),
+            ),
+          ),
+          Expanded(child: _list(scheme)),
+        ],
+      ),
+    );
+  }
+
+  Widget _list(ColorScheme scheme) => _fields.isEmpty
+      ? EmptyView(message: 'Henüz alan eklenmedi', actionLabel: 'İlk alanı ekle', onAction: _edit)
+      : ReorderableListView(
+          buildDefaultDragHandles: false,
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+          onReorderItem: _reorder,
+          children: [
+            for (final (i, field) in _fields.indexed)
+              ReorderableDelayedDragStartListener(
+                key: ObjectKey(field),
+                index: i,
+                child: ReorderableRow(
+                  index: i,
+                  count: _fields.length,
+                  onMove: (delta) => _reorder(i, i + delta),
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Material(
+                      color: scheme.surface.withValues(alpha: 0.7),
+                      shape: _cardShape(scheme),
+                      clipBehavior: Clip.antiAlias,
+                      child: ListTile(
+                        key: ValueKey('field_row_$i'),
+                        title: Text.rich(
+                          TextSpan(
+                            text: fieldLabel(field),
                             children: [
-                              IconButton(
-                                key: ValueKey('delete_field_$i'),
-                                tooltip: 'Alanı sil',
-                                icon: Icon(Icons.delete_outline_rounded, color: scheme.onErrorContainer),
-                                onPressed: () => _delete(i),
-                              ),
-                              ReorderableDragStartListener(
-                                index: i,
-                                child: const Padding(
-                                  padding: EdgeInsets.all(8),
-                                  child: Icon(Icons.drag_handle_rounded, semanticLabel: 'Sürükleyerek sırala'),
+                              if (field['required'] == true)
+                                TextSpan(
+                                  text: ' *',
+                                  semanticsLabel: ', zorunlu',
+                                  style: TextStyle(color: scheme.onErrorContainer),
                                 ),
-                              ),
                             ],
                           ),
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: Text(
+                          _subtitle(field),
+                          style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.65)),
+                        ),
+                        onTap: () => _edit(i),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              key: ValueKey('delete_field_$i'),
+                              tooltip: 'Alanı sil',
+                              icon: Icon(Icons.delete_outline_rounded, color: scheme.onErrorContainer),
+                              onPressed: () => _delete(i),
+                            ),
+                            ReorderControls(
+                              index: i,
+                              count: _fields.length,
+                              onMove: (delta) => _reorder(i, i + delta),
+                              menuKey: ValueKey('move_field_$i'),
+                            ),
+                          ],
                         ),
                       ),
                     ),
                   ),
-              ],
-            ),
-    );
-  }
+                ),
+              ),
+          ],
+        );
 }
 
 /// Admin `FieldEditModal`: id, step (wizard), type, label, required, options, validation, condition.
@@ -316,20 +361,35 @@ class _FieldEditScreenState extends State<FieldEditScreen> {
   }
 
   void _save() {
-    if (!_dirty) {
+    // An untouched existing field stays as it is; a new one is always checked (an empty id/label must not pass).
+    if (!_dirty && !_isNew) {
       Navigator.of(context).pop();
       return;
     }
     final invalid = _formKey.currentState?.validateGranularly() ?? const {};
     if (invalid.isNotEmpty) {
-      Scrollable.ensureVisible(invalid.first.context, alignment: 0.2, duration: const Duration(milliseconds: 250));
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${invalid.length} alan hatalı'), backgroundColor: Theme.of(context).colorScheme.error),
-      );
+      reportInvalidFields(context, invalid, labelOf: _labelOf);
       return;
     }
     _dirty = false;
+    ScaffoldMessenger.of(context).clearSnackBars();
     Navigator.of(context).pop(_result());
+  }
+
+  static String? _labelOf(FormFieldState<Object?> state) {
+    final key = state.widget.key;
+    final name = key is ValueKey<String> ? key.value : '';
+    return switch (name) {
+      'field_id' => 'Alan ID',
+      'field_label' => 'Etiket',
+      'options_section' => 'Seçenekler',
+      'validation_min' => 'Min',
+      'validation_max' => 'Max',
+      'validation_pattern' => 'Pattern',
+      _ when name.startsWith('option_label_') => 'Seçenek etiketi',
+      _ when name.startsWith('option_value_') => 'Seçenek değeri',
+      _ => null,
+    };
   }
 
   Future<void> _confirmLeave() async {
@@ -347,6 +407,13 @@ class _FieldEditScreenState extends State<FieldEditScreen> {
   String? _validateInt(String? raw) {
     final text = raw?.trim() ?? '';
     return text.isEmpty || int.tryParse(text) != null ? null : 'Tam sayı girin';
+  }
+
+  /// min > max can never be satisfied on the site.
+  String? _validateMin(String? raw) {
+    final min = int.tryParse(raw?.trim() ?? '');
+    final max = int.tryParse(_max.text.trim());
+    return _validateInt(raw) ?? (min != null && max != null && min > max ? "Min, Max'ten büyük olamaz" : null);
   }
 
   String? _validatePattern(String? raw) {
@@ -392,7 +459,17 @@ class _FieldEditScreenState extends State<FieldEditScreen> {
         children: [
           Row(
             children: [
-              Expanded(child: Semantics(header: true, child: const Text('Seçenekler *'))),
+              Expanded(
+                child: Semantics(
+                  header: true,
+                  child: const Text.rich(
+                    TextSpan(
+                      text: 'Seçenekler',
+                      children: [TextSpan(text: ' *', semanticsLabel: ', zorunlu')],
+                    ),
+                  ),
+                ),
+              ),
               TextButton.icon(
                 key: const ValueKey('add_option_button'),
                 onPressed: () => _change(() => _options.add(_OptionRow({'label': '', 'value': ''}))),
@@ -402,44 +479,7 @@ class _FieldEditScreenState extends State<FieldEditScreen> {
             ],
           ),
           for (final (i, o) in _options.indexed)
-            Padding(
-              key: ObjectKey(o),
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      key: ValueKey('option_label_$i'),
-                      controller: o.label,
-                      decoration: fieldDecoration(scheme, label: 'Etiket'),
-                      validator: (v) =>
-                          (v ?? '').trim().isEmpty && o.value.text.trim().isNotEmpty ? 'Etiket girin' : null,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextFormField(
-                      key: ValueKey('option_value_$i'),
-                      controller: o.value,
-                      style: const TextStyle(fontFamily: 'Courier'),
-                      decoration: fieldDecoration(scheme, label: 'Değer'),
-                      validator: (v) =>
-                          (v ?? '').trim().isEmpty && o.label.text.trim().isNotEmpty ? 'Değer girin' : null,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Seçeneği sil',
-                    icon: Icon(Icons.delete_outline_rounded, color: scheme.onErrorContainer),
-                    onPressed: () => _change(() {
-                      _options.removeAt(i);
-                      o.label.dispose();
-                      o.value.dispose();
-                    }),
-                  ),
-                ],
-              ),
-            ),
+            Padding(key: ObjectKey(o), padding: const EdgeInsets.only(bottom: 8), child: _optionRow(i, o, scheme)),
           Text(
             state.errorText ?? 'Etiket: kullanıcıya gösterilir. Değer: API\'ye gönderilir.',
             style: TextStyle(
@@ -449,6 +489,55 @@ class _FieldEditScreenState extends State<FieldEditScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// Label + value side by side; stacked on narrow screens / large text so neither gets squeezed.
+  Widget _optionRow(int i, _OptionRow o, ColorScheme scheme) {
+    final label = TextFormField(
+      key: ValueKey('option_label_$i'),
+      controller: o.label,
+      decoration: fieldDecoration(scheme, label: 'Etiket'),
+      validator: (v) => (v ?? '').trim().isEmpty && o.value.text.trim().isNotEmpty ? 'Etiket girin' : null,
+    );
+    final value = TextFormField(
+      key: ValueKey('option_value_$i'),
+      controller: o.value,
+      style: const TextStyle(fontFamily: 'monospace'),
+      decoration: fieldDecoration(scheme, label: 'Değer'),
+      validator: (v) => (v ?? '').trim().isEmpty && o.label.text.trim().isNotEmpty ? 'Değer girin' : null,
+    );
+    final remove = IconButton(
+      tooltip: 'Seçeneği sil',
+      icon: Icon(Icons.delete_outline_rounded, color: scheme.onErrorContainer),
+      onPressed: () => _change(() {
+        _options.removeAt(i);
+        o.label.dispose();
+        o.value.dispose();
+      }),
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth / MediaQuery.textScalerOf(context).scale(1) < 360;
+        if (!narrow) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: label),
+              const SizedBox(width: 8),
+              Expanded(child: value),
+              remove,
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: Column(children: [label, const SizedBox(height: 8), value])),
+            remove,
+          ],
+        );
+      },
     );
   }
 
@@ -490,6 +579,11 @@ class _FieldEditScreenState extends State<FieldEditScreen> {
       },
       child: AppScaffold(
         title: _isNew ? 'Yeni Alan' : 'Alan Düzenle',
+        bottomNavigationBar: SaveBar(
+          onPressed: _save,
+          label: 'Uygula',
+          buttonKey: const ValueKey('field_apply_button'),
+        ),
         body: Column(
           children: [
             Expanded(
@@ -507,7 +601,7 @@ class _FieldEditScreenState extends State<FieldEditScreen> {
                         TextFormField(
                           key: const ValueKey('field_id'),
                           controller: _id,
-                          style: const TextStyle(fontFamily: 'Courier'),
+                          style: const TextStyle(fontFamily: 'monospace'),
                           autocorrect: false,
                           decoration: fieldDecoration(
                             scheme,
@@ -570,7 +664,7 @@ class _FieldEditScreenState extends State<FieldEditScreen> {
                                   controller: _min,
                                   keyboardType: const TextInputType.numberWithOptions(signed: true),
                                   decoration: fieldDecoration(scheme, label: 'Min'),
-                                  validator: _validateInt,
+                                  validator: _validateMin,
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -591,7 +685,7 @@ class _FieldEditScreenState extends State<FieldEditScreen> {
                             key: const ValueKey('validation_pattern'),
                             controller: _pattern,
                             autocorrect: false,
-                            style: const TextStyle(fontFamily: 'Courier'),
+                            style: const TextStyle(fontFamily: 'monospace'),
                             decoration: fieldDecoration(scheme, label: 'Pattern (RegEx)', hint: r'^[a-zA-Z]+$'),
                             validator: _validatePattern,
                           ),
@@ -633,7 +727,6 @@ class _FieldEditScreenState extends State<FieldEditScreen> {
                 ),
               ),
             ),
-            SaveBar(onPressed: _save, label: 'Uygula', buttonKey: const ValueKey('field_apply_button')),
           ],
         ),
       ),
