@@ -49,37 +49,41 @@ Future<String?> showAssetPicker(BuildContext context, ApiService api) => showMod
   isScrollControlled: true,
   backgroundColor: Theme.of(context).colorScheme.surface,
   builder: (sheetContext) => SafeArea(
-    child: SizedBox(
-      height: MediaQuery.sizeOf(sheetContext).height * 0.8,
-      child: Column(
-        children: [
-          ListTile(
-            title: const Text('Assetlerden seç', style: TextStyle(fontWeight: FontWeight.bold)),
-            trailing: IconButton(
-              tooltip: 'Kapat',
-              icon: const Icon(Icons.close_rounded),
-              onPressed: () => Navigator.of(sheetContext).pop(),
-            ),
-          ),
-          Expanded(
-            child: SearchablePagedList(
-              api: api,
-              endpoint: '/assets/list/paged?sort=id,desc',
-              paged: true,
-              itemFilter: isImageAsset,
-              searchText: (item) => '${item['name'] ?? ''} ${item['subFolder'] ?? ''}',
-              emptyMessage: 'Görsel bulunamadı.',
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              itemBuilder: (context, item) => ListTile(
-                key: ValueKey('asset_pick_${item['id']}'),
-                leading: AssetThumbnail(url: item['path']?.toString()),
-                title: Text(item['name']?.toString() ?? '#${item['id']}', overflow: TextOverflow.ellipsis),
-                subtitle: Text(item['subFolder']?.toString() ?? ''),
-                onTap: () => Navigator.of(sheetContext).pop(ApiService.fileUrl(item['path'].toString())),
+    child: Padding(
+      // Keyboard (search field) shrinks the sheet instead of covering the list.
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(sheetContext).bottom),
+      child: SizedBox(
+        height: MediaQuery.sizeOf(sheetContext).height * 0.8 - MediaQuery.viewInsetsOf(sheetContext).bottom,
+        child: Column(
+          children: [
+            ListTile(
+              title: const Text('Assetlerden seç', style: TextStyle(fontWeight: FontWeight.bold)),
+              trailing: IconButton(
+                tooltip: 'Kapat',
+                icon: const Icon(Icons.close_rounded),
+                onPressed: () => Navigator.of(sheetContext).pop(),
               ),
             ),
-          ),
-        ],
+            Expanded(
+              child: SearchablePagedList(
+                api: api,
+                endpoint: '/assets/list/paged?sort=id,desc',
+                paged: true,
+                itemFilter: isImageAsset,
+                searchText: (item) => '${item['name'] ?? ''} ${item['subFolder'] ?? ''}',
+                emptyMessage: 'Görsel bulunamadı.',
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                itemBuilder: (context, item) => ListTile(
+                  key: ValueKey('asset_pick_${item['id']}'),
+                  leading: AssetThumbnail(url: item['path']?.toString()),
+                  title: Text(item['name']?.toString() ?? '#${item['id']}', overflow: TextOverflow.ellipsis),
+                  subtitle: Text(item['subFolder']?.toString() ?? ''),
+                  onTap: () => Navigator.of(sheetContext).pop(ApiService.fileUrl(item['path'].toString())),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     ),
   ),

@@ -51,7 +51,15 @@ class _AssetsScreenState extends State<AssetsScreen> {
   String? _name; // submitted name search
   String? _id; // submitted id search
   bool _searchById = false;
-  final Set<Object> _selected = {};
+
+  /// Selected asset id → name (names for the bulk delete confirmation).
+  final Map<Object, String> _selected = {};
+
+  /// A delete / bulk delete / replace is running: actions are locked.
+  bool _busy = false;
+
+  /// Admin `ImageUploadBox` limit, also applied when replacing an image asset.
+  static const _maxImageBytes = 5 * 1024 * 1024;
 
   @override
   void initState() {
@@ -92,6 +100,7 @@ class _AssetsScreenState extends State<AssetsScreen> {
     setState(() {
       _id = _searchById && value.isNotEmpty ? value : null;
       _name = !_searchById && value.isNotEmpty ? value : null;
+      _selected.clear(); // ids of another result set must not be deleted unseen
       _listKey = GlobalKey();
     });
   }
@@ -101,6 +110,7 @@ class _AssetsScreenState extends State<AssetsScreen> {
     setState(() {
       _id = null;
       _name = null;
+      _selected.clear();
       _listKey = GlobalKey();
     });
   }
@@ -123,6 +133,17 @@ class _AssetsScreenState extends State<AssetsScreen> {
     _snack('URL kopyalandı');
   }
 
+  /// Runs [action] with the actions locked.
+  Future<void> _locked(Future<void> Function() action) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await action();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _delete(Map<String, dynamic> asset) async {
     final ok = await showConfirmDialog(
       context,
@@ -133,26 +154,35 @@ class _AssetsScreenState extends State<AssetsScreen> {
       confirmKey: const ValueKey('confirm_delete_button'),
     );
     if (!ok) return;
-    try {
-      await _api.delete('/assets/${asset['id']}');
-      _snack('Asset silindi');
-      _reload();
-    } catch (e) {
-      _snack(e.toString(), error: true);
-    }
+    await _locked(() async {
+      try {
+        await _api.delete('/assets/${asset['id']}');
+        _snack('Asset silindi');
+        _reload();
+      } catch (e) {
+        _snack(e.toString(), error: true);
+      }
+    });
   }
 
   Future<void> _bulkDelete() async {
-    final ids = _selected.toList();
+    final ids = _selected.keys.toList();
+    final names = _selected.values.take(5).join('\n• ');
+    final more = ids.length > 5 ? '\n+${ids.length - 5} asset daha' : '';
     final ok = await showConfirmDialog(
       context,
       title: 'Toplu Asset Silme',
-      message: 'Seçili ${ids.length} asset kalıcı olarak silinecek (dosyalar dahil). Bu işlem geri alınamaz.',
+      message:
+          'Seçili ${ids.length} asset kalıcı olarak silinecek (dosyalar dahil). Bu işlem geri alınamaz.\n\n• $names$more',
       confirmLabel: '${ids.length} Asseti Sil',
       destructive: true,
       confirmKey: const ValueKey('confirm_bulk_delete_button'),
     );
     if (!ok) return;
+    await _locked(() => _sendBulkDelete(ids));
+  }
+
+  Future<void> _sendBulkDelete(List<Object> ids) async {
     try {
       final result = await _api.post('/assets/bulk-delete', {'ids': ids}) as Map?;
       final failed = (result?['failedIds'] as List?) ?? const [];
@@ -171,23 +201,33 @@ class _AssetsScreenState extends State<AssetsScreen> {
   }
 
   /// PUT /assets/{id} with a new file (backend keeps the record, replaces the file).
+  /// Image assets are replaced only by images (≤ 5 MB, like the admin); other files by any file.
   Future<void> _replace(Map<String, dynamic> asset) async {
-    final picked = await FilePicker.pickFiles();
-    final path = picked.isEmpty ? null : picked.first.path;
-    if (path == null) return;
-    try {
-      await _api.multipart('PUT', '/assets/${asset['id']}', files: [UploadFile('file', path)]);
-      _snack('Dosya değiştirildi');
-      _reload();
-    } catch (e) {
-      _snack(e.toString(), error: true);
+    final image = isImageAsset(asset);
+    final picked = await FilePicker.pickFiles(type: image ? FileType.image : FileType.any);
+    final file = picked.isEmpty ? null : picked.first;
+    final path = file?.path;
+    if (file == null || path == null) return;
+    if (image && (file.lengthSync() ?? 0) > _maxImageBytes) {
+      _snack('Dosya 5 MB sınırını aşıyor', error: true);
+      return;
     }
+    await _locked(() async {
+      try {
+        await _api.multipart('PUT', '/assets/${asset['id']}', files: [UploadFile('file', path)]);
+        _snack('Dosya değiştirildi');
+        _reload();
+      } catch (e) {
+        _snack(e.toString(), error: true);
+      }
+    });
   }
 
   Future<void> _upload() async {
     final uploaded = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      enableDrag: false, // no swipe-away mid-upload; back/barrier go through the sheet's PopScope
       backgroundColor: Theme.of(context).colorScheme.surface,
       builder: (_) => _UploadSheet(api: _api, folders: _folders, initialFolder: _folder ?? ''),
     );
@@ -242,8 +282,9 @@ class _AssetsScreenState extends State<AssetsScreen> {
     final scheme = Theme.of(context).colorScheme;
     final id = asset['id'] as Object;
     final selecting = _selected.isNotEmpty;
-    final selected = _selected.contains(id);
-    void toggle() => setState(() => selected ? _selected.remove(id) : _selected.add(id));
+    final selected = _selected.containsKey(id);
+    void toggle() =>
+        setState(() => selected ? _selected.remove(id) : _selected[id] = asset['name']?.toString() ?? '#$id');
     final muted = TextStyle(color: scheme.onSurface.withValues(alpha: 0.65), fontSize: 12);
     return Padding(
       key: ValueKey('asset_$id'),
@@ -273,12 +314,13 @@ class _AssetsScreenState extends State<AssetsScreen> {
             ],
           ),
           onTap: selecting ? toggle : () => _preview(asset),
-          onLongPress: canDelete ? toggle : null,
+          onLongPress: canDelete && !_busy ? toggle : null,
           trailing: selecting
               ? null
               : PopupMenuButton<String>(
                   key: ValueKey('asset_menu_$id'),
                   tooltip: 'İşlemler',
+                  enabled: !_busy,
                   onSelected: (action) => switch (action) {
                     'copy' => _copy(asset),
                     'replace' => _replace(asset),
@@ -297,11 +339,11 @@ class _AssetsScreenState extends State<AssetsScreen> {
     );
   }
 
-  Widget _folderChips() => SizedBox(
-    height: 48,
-    child: ListView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+  // Horizontal scroll without a fixed height so large text scales the chips.
+  Widget _folderChips() => SingleChildScrollView(
+    scrollDirection: Axis.horizontal,
+    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+    child: Row(
       children: [
         for (final folder in [null, ..._folders])
           Padding(
@@ -313,6 +355,7 @@ class _AssetsScreenState extends State<AssetsScreen> {
               selected: _folder == folder,
               onSelected: (_) => setState(() {
                 _folder = folder;
+                _selected.clear();
                 _listKey = GlobalKey();
               }),
             ),
@@ -386,39 +429,66 @@ class _AssetsScreenState extends State<AssetsScreen> {
     final canUpdate = auth.can(_module.permissionKey, 'update');
     final canDelete = auth.can(_module.permissionKey, 'delete');
     final selecting = _selected.isNotEmpty;
-    return AppScaffold(
-      title: selecting ? '${_selected.length} seçili' : _module.title,
-      navId: _module.permissionKey,
-      actions: selecting
-          ? [
-              IconButton(
-                tooltip: 'Seçimi temizle',
-                icon: const Icon(Icons.deselect_rounded),
-                onPressed: () => setState(_selected.clear),
+    final list = _listKey.currentState;
+    return PopScope(
+      canPop: !selecting, // back first leaves the selection mode
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) setState(_selected.clear);
+      },
+      child: AppScaffold(
+        title: selecting ? '${_selected.length} seçili' : _module.title,
+        navId: _module.permissionKey,
+        actions: selecting
+            ? [
+                if (list is SearchablePagedListState)
+                  IconButton(
+                    key: const ValueKey('select_all_button'),
+                    tooltip: 'Yüklenenlerin tümünü seç',
+                    icon: const Icon(Icons.select_all_rounded),
+                    onPressed: _busy
+                        ? null
+                        : () => setState(() {
+                            for (final a in list.items) {
+                              _selected[a['id'] as Object] = a['name']?.toString() ?? '#${a['id']}';
+                            }
+                          }),
+                  ),
+                IconButton(
+                  tooltip: 'Seçimi temizle',
+                  icon: const Icon(Icons.deselect_rounded),
+                  onPressed: _busy ? null : () => setState(_selected.clear),
+                ),
+                IconButton(
+                  key: const ValueKey('bulk_delete_button'),
+                  tooltip: 'Seçilenleri sil (${_selected.length})',
+                  icon: Icon(Icons.delete_sweep_rounded, color: Theme.of(context).colorScheme.onErrorContainer),
+                  onPressed: _busy ? null : _bulkDelete,
+                ),
+              ]
+            : [IconButton(tooltip: 'Yenile', icon: const Icon(Icons.refresh_rounded), onPressed: _reload)],
+        body: Column(
+          children: [
+            if (_busy) const LinearProgressIndicator(minHeight: 2, semanticsLabel: 'İşlem sürüyor'),
+            // Selection mode: no folder/search change (the selection belongs to this result set).
+            IgnorePointer(
+              ignoring: selecting,
+              child: Opacity(
+                opacity: selecting ? 0.4 : 1,
+                child: Column(children: [if (_folders.isNotEmpty) _folderChips(), _searchBar()]),
               ),
-              IconButton(
-                key: const ValueKey('bulk_delete_button'),
-                tooltip: 'Seçilenleri sil (${_selected.length})',
-                icon: Icon(Icons.delete_sweep_rounded, color: Theme.of(context).colorScheme.onErrorContainer),
-                onPressed: _bulkDelete,
-              ),
-            ]
-          : [IconButton(tooltip: 'Yenile', icon: const Icon(Icons.refresh_rounded), onPressed: _reload)],
-      body: Column(
-        children: [
-          if (_folders.isNotEmpty) _folderChips(),
-          _searchBar(),
-          Expanded(child: _list(canUpdate, canDelete)),
-        ],
+            ),
+            Expanded(child: _list(canUpdate, canDelete)),
+          ],
+        ),
+        floatingActionButton: canCreate && !selecting
+            ? FloatingActionButton(
+                key: const ValueKey('asset_upload_fab'),
+                tooltip: 'Yeni Asset Yükle',
+                onPressed: _upload,
+                child: const Icon(Icons.upload_rounded),
+              )
+            : null,
       ),
-      floatingActionButton: canCreate && !selecting
-          ? FloatingActionButton(
-              key: const ValueKey('asset_upload_fab'),
-              tooltip: 'Yeni Asset Yükle',
-              onPressed: _upload,
-              child: const Icon(Icons.upload_rounded),
-            )
-          : null,
     );
   }
 }
@@ -521,58 +591,63 @@ class _UploadSheetState extends State<_UploadSheet> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(24, 16, 24, 24 + MediaQuery.viewInsetsOf(context).bottom),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Yeni Asset Yükle', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 16),
-            TextField(
-              key: const ValueKey('upload_folder_field'),
-              controller: _folder,
-              decoration: const InputDecoration(labelText: 'Alt Klasör (opsiyonel)', hintText: 'Örn: images/banners'),
-            ),
-            if (widget.folders.isNotEmpty)
-              Wrap(
-                spacing: 6,
-                children: [
-                  for (final f in widget.folders)
-                    ActionChip(label: Text(f), onPressed: () => setState(() => _folder.text = f)),
-                ],
+    return PopScope(
+      canPop: !_busy, // no closing while uploading
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(24, 16, 24, 24 + MediaQuery.viewInsetsOf(context).bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Yeni Asset Yükle', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 16),
+              TextField(
+                key: const ValueKey('upload_folder_field'),
+                controller: _folder,
+                decoration: const InputDecoration(labelText: 'Alt Klasör (opsiyonel)', hintText: 'Örn: images/banners'),
               ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              key: const ValueKey('upload_pick_button'),
-              onPressed: _busy ? null : _pick,
-              icon: const Icon(Icons.attach_file_rounded),
-              label: Text(_files.isEmpty ? 'Dosya seç (bir veya birden fazla)' : '${_files.length} dosya seçildi'),
-            ),
-            for (final f in _files.take(5)) Text(f.name, overflow: TextOverflow.ellipsis),
-            if (_files.length > 5) Text('+${_files.length - 5} dosya daha'),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)),
+              if (widget.folders.isNotEmpty)
+                Wrap(
+                  spacing: 6,
+                  children: [
+                    for (final f in widget.folders)
+                      ActionChip(label: Text(f), onPressed: () => setState(() => _folder.text = f)),
+                  ],
+                ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                key: const ValueKey('upload_pick_button'),
+                onPressed: _busy ? null : _pick,
+                icon: const Icon(Icons.attach_file_rounded),
+                label: Text(_files.isEmpty ? 'Dosya seç (bir veya birden fazla)' : '${_files.length} dosya seçildi'),
               ),
-            const SizedBox(height: 16),
-            FilledButton(
-              key: const ValueKey('upload_send_button'),
-              onPressed: _busy || _files.isEmpty ? null : _send,
-              child: _busy
-                  ? SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        semanticsLabel: 'Yükleniyor',
-                        color: scheme.onPrimary,
-                      ),
-                    )
-                  : const Text('Yükle'),
-            ),
-          ],
+              for (final f in _files.take(5)) Text(f.name, overflow: TextOverflow.ellipsis),
+              if (_files.length > 5) Text('+${_files.length - 5} dosya daha'),
+              if (_error != null)
+                Container(
+                  margin: const EdgeInsets.only(top: 8),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: scheme.errorContainer, borderRadius: BorderRadius.circular(12)),
+                  child: Text(_error!, style: TextStyle(color: scheme.onErrorContainer)),
+                ),
+              const SizedBox(height: 16),
+              FilledButton(
+                key: const ValueKey('upload_send_button'),
+                onPressed: _busy || _files.isEmpty ? null : _send,
+                child: _busy
+                    ? SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          semanticsLabel: 'Yükleniyor',
+                          color: scheme.onPrimary,
+                        ),
+                      )
+                    : const Text('Yükle'),
+              ),
+            ],
+          ),
         ),
       ),
     );

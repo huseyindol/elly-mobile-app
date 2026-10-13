@@ -210,4 +210,58 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
     dir.deleteSync(recursive: true);
   });
+
+  group('selection mode', () {
+    testWidgets('select all → confirmation lists the names; back clears instead of leaving', (tester) async {
+      await pumpAssets(tester, ['assets:read', 'assets:delete']);
+
+      await tester.longPress(find.text('logo.png'));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('select_all_button')));
+      await tester.pump();
+      expect(find.text('2 seçili'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('bulk_delete_button')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('• logo.png'), findsOneWidget);
+      expect(find.textContaining('cv.pdf'), findsWidgets);
+      await tester.tap(find.text('Vazgeç'));
+      await tester.pumpAndSettle();
+
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(find.text('2 seçili'), findsNothing, reason: 'back left the selection mode');
+      expect(find.byType(AssetsScreen), findsOneWidget);
+    });
+
+    testWidgets('folder chips and search are locked while selecting', (tester) async {
+      await pumpAssets(tester, ['assets:read', 'assets:delete']);
+      await tester.longPress(find.text('logo.png'));
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('folder_images')), warnIfMissed: false);
+      await settle(tester);
+      expect(backend.requestsTo('/assets/list/images/paged'), isEmpty);
+      expect(find.text('1 seçili'), findsOneWidget);
+    });
+
+    testWidgets('more than 5 selected: confirmation shows 5 names + "+N"', (tester) async {
+      backend.ok(
+        '/assets/list/paged',
+        _page([
+          for (var i = 1; i <= 7; i++) {'id': i, 'name': 'f$i.png', 'path': 'p$i.png', 'type': 'image/png'},
+        ]),
+      );
+      await pumpAssets(tester, ['assets:read', 'assets:delete']);
+      await tester.longPress(find.text('f1.png'));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('select_all_button')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('bulk_delete_button')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('+2 asset daha'), findsOneWidget);
+      expect(find.textContaining('• f6.png'), findsNothing);
+    });
+  });
 }

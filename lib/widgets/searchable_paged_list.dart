@@ -80,6 +80,9 @@ class SearchablePagedListState extends State<SearchablePagedList> {
     super.dispose();
   }
 
+  /// Items loaded so far (all pages), e.g. for "select all".
+  List<Map<String, dynamic>> get items => List.unmodifiable(_items);
+
   String _url(int page) => widget.paged ? pagedEndpoint(widget.endpoint, page, widget.pageSize) : widget.endpoint;
 
   /// Reloads from the first page. Loaded items stay visible meanwhile (thin progress bar); if the

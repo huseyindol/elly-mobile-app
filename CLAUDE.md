@@ -78,7 +78,13 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
     `multipartFields` (assets: düz alanlar + `file`).
   - Alan tipleri: `relation` · `richText` · `date` (`YYYY-MM-DD`) · `tags` (virgülle → `List<String>`) ·
     `imageUrl` (önizleme + "Assetlerden seç", `assets:read` varsa). `_` ile başlayan anahtar yerel form
-    durumudur, gönderilmez (banner `_imageMode`). `slugFrom` yalnız yeni kayıtta, slug elle değişene kadar.
+    durumudur, gönderilmez ve kayıttan okunmaz (banner `_imageMode`: `initialValueOf` → kayıtta görsel varsa
+    `url`, yoksa `upload`). `slugFrom` yalnız yeni kayıtta, slug elle değişene kadar. Dosya alanı `imageOnly`
+    → görsel filtresi + 5 MB (admin `ImageUploadBox`), `currentImageKey` mevcut görseli önizler.
+  - Tamamen boş SEO bloğu, kayıtta `seoInfo` yoksa gönderilmez; varsa düzenlendiği gibi gider.
+  - **Form UX:** her değişiklik (metin, dropdown, switch, tarih, dosya, ilişki, zengin metin) formu kirletir;
+    `PopScope` kirliyken ya da kayıt sürerken çıkışta yıkıcı onay ister. Doğrulama hatasında
+    `validateGranularly` → ilk hatalı alana kaydırma + "N alan hatalı". Kaydet sabit alt çubukta.
   - Banner görselleri: backend dosya gelince URL'leri yok sayar (create'te tamamen düşürür) → admin gibi
     "Dosya yükle / URL gir" modu; yalnız görünen dosya alanları gönderilir.
   - İçerikler: metadata alanları `contentType`'a göre (admin `schemas/dynamic` skills/experience); tip
@@ -89,7 +95,13 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
   br, strong/em/s/u/code/a) kabul eder; başka her şey (tablo, iframe, div, span, style/class…) →
   `analyzeHtml` desteklenmiyor der → uyarı + **ham HTML modu** (içerik bayt bayt korunur). Dokunulmamış
   gövde aynen geri gönderilir; yalnız değiştiyse Delta → Tiptap biçimli HTML. Yapıştırma düz metin
-  (`enableExternalRichPaste: false`). `MaterialApp` `FlutterQuillLocalizations.localizationsDelegates`
+  (`enableExternalRichPaste: false`). Görsel imlecin satırını bölerek **kendi satırına** eklenir; alt metni
+  embed op'unun özniteliğinde (`compose`; `formatText` registry dışı özniteliği uygulamaz). `opsToHtml`
+  metinle aynı satıra düşmüş embed'i ayırır, embed satırına blok özniteliği vermez.
+  **URL güvenliği** (site post HTML'ini sanitize etmeden basar): kodek `javascript:`/`vbscript:`/`data:`
+  href/src'yi (boşluk/kontrol karakteri temizlenmiş şemada) reddeder → ham HTML modu; `opsToHtml` bunları
+  yazmaz; editörde link `isAllowedUrl(link: true)` (http/https/mailto/tel/göreli), görsel http(s)/göreli.
+  `MaterialApp` `FlutterQuillLocalizations.localizationsDelegates`
   ister (widget testlerinde de). `flutter_quill_delta_from_html` kullanma: Tiptap çıktısında inline code,
   kod satır sonları ve img alt'ı düşürüyor, `<br>`/`<hr>` sonrası paragrafları birleştiriyor.
 - **Dosya URL'leri:** `ApiService.fileUrl(path)` — `assets/t/…` → `<api origin>/assets/t/…` (admin/tenant
@@ -124,13 +136,18 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
   "Daha fazla ara" ile yüklenir. Yenileme sırasında eski liste + ince ilerleme çubuğu; hata → SnackBar.
   Alt padding FAB payı bırakır. Dışarıdan yenileme `GlobalKey<SearchablePagedListState>().currentState.reload()`.
   Admin tabloları gibi istemci sıralaması `CrudModule.sortKey` (`compareByKey`: sayı/foldTr, eşitlikte id),
-  `statusKey` rozet, `thumbnailKey` görsel, `listMeta` ek satırlar; `ListFilter` çipleri sunucu
+  `statusKey` rozet, `thumbnailKey` görsel, `listMeta` ek satırlar; çip satırları sabit yükseklik
+  kullanmaz (yazı ölçeği); `ListFilter` çipleri sunucu
   (`endpointTemplate`, banner klasörü) ya da istemci (`key`, içerik tipi) filtresidir.
 - **Assetler:** `AssetsScreen` (drawer `assets` öğesi). Klasör: `/assets/list/{klasör}/paged`; arama sunucuda:
   ad `/assets/{ad}/paged` (klasörle `/assets/{klasör}/{ad}/paged`), ID `/assets/id/{id}`; tek dosya
   `POST /assets` (`file`), çoklu `POST /assets/multi` (`files`), `subFolder` opsiyonel; değiştir `PUT
-  /assets/{id}` (`file`); toplu silme `POST /assets/bulk-delete {ids}` → `failedIds` raporlanır. Depolama
-  kartı yalnız dashboard'da (admin assets sayfasında yok).
+  /assets/{id}` (`file`; görsel asset yalnız görselle, ≤5 MB); toplu silme `POST /assets/bulk-delete {ids}` →
+  `failedIds` raporlanır. Seçim modu (uzun bas): klasör/arama kilitli (değişirse seçim temizlenir), geri tuşu
+  önce seçimi bırakır, "tümünü seç" yüklenen öğeleri seçer, onayda ilk 5 ad + "+N"; silme/değiştirme
+  sürerken aksiyonlar kilitli. Yükleme sheet'i sürerken kapanmaz. Depolama kartı yalnız dashboard'da
+  (admin assets sayfasında yok). Bilinen sınırlama: `/` içeren klasör adları path-variable
+  endpoint'lerinde (`%2F`) çalışmayabilir (admin'de de aynı).
 - **İlişki alanları:** `RelationMultiSelect` bir `FormField` (validator / `isRequired`, `Form.save/reset`).
   `paged: true` kaynakta tüm sayfalar baştan çekilir (seçili id'lerin etiketi her zaman çözülür; ~5000 kayda
   kadar uygun). İlk `maxChips` chip + "+K daha".

@@ -201,13 +201,11 @@ class _GenericCrudListScreenState extends State<GenericCrudListScreen> {
     );
     return Semantics(
       label: filter.label,
-      child: SizedBox(
-        height: 48,
-        child: ListView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          children: [chip(null, 'Tümü'), for (final o in _filterOptions.entries) chip(o.key, o.value)],
-        ),
+      // No fixed height: large text scales the chips.
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: Row(children: [chip(null, 'Tümü'), for (final o in _filterOptions.entries) chip(o.key, o.value)]),
       ),
     );
   }
