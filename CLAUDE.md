@@ -236,37 +236,59 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
     kullanıcı** listede kilitli (düzenle/durum/sil yok — admin panelde ADMIN bir SUPER_ADMIN'i düzenlerse rol
     listesinde SUPER_ADMIN olmadığı için rolü sessizce düşer; backend hedef kullanıcının seviyesini kontrol
     etmiyor). Kendi hesabı: sil/pasifleştir yok, formda rol salt okunur ve şifre sıfırlama yok (Profil → Şifre
-    Değiştir). Oluştur `POST /users` (panel: rol yoksa backend ADMIN atar → yalnız ADMIN atayabilen çağırana
-    sunulur, değilse ≥1 rol zorunlu; tenant: `roleIds` gönderilmez). Düzenle `GET /users/{id}` → yalnız değişen
-    alanlar `PUT /users/{id}` (dolu yeni şifre = admin sıfırlaması, oturumları kapatır) → roller değiştiyse
-    `PUT /roles/users/{id}/roles` (≥1, tümünü değiştirir). Durum `PATCH /users/{id}/status?isActive=` (pasifleştirme
+    Değiştir). **Fail-closed:** `AuthProvider.identityKnown` (kendi `userId` + rolleri) yoksa — `/users/me` ve login
+    yanıtı yok ya da roller boş — listede hiçbir satır aksiyonu ve "Yeni" yok, "Profil/yetkiler yüklenemedi…
+    Yenileyin" bandı (`Yenile` izinleri + profili yeniden yükler); formda düzenleme kendi hesabı gibi kilitli.
+    Oluştur `POST /users` (panel: **en az bir rol zorunlu** — boş liste backend'de sessizce ADMIN atar, mobil boş
+    göndermez; VIEWER ön seçimi yerine bilinçli seçim; tenant: `roleIds` gönderilmez). Atayamadığı roller her modda
+    sabit notta listelenir; düzenlemede hedefin atanamayan mevcut rolleri (SUPER_ADMIN, TENANT) rol PUT'unda
+    **korunur** (`_payloadRoles` = görünür seçim ∪ atanamayan mevcutlar; validator da bunu sayar). Düzenle
+    `GET /users/{id}` → yalnız değişen alanlar `PUT /users/{id}` (dolu yeni şifre = admin sıfırlaması, oturumları
+    kapatır) → roller değiştiyse `PUT /roles/users/{id}/roles` (≥1, tümünü değiştirir); rol PUT'u düşerse
+    "Alanlar kaydedildi (şifre sıfırlandı), roller kaydedilemedi: …" ve form açık kalır. Tenant sekmesi oturum
+    tenant'ını gösterir. Durum `PATCH /users/{id}/status?isActive=` (pasifleştirme
     onaylı), silme kullanıcı adı **yazılarak** onaylı. Hatalar `userErrorText` (bilinen İngilizce backend
     mesajları Türkçe; 403 hiyerarşiyi açıklar). Admin'de rol/izin tanımı yönetim ekranı yok → mobilde de yok.
   - **Profil** (herkes): `GET /users/me` (açılışta tazelenir), roller + modüle göre izinler (admin `moduleLabels`).
+    Yenileme hatası, önbellekteki profil görünürken SnackBar ile söylenir.
     Düzenle `PUT /users/me {firstName, lastName, email}` (admin formu; e-posta zorunlu — backend `@Email` boş
     metni kabul edip e-postayı silerdi). Şifre değiştir (yalnız `provider == 'local'`): `PUT /users/me/password
     {currentPassword, newPassword}`; kural backend `@Pattern` (≥8, büyük/küçük harf + rakam; baş/son boşluk
     reddedilir), mevcuttan farklı, iki kez yazılır; yanlış mevcut şifre 400 → "Mevcut şifre hatalı.".
-  - **Ayarlar** (herkes): 2FA kartı `GET /auth/mfa/status`. Etkinleştir → `MfaSetupScreen`: `GET /auth/mfa/setup`
-    (**her çağrı yeni secret üretir ve 2FA'yı kapatır** → yalnız durum kapalıyken açılır, canlı testte çağrılmaz)
-    → `qrUri` yalnız `isValidOtpauthUri` (otpauth://totp, aynı secret) ise "Authenticator'da aç" (`url_launcher`,
-    harici uygulama; açılamazsa kopyala önerisi). QR yok (authenticator genelde aynı telefonda; paket eklenmedi).
-    Secret yalnız State'te: **varsayılan maskeli** (`formatSecret`), "göster" ile 4'lü gruplar, uygulama ön plandan
-    çıkınca yeniden maskelenir, loglanmaz/saklanmaz; kopyalama kullanıcının eylemi. Kod 6 hane →
+  - **Ayarlar** (herkes): 2FA kartı `GET /auth/mfa/status`. Etkinleştir **önce durumu yeniden okur** (`GET
+    /auth/mfa/setup` her çağrıda yeni secret üretir ve **2FA'yı kapatır** — bayat "Kapalı" kartı 2FA'yı düşürmesin;
+    etkinse kurulum açılmaz, kart güncellenir; okunamazsa da açılmaz; canlı testte setup çağrılmaz) →
+    `MfaSetupScreen`. `qrUri` yalnız `isValidOtpauthUri` ise "Authenticator'da aç" (`url_launcher`; 3 sn kilit —
+    art arda basış aynı kaydı çoğaltmasın; açılamazsa kopyala önerisi): şema `otpauth`, host `totp`, port/userInfo/
+    fragment yok, parametreler yalnız `secret` (her kopyası aynı secret), `issuer`, `algorithm=SHA1`, `digits=6`,
+    `period=30`; secret base32 (A–Z, 2–7). QR yok (authenticator genelde aynı telefonda; paket eklenmedi). Adım 1
+    yönergesi: eklenince uygulamaya dön; Android süreci öldürürse kurulumu baştan başlat ve authenticator'daki
+    eski "Elly CMS" kaydını sil (kartta da not). Secret yalnız State'te: **varsayılan maskeli** (`formatSecret`, kod
+    noktasıyla gruplar), "göster" ile 4'lü gruplar, **30 sn sonra** ve uygulama ön plandan çıkınca yeniden maskelenir
+    (liveRegion: durum ekran okuyucuya duyurulur), başarıda pop'tan sonra (dispose) bırakılır, loglanmaz/saklanmaz;
+    kopyalama kullanıcının eylemi. Kod 6 hane →
     `POST /auth/mfa/setup/verify {code}` (yanlış kod satır içi backend mesajı). Doğrulamadan çıkış onaylı.
     Kapat: şifreli dialog → `POST /auth/mfa/disable {password}` (yanlış şifre dialog içinde, sürerken kapanmaz).
-    Depolama: `StorageQuotaCard(settings: true)`; limit (GB → `gbToBytes`, 1024³) `PUT …/quota/limit {limitBytes}`
+    Depolama: `StorageQuotaCard(settings: true)`; limit (GB ↔ `gbToBytes`/`gbText`, 1024³, alan 2 ondalığa kadar;
+    bayt sonlu, int64'e sığan ve > 0 olmalı; **düşürmek onay ister**) `PUT …/quota/limit {limitBytes}`
     ve `POST …/quota/recompute` yalnız **SUPER_ADMIN rolünde** (backend `ROLE_SUPER_ADMIN` — permission değil rol;
     rol kontrolünün tek istisnası), diğerlerine admin'in salt-okunur notu.
   - **RabbitMQ** (`rabbit:read`; aksiyonlar `rabbit:manage`): özet `GET /admin/rabbit/overview` (liste başlığı,
     `SearchablePagedList.header`) + kuyruklar `GET /admin/rabbit/queues`; otomatik yenileme yok (admin 15–30 sn
-    poll eder) → çek-yenile/Yenile. Detay `GET …/queues/{name}` (`queuePath`, ad tek path segmenti); mesajlar
-    yalnız istekle **peek** `…/messages?count=1..100` (backend mesajları yeniden kuyruğa alır → "redelivered").
-    Mesaj gövdesi/properties **güvenilmez düz metin**: `SelectableText` monospace, JSON ise girintili, 10.000
-    karakterde kesilir; HTML asla render edilmez. Purge `POST …/purge` (204) kuyruk adı **yazılarak** onaylı, boş
-    kuyrukta kapalı. Republish formu `POST …/republish {targetQueue, payload, contentType}` (varsayılan hedef
-    `email-queue`, peek'ten doldurulur; JSON content type'ta geçersiz JSON reddedilir; gönderimden önce onay —
-    tüketici yeniden işler, ör. e-posta tekrar gider); `base64` mesaj metin olarak republish edilemez.
+    poll eder) → çek-yenile/Yenile. Detay `GET …/queues/{name}` (`queuePath`, ad tek path segmenti; "." / ".."
+    `%2E` kodlanır); mesajlar yalnız istekle **peek** `…/messages?count=1..100` (backend mesajları yeniden kuyruğa
+    alır → "redelivered"). Mesaj gövdesi/properties **güvenilmez düz metin** (`PayloadView`/`CodeBlock`):
+    `SelectableText` monospace, satır kırmaz (yatay kaydırma); önizleme `payloadPreview` = önce 10.000 UTF-16
+    birimde **kes** (`clipText` sürrogat çiftini bölmez — bölünmüş çift `SelectableText`'i çökertir), sonra yalnız
+    geçerli JSON'u **yeniden kodlamadan** girintile (`prettyPayload`: sayılar/kaçışlar aynen), bidi kontrol
+    karakterleri (U+202A–202E, 2066–2069) `⟨U+202E⟩` olarak görünür; "Tümünü göster" tam metni `compute` ile
+    hazırlar, "Kopyala" ham gövdeyi kopyalar; HTML asla render edilmez. Kart anahtarı `message_id`'den. Purge
+    `POST …/purge` (204) kuyruk adı **yazılarak** onaylı (sayı "yaklaşık"), boş kuyrukta kapalı, istek sürerken
+    buton kilitli + ilerleme. Republish formu `POST …/republish {targetQueue, payload, contentType}`: hedef kaynak
+    DLQ ise ondan türetilir (`x.dlq` → `x`, `republishTargetFor`), değilse boş — bilinçli seçilir; peek'ten **ham**
+    gövde (güzelleştirme yalnız görüntüde); JSON ya da **boş** content type'ta geçersiz JSON reddedilir; gönderimden
+    önce onay (tüketici yeniden işler; kaynak mesaj silinmez, kopyalanır); başarıdan sonra eski peek listesi
+    temizlenir; `base64` mesaj metin olarak republish edilemez.
 - **Navigasyon:** dashboard kök ekrandır; `AppDrawer` admin `Sidebar.tsx` gruplarını aynı sırayla gösterir
   (Gösterge Paneli · İçerik Yönetimi · Bileşenler · Medya · Etkileşim · İletişim · Sistem) + profil başlığı
   (Türkçe baş harfler + rol etiketi) + çıkış. Her bölüm ekranında drawer vardır (`AppScaffold(navId:)`,
@@ -313,6 +335,7 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
 - **İlişki alanları:** `RelationMultiSelect` bir `FormField` (validator / `isRequired`, `Form.save/reset`).
   `paged: true` kaynakta tüm sayfalar baştan çekilir (seçili id'lerin etiketi her zaman çözülür; ~5000 kayda
   kadar uygun). İlk `maxChips` chip + "+K daha".
+- **StatusBadge** renksiz (muted) metni `onSurface` α0.75 (AA).
 - **Roller:** `AuthProvider.roles` / `roleLabel` gösterim içindir; yetki her zaman permission'dan gelir
   (istemcide SUPER_ADMIN bypass'ı yok — backend süper admine tüm izinleri zaten verir). İki istisna, backend'in
   kendisi rol baktığı için: kullanıcı yönetiminde rol hiyerarşisi (`roleLevel`) ve `ROLE_SUPER_ADMIN` endpoint'leri
