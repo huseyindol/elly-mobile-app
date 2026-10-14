@@ -1,7 +1,8 @@
 # Elly Mobile App — Claude Code Proje Rehberi
 
 `elly-admin` yönetim panelinin **Flutter** mobil karşılığı: sayfa, bileşen, post, içerik, widget, banner,
-form, asset, mail hesabı, e-posta şablonu ve e-posta logu yönetimi. Backend: `elly-backend` (Spring Boot,
+form, asset, mail hesabı, e-posta şablonu, e-posta logu, kullanıcı/rol, profil, ayarlar (2FA, depolama) ve RabbitMQ
+yönetimi. Backend: `elly-backend` (Spring Boot,
 db-per-tenant). Bu repo `elly-studio` orchestrator'ının bir parçasıdır; çapraz repo kuralları kökteki `AGENTS.md`'dedir.
 
 ## Stack
@@ -15,6 +16,7 @@ db-per-tenant). Bu repo `elly-studio` orchestrator'ının bir parçasıdır; ça
 | Dosya seçimi | `file_picker` |
 | Zengin metin | `flutter_quill` 11.6.0 (MIT) + `html` 0.15.7 (BSD) — kendi HTML ↔ Delta kodeği |
 | HTML önizleme | `webview_flutter` 4.14 (BSD-3, flutter.dev) — yalnız `SafeHtmlView` üzerinden (e-posta şablonu önizlemesi) |
+| Harici link | `url_launcher` 6.3 (BSD-3, flutter.dev) — yalnız 2FA `otpauth://` linki (doğrulanmış URI) |
 | Yerelleştirme | `flutter_localizations` (Flutter SDK) — uygulama sabit `tr` |
 | Test | `flutter_test`, `integration_test` |
 | Lint | `flutter_lints` (`analysis_options.yaml`) |
@@ -37,6 +39,8 @@ lib/
 │   ├── form_schema.dart           # saf: form şeması kuralları, koşul değerlendirici (admin/tenant JS anlamı), formatPayloadValue
 │   ├── mail_payload.dart          # saf: mail hesabı / şablon payload'ı, e-posta durum etiketleri, log endpoint'i
 │   ├── safe_html.dart             # saf: güvenilmez HTML → önizleme belgesi (CSP, betik/URL temizliği), gezinme kuralı
+│   ├── user_admin.dart            # saf: rol hiyerarşisi, kullanıcı payload'ları, şifre/e-posta kuralı, hata metni, otpauth/secret
+│   ├── rabbit_admin.dart          # saf: kuyruk path'i, peek sınırı, payload biçimi, republish payload/doğrulama, hata metni
 │   └── text_format.dart           # saf: foldTr (Türkçe arama anahtarı), upperTr, formatBytes, slugify, formatDateTimeTr
 ├── screens/
 │   ├── login_screen.dart
@@ -45,6 +49,9 @@ lib/
 │   ├── assets_screen.dart         # Medya: klasör, sunucu araması, çoklu yükleme, toplu silme (generic'e sığmıyor)
 │   ├── forms/                     # form builder alt ekranları: alanlar + alan düzenleme, önizleme, gönderimler (+ detay)
 │   ├── mail/                      # İletişim: mail hesapları (+ form), e-posta şablonları (+ form, önizleme), e-posta logları (+ detay)
+│   ├── users/                     # Kullanıcılar (panel/tenant sekmesi) + kullanıcı formu (rol atama)
+│   ├── account/                   # Profil (+ düzenle, şifre değiştir), Ayarlar (2FA kartı + kapatma dialog'u, depolama), 2FA kurulumu
+│   ├── rabbit/                    # RabbitMQ: özet + kuyruklar, kuyruk detayı (peek), republish formu
 │   └── crud/generic_crud_{list,form}_screen.dart
 └── widgets/                       # ortak bileşenler — yeni ekranlar bunları kullanır
     ├── app_scaffold.dart          # AppScaffold (cam AppBar + AmbientBackground + opsiyonel drawer + bottomNavigationBar)
@@ -56,6 +63,9 @@ lib/
     ├── status_badge.dart          # StatusBadge (Aktif/Pasif, Ana Hesap, e-posta durumu…)
     ├── safe_html_view.dart        # SafeHtmlView: güvenilmez HTML'i JS kapalı, ağsız WebView'da gösterir
     ├── save_bar.dart              # SaveBar: formların sabit alt Kaydet çubuğu
+    ├── password_field.dart        # PasswordField: göster/gizle, öneri/autocorrect kapalı, autofill ipucu
+    ├── info_note.dart             # InfoNote: formlardaki bilgi/uyarı kutusu (admin ℹ️ / ⚠️ notları)
+    ├── storage_quota_card.dart    # StorageQuotaCard: dashboard "Yönet" ve ayarlar (SUPER_ADMIN limit/yeniden hesapla) + quotaColor
     ├── form_schema_editor.dart    # FormField<Map>: form şeması builder'ı (düzen, adımlar, alanlar, önizleme)
     ├── searchable_paged_list.dart # liste gövdesi: arama, filtre/sıralama, pull-to-refresh, sayfalı sonsuz kaydırma, onLoad
     ├── relation_multi_select.dart # FormField<List<Object>>: ilişki id listesi seçici (componentIds, …)
@@ -74,7 +84,11 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
 - Yanıtlar `{ "result": true, "data": ... }` sarmalıdır; `ApiService` `data`'yı döner, sayfalı listelerde
   `data.content` → `extractItems`. Hatalar backend `ErrorResponse`'tan (`message`, `validationErrors`,
   `details`) `ApiException` mesajına çevrilir. **204 No Content** gövdesiz başarıdır → `null` döner
-  (`DELETE /email-templates/{key}`).
+  (`DELETE /email-templates/{key}`, RabbitMQ purge). `patch(endpoint)` gövdesiz PATCH'tir (`/users/{id}/status`).
+  **`/auth/*` kuralı (`isPublicAuthEndpoint`):** login/refresh/`/auth/mfa/verify` oturumsuzdur (Bearer yok, 401
+  refresh tetiklemez). 2FA yönetimi (`/auth/mfa/status|setup|setup/verify|disable`) oturum ister: Bearer + 401'de
+  refresh → tekrar; yanlış kod/şifre de 401 döner → refresh sonrası yine 401 → backend mesajı gösterilir, oturum
+  düşmez (refresh token her yanlış denemede döner).
 - **Dinamik CRUD:** yönetim ekranları `ModulesConfig.allModules`'tan render edilir
   (`GenericCrudListScreen` / `GenericCrudFormScreen`). Yeni modül/alan = önce `modules_config.dart`.
   - Her modül backend'deki `Dto*IU` sınıfını yansıtır (`elly-backend/src/main/java/com/cms/dto`).
@@ -208,10 +222,51 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
 - Endpoint'ler `/api/v1` köküne görelidir (`ApiService.baseUrl`; varsayılan prod, build'de
   `--dart-define=API_BASE_URL=...` ile değişir). Yeni bir kök/endpoint backend'de yoksa
   **kullanma** — sözleşme önce backend'de değişir (kök `AGENTS.md` → contract-first).
-- Giriş `loginType: 'admin'` ile panel kullanıcısı gibi yapılır. **2FA destekleniyor (yalnız doğrulama
-  adımı):** `mfaRequired=true` → login ekranı 6 haneli kod adımına geçer → `POST /auth/mfa/verify
-  { mfaToken, code }` (Authorization yok, `X-Tenant-Id` login'deki tenant). 2FA kurulumu/kapatma panelden
-  yapılır, mobilde yok. Panelde olduğu gibi sosyal giriş yok.
+- Giriş `loginType: 'admin'` ile panel kullanıcısı gibi yapılır. **2FA:** `mfaRequired=true` → login ekranı 6
+  haneli kod adımına geçer → `POST /auth/mfa/verify { mfaToken, code }` (Authorization yok, `X-Tenant-Id` login'deki
+  tenant). Kurulum/kapatma Ayarlar'da (aşağıda "Sistem & hesap"). Panelde olduğu gibi sosyal giriş yok.
+  Login/mfa-verify sonrası ve açılışta token varsa `GET /users/me` de yüklenir (`AuthProvider.profile`;
+  `displayName` = "Ad Soyad" yoksa kullanıcı adı, `userId`); drawer başlığı ve dashboard selamlaması bunu kullanır.
+  Hata sessizdir (login yanıtındaki kullanıcı adına düşer); logout'ta temizlenir.
+- **Sistem & hesap (`screens/users`, `screens/account`, `screens/rabbit`):**
+  - **Kullanıcılar** (`users:manage`, backend SUPER_ADMIN + ADMIN): `GET /users?audience=panel|tenant` (iki sekme,
+    sayfasız, istemci araması). **Rol hiyerarşisi** (`user_admin.dart`, backend `roleLevel`: SUPER_ADMIN 4 · ADMIN 3
+    · EDITOR 2 · diğer 1; seviye `AuthProvider.roleLevel` = `/users/me/permissions` rolleri, bilinmiyorsa 1):
+    formda yalnız `canAssignRole` rolleri (TENANT hiç; kendi seviyesinin üstü hiç); **kendi seviyesinin üstündeki
+    kullanıcı** listede kilitli (düzenle/durum/sil yok — admin panelde ADMIN bir SUPER_ADMIN'i düzenlerse rol
+    listesinde SUPER_ADMIN olmadığı için rolü sessizce düşer; backend hedef kullanıcının seviyesini kontrol
+    etmiyor). Kendi hesabı: sil/pasifleştir yok, formda rol salt okunur ve şifre sıfırlama yok (Profil → Şifre
+    Değiştir). Oluştur `POST /users` (panel: rol yoksa backend ADMIN atar → yalnız ADMIN atayabilen çağırana
+    sunulur, değilse ≥1 rol zorunlu; tenant: `roleIds` gönderilmez). Düzenle `GET /users/{id}` → yalnız değişen
+    alanlar `PUT /users/{id}` (dolu yeni şifre = admin sıfırlaması, oturumları kapatır) → roller değiştiyse
+    `PUT /roles/users/{id}/roles` (≥1, tümünü değiştirir). Durum `PATCH /users/{id}/status?isActive=` (pasifleştirme
+    onaylı), silme kullanıcı adı **yazılarak** onaylı. Hatalar `userErrorText` (bilinen İngilizce backend
+    mesajları Türkçe; 403 hiyerarşiyi açıklar). Admin'de rol/izin tanımı yönetim ekranı yok → mobilde de yok.
+  - **Profil** (herkes): `GET /users/me` (açılışta tazelenir), roller + modüle göre izinler (admin `moduleLabels`).
+    Düzenle `PUT /users/me {firstName, lastName, email}` (admin formu; e-posta zorunlu — backend `@Email` boş
+    metni kabul edip e-postayı silerdi). Şifre değiştir (yalnız `provider == 'local'`): `PUT /users/me/password
+    {currentPassword, newPassword}`; kural backend `@Pattern` (≥8, büyük/küçük harf + rakam; baş/son boşluk
+    reddedilir), mevcuttan farklı, iki kez yazılır; yanlış mevcut şifre 400 → "Mevcut şifre hatalı.".
+  - **Ayarlar** (herkes): 2FA kartı `GET /auth/mfa/status`. Etkinleştir → `MfaSetupScreen`: `GET /auth/mfa/setup`
+    (**her çağrı yeni secret üretir ve 2FA'yı kapatır** → yalnız durum kapalıyken açılır, canlı testte çağrılmaz)
+    → `qrUri` yalnız `isValidOtpauthUri` (otpauth://totp, aynı secret) ise "Authenticator'da aç" (`url_launcher`,
+    harici uygulama; açılamazsa kopyala önerisi). QR yok (authenticator genelde aynı telefonda; paket eklenmedi).
+    Secret yalnız State'te: **varsayılan maskeli** (`formatSecret`), "göster" ile 4'lü gruplar, uygulama ön plandan
+    çıkınca yeniden maskelenir, loglanmaz/saklanmaz; kopyalama kullanıcının eylemi. Kod 6 hane →
+    `POST /auth/mfa/setup/verify {code}` (yanlış kod satır içi backend mesajı). Doğrulamadan çıkış onaylı.
+    Kapat: şifreli dialog → `POST /auth/mfa/disable {password}` (yanlış şifre dialog içinde, sürerken kapanmaz).
+    Depolama: `StorageQuotaCard(settings: true)`; limit (GB → `gbToBytes`, 1024³) `PUT …/quota/limit {limitBytes}`
+    ve `POST …/quota/recompute` yalnız **SUPER_ADMIN rolünde** (backend `ROLE_SUPER_ADMIN` — permission değil rol;
+    rol kontrolünün tek istisnası), diğerlerine admin'in salt-okunur notu.
+  - **RabbitMQ** (`rabbit:read`; aksiyonlar `rabbit:manage`): özet `GET /admin/rabbit/overview` (liste başlığı,
+    `SearchablePagedList.header`) + kuyruklar `GET /admin/rabbit/queues`; otomatik yenileme yok (admin 15–30 sn
+    poll eder) → çek-yenile/Yenile. Detay `GET …/queues/{name}` (`queuePath`, ad tek path segmenti); mesajlar
+    yalnız istekle **peek** `…/messages?count=1..100` (backend mesajları yeniden kuyruğa alır → "redelivered").
+    Mesaj gövdesi/properties **güvenilmez düz metin**: `SelectableText` monospace, JSON ise girintili, 10.000
+    karakterde kesilir; HTML asla render edilmez. Purge `POST …/purge` (204) kuyruk adı **yazılarak** onaylı, boş
+    kuyrukta kapalı. Republish formu `POST …/republish {targetQueue, payload, contentType}` (varsayılan hedef
+    `email-queue`, peek'ten doldurulur; JSON content type'ta geçersiz JSON reddedilir; gönderimden önce onay —
+    tüketici yeniden işler, ör. e-posta tekrar gider); `base64` mesaj metin olarak republish edilemez.
 - **Navigasyon:** dashboard kök ekrandır; `AppDrawer` admin `Sidebar.tsx` gruplarını aynı sırayla gösterir
   (Gösterge Paneli · İçerik Yönetimi · Bileşenler · Medya · Etkileşim · İletişim · Sistem) + profil başlığı
   (Türkçe baş harfler + rol etiketi) + çıkış. Her bölüm ekranında drawer vardır (`AppScaffold(navId:)`,
@@ -219,7 +274,8 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
   (form vb.) `navId` vermez → geri butonu. Bottom nav yok: 16 hedef 5 sekmeye sığmaz ve menü admin ile
   birebir kalır. Yeni alan = `nav_config.dart`'ta `NavItem` (CRUD ise `NavItem.crud(key)`); generic'e sığmayan
   ekran `app_drawer.dart` → `navScreen(item)` eşlemesine eklenir (assets, mail-accounts, email-templates,
-  email-logs). `navScreen` null dönen öğe "Yakında" etiketi taşır ve yer tutucu ekranı açar.
+  email-logs, users, rabbitmq, settings, profile). `navScreen` null dönen öğe "Yakında" etiketi taşır ve yer tutucu
+  ekranı açar (şu an yalnız chat — Faz 5). Drawer başlığı "Ad Soyad" + iki kelimenin baş harfleri (admin sidebar).
 - **Yerelleştirme:** `MaterialApp(locale: tr, supportedLocales: [tr], localizationsDelegates: appLocalizationsDelegates)`
   — Quill + `flutter_localizations` Global Material/Widgets/Cupertino, her biri bir kez. Cihaz dili ne olursa olsun
   sistem metinleri (tarih seçici, ReorderableListView "Yukarı/Aşağı/Başa/Sona taşı" aksiyonları) Türkçe; iOS
@@ -232,13 +288,15 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
   gösterilir ne istenir. Her kartın isteği bağımsızdır (hata → karta dokun = tekrar dene); pull-to-refresh
   permission'ları ve tüm kartları yeniler (çalışırken kilitli; izin yenileme hatası SnackBar). Kartlar sabit
   en-boy oranı kullanmaz; ölçekli genişlik ≥260 dp ise iki sütun (320–430 dp telefonlar), büyük yazıda tek.
-  "Depolama Kullanımı" kartı admin `StorageUsageWidget` ile aynı: `GET /storage/tenant/{tenantId}/quota`
-  (oturum tenant'ı yoksa `/storage/quota`), eşikler <70 yeşil · 70–90 amber · ≥90 kırmızı.
+  "Depolama Kullanımı" kartı admin `StorageUsageWidget` ile aynı (`StorageQuotaCard`, "Yönet" → Ayarlar):
+  `GET /storage/tenant/{tenantId}/quota` (oturum tenant'ı yoksa `/storage/quota`), eşikler <70 yeşil · 70–90 amber
+  · ≥90 kırmızı. "Kullanıcılar" kartı Kullanıcılar ekranını açar.
 - **Listeler:** `SearchablePagedList` — `paged: true` ise `page`/`size` eklenir (`PagedResponse.last`'a kadar
   sonraki sayfa; mevcut query, tekrarlı `sort` dahil, korunur). Arama istemci tarafında ve `foldTr` iledir
   (backend list endpoint'lerinde arama parametresi yok); sorgu doluyken sonraki sayfa otomatik değil,
   "Daha fazla ara" ile yüklenir. Yenileme sırasında eski liste + ince ilerleme çubuğu; hata → SnackBar.
   Alt padding FAB payı bırakır. Dışarıdan yenileme `GlobalKey<SearchablePagedListState>().currentState.reload()`.
+  `header` listeyle birlikte kayan üst bölümdür (RabbitMQ özeti); liste yüklenirken/hatadayken görünmez.
   Admin tabloları gibi istemci sıralaması `CrudModule.sortKey` (`compareByKey`: sayı/foldTr, eşitlikte id),
   `statusKey` rozet, `thumbnailKey` görsel, `listMeta` ek satırlar; çip satırları sabit yükseklik
   kullanmaz (yazı ölçeği); `ListFilter` çipleri sunucu
@@ -255,8 +313,10 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
 - **İlişki alanları:** `RelationMultiSelect` bir `FormField` (validator / `isRequired`, `Form.save/reset`).
   `paged: true` kaynakta tüm sayfalar baştan çekilir (seçili id'lerin etiketi her zaman çözülür; ~5000 kayda
   kadar uygun). İlk `maxChips` chip + "+K daha".
-- **Roller:** `AuthProvider.roles` / `roleLabel` yalnız gösterim içindir; yetki her zaman permission'dan
-  gelir (istemcide SUPER_ADMIN bypass'ı yok — backend süper admine tüm izinleri zaten verir).
+- **Roller:** `AuthProvider.roles` / `roleLabel` gösterim içindir; yetki her zaman permission'dan gelir
+  (istemcide SUPER_ADMIN bypass'ı yok — backend süper admine tüm izinleri zaten verir). İki istisna, backend'in
+  kendisi rol baktığı için: kullanıcı yönetiminde rol hiyerarşisi (`roleLevel`) ve `ROLE_SUPER_ADMIN` endpoint'leri
+  (depolama limiti).
 - **Permission (UI gating):** `AuthProvider.can(module, action)` / `has('<module>:<action>')` — kaynak
   `GET /users/me/permissions` (login/mfa-verify sonrası ve açılışta token varsa yüklenir; logout'ta temizlenir).
   Her `CrudModule` `permissionKey` taşır (`PermissionConstants.java`'daki modül adı). `<key>:read` yoksa modül
@@ -268,7 +328,9 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
 ## Kodlama kuralları
 
 - Dart dosyaları `snake_case.dart`, sınıflar `PascalCase`, private üyeler `_` önekli.
-- `print` yok; hata kullanıcıya `ApiException` mesajıyla gösterilir.
+- `print` yok; hata kullanıcıya `ApiException` mesajıyla gösterilir. Şifre, 2FA secret'ı ve token loglanmaz,
+  `flutter_secure_storage` dışına yazılmaz.
+- `setState` içinde Future döndüren arrow kullanma (`setState(() => _f = load())` assert atar): blok gövdesi.
 - Yeni saf mantık (`crud_payload.dart` gibi) Flutter'a bağımlı olmadan yazılır ve unit test alır.
 - Gizli bilgi koda yazılmaz. Test hesapları env / `--dart-define` ile verilir.
 - Yeni kodda `withOpacity` yerine `withValues(alpha: …)` kullan.
@@ -297,7 +359,8 @@ flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080/api/v1
 flutter analyze --no-fatal-infos  # statik analiz (error/warning 0 olmalı; info'lar exit'i bozmaz)
 flutter test                      # unit + widget testleri (canlı test atlanır)
 
-# Canlı sözleşme testi — gerçek backend'e yazar ve siler, opt-in:
+# Canlı sözleşme testi — gerçek backend'e yazar ve siler, opt-in (sistem & hesap grubu salt okunur:
+# kullanıcı oluşturmaz, 2FA kurulumu/purge/peek yapmaz):
 LIVE_API=1 ELLY_USER=... ELLY_PASS=... [ELLY_TENANT=tenant1] flutter test test/crud_live_contract_test.dart
 
 # Uçtan uca (cihaz/simülatör):
