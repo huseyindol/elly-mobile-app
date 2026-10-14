@@ -50,6 +50,7 @@ class NotificationsProvider extends ChangeNotifier {
   bool _hasMore = false;
   int _page = 0;
   String? _error;
+  String? _loadMoreError;
 
   /// Set by the notifications screen while visible (no banner then: the list itself updates).
   bool listVisible = false;
@@ -61,6 +62,9 @@ class NotificationsProvider extends ChangeNotifier {
   bool get loadingMore => _loadingMore;
   bool get hasMore => _hasMore;
   String? get error => _error;
+
+  /// Next page failed: automatic loading stops until [loadMore] is retried by the user.
+  String? get loadMoreError => _loadMoreError;
   Stream<AppNotification> get incoming => _incoming.stream;
 
   /// After sign-in.
@@ -93,6 +97,7 @@ class NotificationsProvider extends ChangeNotifier {
     _loaded = _loading = _loadingMore = _hasMore = false;
     _page = 0;
     _error = null;
+    _loadMoreError = null;
     listVisible = false;
     notifyListeners();
   }
@@ -135,6 +140,7 @@ class NotificationsProvider extends ChangeNotifier {
     final epoch = _epoch;
     _loading = true;
     _error = null;
+    _loadMoreError = null;
     notifyListeners();
     try {
       final data = await api.get('/notifications?page=0&size=$pageSize');
@@ -157,6 +163,7 @@ class NotificationsProvider extends ChangeNotifier {
     if (!_hasMore || _loadingMore || _loading) return;
     final epoch = _epoch;
     _loadingMore = true;
+    _loadMoreError = null;
     notifyListeners();
     try {
       final data = await api.get('/notifications?page=${_page + 1}&size=$pageSize');
@@ -169,6 +176,7 @@ class NotificationsProvider extends ChangeNotifier {
     } catch (e) {
       if (epoch != _epoch) return;
       _loadingMore = false;
+      _loadMoreError = '$e';
       notifyListeners();
       rethrow;
     }

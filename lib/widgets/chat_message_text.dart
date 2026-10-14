@@ -73,7 +73,13 @@ class _ChatMessageTextState extends State<ChatMessageText> {
         ),
         if (clipped)
           TextButton(
-            style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(48, 36)),
+            // Same color as the bubble text (the theme's primary on the own bubble would be ~1.4:1).
+            style: TextButton.styleFrom(
+              foregroundColor: widget.style?.color,
+              padding: EdgeInsets.zero,
+              minimumSize: const Size(48, 36),
+              textStyle: const TextStyle(fontWeight: FontWeight.w600, decoration: TextDecoration.underline),
+            ),
             onPressed: () => setState(() => _expanded = !_expanded),
             child: Text(_expanded ? 'Daha az göster' : 'Tümünü göster'),
           ),

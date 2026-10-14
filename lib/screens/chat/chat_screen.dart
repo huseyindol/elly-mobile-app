@@ -170,19 +170,31 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ],
         ),
-        trailing: unread > 0
-            ? Semantics(
-                label: '$unread okunmamış mesaj',
-                excludeSemantics: true,
-                child: Badge(
-                  key: ValueKey('chat_unread_${g.id}'),
-                  label: Text(unread > 99 ? '99+' : '$unread'),
-                  backgroundColor: AppColors.primaryStrong,
-                  textColor: Colors.white,
-                  largeSize: 22,
-                ),
-              )
-            : null,
+        trailing: last == null && unread == 0
+            ? null
+            : Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (last != null)
+                    Text(formatMessageTime(last.createdAt, DateTime.now()), style: muted.copyWith(fontSize: 12)),
+                  if (unread > 0) ...[
+                    const SizedBox(height: 4),
+                    Semantics(
+                      label: '$unread okunmamış mesaj',
+                      excludeSemantics: true,
+                      child: Badge(
+                        key: ValueKey('chat_unread_${g.id}'),
+                        label: Text(unread > 99 ? '99+' : '$unread'),
+                        backgroundColor: AppColors.primaryStrong,
+                        textColor: Colors.white,
+                        largeSize: 22,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
         onTap: () => openChatConversation(Navigator.of(context), g.id),
       ),
     );

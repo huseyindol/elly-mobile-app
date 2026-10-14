@@ -163,6 +163,12 @@ void main() {
     await settle(tester);
     await tester.tap(find.byKey(const ValueKey('notification_delete_2')));
     await settle(tester);
+    expect(find.text('E-posta gönderimi başarısız'), findsNothing, reason: 'hidden at once');
+    expect(backend.requestsTo('/notifications/2'), isEmpty, reason: 'sent only after the undo window');
+    await tester.pumpAndSettle(); // SnackBar in
+    await tester.pump(const Duration(seconds: 5)); // its 4 s timer
+    await tester.pumpAndSettle(); // SnackBar out → closed
+    await settle(tester);
     expect(backend.requestsTo('/notifications/2').single.method, 'DELETE');
     expect(find.text('E-posta gönderimi başarısız'), findsNothing);
 
@@ -170,6 +176,49 @@ void main() {
     await settle(tester);
     expect(backend.requestsTo('/notifications/read-all').single.method, 'POST');
     expect(find.byKey(const ValueKey('notifications_read_all')), findsNothing);
+  });
+
+  testWidgets('delete → "Geri al" restores it and sends nothing', (tester) async {
+    await pumpApp(tester, ['chat:read']);
+    await tester.tap(bell());
+    await settle(tester);
+    await tester.tap(find.byKey(const ValueKey('notification_delete_2')));
+    await tester.pumpAndSettle();
+    expect(find.text('E-posta gönderimi başarısız'), findsNothing);
+    await tester.tap(find.text('Geri al'));
+    await tester.pumpAndSettle();
+    await tester.pumpAndSettle(); // SnackBar in
+    await tester.pump(const Duration(seconds: 5)); // its 4 s timer
+    await tester.pumpAndSettle(); // SnackBar out → closed
+    await settle(tester);
+    expect(find.text('E-posta gönderimi başarısız'), findsOneWidget);
+    expect(backend.requestsTo('/notifications/2'), isEmpty);
+  });
+
+  testWidgets('next page fails: inline "Tekrar dene", no automatic retries; retry loads it', (tester) async {
+    var fail = true;
+    items = [for (var i = 30; i > 0; i--) n(i, title: 'B$i')];
+    backend.routes['/notifications'] = (req) {
+      final page = int.parse(req.url.queryParameters['page'] ?? '0');
+      if (page > 0 && fail) return jsonResponse({'message': 'Sunucu hatası'}, 500);
+      final slice = items.skip(page * 20).take(20).toList();
+      return okData({'content': slice, 'last': page > 0});
+    };
+    await pumpApp(tester, ['chat:read']);
+    await tester.tap(bell());
+    await settle(tester);
+    await tester.drag(find.byType(ListView).last, const Offset(0, -4000));
+    await settle(tester);
+    expect(find.byKey(const ValueKey('notifications_load_more_retry')), findsOneWidget);
+    final calls = backend.requestsTo('/notifications').length;
+    await tester.drag(find.byType(ListView).last, const Offset(0, -500));
+    await settle(tester);
+    expect(backend.requestsTo('/notifications').length, calls, reason: 'scrolling does not retry by itself');
+    fail = false;
+    await tester.tap(find.byKey(const ValueKey('notifications_load_more_retry')));
+    await settle(tester);
+    expect(live.notifications.items, hasLength(30));
+    expect(find.byKey(const ValueKey('notifications_load_more_retry')), findsNothing);
   });
 
   testWidgets('a pushed notification shows an in-app banner; "Aç" opens it — not while the list is open', (

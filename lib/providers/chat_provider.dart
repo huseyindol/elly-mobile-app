@@ -56,6 +56,7 @@ class ChatProvider extends ChangeNotifier {
   final Map<String, Map<int, String>> _seenBy = {};
   final Map<String, DateTime> _lastSignal = {};
   String? _activeGroupId;
+  bool _atLatest = true; // the open conversation shows its newest message (read receipts only then)
   Set<String> _bannedKeys = {};
 
   final Map<String, RealtimeSubscription> _groupSubs = {};
@@ -343,6 +344,7 @@ class ChatProvider extends ChangeNotifier {
   void enterGroup(ChatGroup g) {
     if (_activeGroupId != g.id) _leaveActive();
     _activeGroupId = g.id;
+    _atLatest = true;
     _unread.remove(g.id);
     _bannedKeys = {};
     final tid = _wsTenant(g);
@@ -353,6 +355,14 @@ class ChatProvider extends ChangeNotifier {
         ..add(realtime.subscribe(StompDest.bans(tid, g.id), (b) => _onBan(g.id, b)));
     }
     notifyListeners();
+  }
+
+  /// The open conversation's list reached / left its newest message. Read receipts are sent only while the newest
+  /// message is on screen (no false "Görüldü"); arriving back at it sends one.
+  void setViewingLatest(ChatGroup g, bool atLatest) {
+    if (_activeGroupId != g.id || _atLatest == atLatest) return;
+    _atLatest = atLatest;
+    if (atLatest) sendRead(g, force: true);
   }
 
   /// Called from the conversation's dispose (tree locked → no notify; nothing on screen depends on it).
@@ -394,7 +404,7 @@ class ChatProvider extends ChangeNotifier {
       _hasMore.putIfAbsent(g.id, () => page.length >= chatPageSize);
     }
     notifyListeners();
-    sendRead(g, force: true);
+    if (_activeGroupId != g.id || _atLatest) sendRead(g, force: true);
   }
 
   /// Older page before the oldest loaded message (scrolling up).
@@ -529,7 +539,7 @@ class ChatProvider extends ChangeNotifier {
       _seenBy[groupId] = {};
     } else if (_activeGroupId == groupId) {
       final g = groupById(groupId);
-      if (g != null) sendRead(g);
+      if (g != null && _atLatest) sendRead(g);
     } else {
       _unread[groupId] = unreadOf(groupId) + 1;
     }

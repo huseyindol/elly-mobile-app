@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -12,6 +13,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/chat_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/chat_format.dart';
+import '../../services/text_format.dart';
 import '../../widgets/app_scaffold.dart';
 import '../../widgets/app_snack_bar.dart';
 import '../../widgets/chat_message_text.dart';
@@ -30,27 +32,49 @@ Future<bool> _launchExternal(Uri uri) async {
   }
 }
 
+/// A picked file: local path, display name, size in bytes (null = unknown).
+typedef PickedChatFile = ({String path, String name, int? size});
+
+Future<PickedChatFile?> _pickWithFilePicker() async {
+  final file = (await FilePicker.pickFiles()).firstOrNull;
+  final path = file?.path;
+  if (file == null || path == null) return null;
+  return (path: path, name: file.name, size: await file.length());
+}
+
 /// Backend multipart limit (`spring.servlet.multipart.max-file-size`).
 const chatMaxFileBytes = 10 * 1024 * 1024;
 
 /// Admin `ChatWindow` + `ChatInput` + `ChatTypingIndicator`: history newest at the bottom, older pages load while
 /// scrolling up (`?before=<oldest id>`), send (REST), typing / read signals, "Görüldü" under the own last message,
 /// file attachments, delete own message, ban/unban tenant-side senders (`chat:manage`). Write access from
-/// `GET /access` (banner with the denial reason). The backend has no live delete/edit events and the admin has no
-/// edit UI → no message editing here either.
+/// `GET /access` (the only source of the composer banner). While the user reads older messages, new ones are not
+/// inserted (the view would jump): an "N yeni mesaj ↓" chip appears and read receipts wait until the newest message
+/// is on screen again. The backend has no live delete/edit events and the admin has no edit UI → no editing here.
 class ChatConversationScreen extends StatefulWidget {
   final String groupId;
 
   /// Test seam: opens a confirmed http(s) link.
   final Future<bool> Function(Uri uri) launcher;
 
-  const ChatConversationScreen({super.key, required this.groupId, this.launcher = _launchExternal});
+  /// Test seam: file picker.
+  final Future<PickedChatFile?> Function() pickFile;
+
+  const ChatConversationScreen({
+    super.key,
+    required this.groupId,
+    this.launcher = _launchExternal,
+    this.pickFile = _pickWithFilePicker,
+  });
 
   @override
   State<ChatConversationScreen> createState() => _ChatConversationScreenState();
 }
 
 class _ChatConversationScreenState extends State<ChatConversationScreen> {
+  /// Within this many pixels of the newest message the list counts as "at the bottom".
+  static const _bottomSlack = 48.0;
+
   late final ChatProvider _chat = context.read<ChatProvider>();
   final _composer = TextEditingController();
   final _scroll = ScrollController();
@@ -58,11 +82,14 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
 
   ChatGroup? _group;
   String? _error;
-  String? _banner;
   bool _sending = false;
-  bool _uploading = false;
+  String? _uploadingName;
   bool _loadingOlder = false;
   bool _deletingGroup = false;
+
+  /// Newest message shown while the user reads older ones (null = follow new messages).
+  String? _frozenAt;
+  bool _jumping = false;
 
   @override
   void initState() {
@@ -118,22 +145,46 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
     }
   }
 
+  /// Rejected frames / membership changes: a SnackBar (the composer banner comes only from `GET /access`, which the
+  /// provider re-reads on membership events).
   void _onNotice(ChatNotice notice) {
     if (!mounted || (notice.groupId != null && notice.groupId != widget.groupId)) return;
     if (notice.leave) {
       final messenger = ScaffoldMessenger.maybeOf(context);
       Navigator.of(context).maybePop();
-      messenger?.hideCurrentSnackBar();
-      messenger?.showSnackBar(SnackBar(content: Text(notice.message)));
+      if (messenger != null) showSnackBarOn(messenger, notice.message);
       return;
     }
-    setState(() => _banner = notice.message);
     showAppSnackBar(context, notice.message, error: true);
   }
 
   void _onScroll() {
-    // Reversed list: the oldest messages are at the max extent.
-    if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 300) _loadOlder();
+    final p = _scroll.position;
+    // Reversed list: the oldest messages are at the max extent, the newest at 0.
+    if (p.pixels >= p.maxScrollExtent - 300) _loadOlder();
+    if (_jumping) return;
+    final atBottom = p.pixels <= _bottomSlack;
+    if (atBottom == (_frozenAt == null)) return;
+    final group = _group;
+    if (group == null) return;
+    setState(() => _frozenAt = atBottom ? null : _chat.messagesOf(group.id).lastOrNull?.id);
+    _chat.setViewingLatest(group, atBottom);
+  }
+
+  /// The "N yeni mesaj ↓" chip / own send: show everything and scroll to the newest; one read receipt at the end.
+  Future<void> _toLatest({bool animate = true}) async {
+    setState(() => _frozenAt = null);
+    if (_scroll.hasClients) {
+      if (animate) {
+        _jumping = true; // positions passed on the way down must not re-freeze the list
+        await _scroll.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+        _jumping = false;
+      } else {
+        _scroll.jumpTo(0);
+      }
+    }
+    final group = _group;
+    if (group != null && mounted) _chat.setViewingLatest(group, true);
   }
 
   Future<void> _loadOlder() async {
@@ -156,8 +207,15 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
     setState(() => _sending = true);
     try {
       await _chat.send(group, text);
-      _composer.clear();
-      if (_scroll.hasClients) _scroll.jumpTo(0);
+      if (!mounted) return;
+      // Only the sent part goes; anything typed while sending stays.
+      final now = _composer.text;
+      final rest = now.startsWith(text) ? now.substring(text.length) : now;
+      _composer.value = TextEditingValue(
+        text: rest,
+        selection: TextSelection.collapsed(offset: rest.length),
+      );
+      _toLatest(animate: false);
     } catch (e) {
       await _sendFailed(group, e);
     } finally {
@@ -169,7 +227,6 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
     if (!mounted) return;
     showAppSnackBar(context, chatErrorText(e), error: true);
     if (e is ApiException && e.statusCode == 403) {
-      setState(() => _banner = chatErrorText(e));
       await _chat.loadAccess(group).catchError((_) => const ChatGroupAccess());
     }
   }
@@ -177,23 +234,29 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   Future<void> _attach() async {
     final group = _group;
     if (group == null) return;
-    final picked = await FilePicker.pickFiles();
-    final file = picked.firstOrNull;
-    if (file?.path == null || !mounted) return;
-    final size = await file!.length();
-    if (!mounted) return;
+    final file = await widget.pickFile();
+    if (file == null || !mounted) return;
+    final size = file.size;
     if (size != null && size > chatMaxFileBytes) {
       showAppSnackBar(context, 'Dosya 10 MB\'tan büyük olamaz.', error: true);
       return;
     }
-    setState(() => _uploading = true);
+    final name = safeChatText(file.name);
+    final ok = await showConfirmDialog(
+      context,
+      title: 'Dosya gönderilsin mi?',
+      message: '$name${size == null ? '' : ' (${formatBytes(size)})'}\n\nGruptaki herkes görebilir ve indirebilir.',
+      confirmLabel: 'Gönder',
+    );
+    if (!ok || !mounted) return;
+    setState(() => _uploadingName = name);
     try {
-      await _chat.sendFile(group, file.path!);
-      if (_scroll.hasClients) _scroll.jumpTo(0);
+      await _chat.sendFile(group, file.path);
+      if (mounted) _toLatest(animate: false);
     } catch (e) {
       await _sendFailed(group, e);
     } finally {
-      if (mounted) setState(() => _uploading = false);
+      if (mounted) setState(() => _uploadingName = null);
     }
   }
 
@@ -223,9 +286,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
       Navigator.of(context).pop();
-      messenger
-        ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('Grup silindi')));
+      showSnackBarOn(messenger, 'Grup silindi');
     } catch (e) {
       if (mounted) showAppSnackBar(context, chatErrorText(e), error: true);
     } finally {
@@ -233,13 +294,57 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
     }
   }
 
+  // ── message actions (long-press sheet and screen-reader custom actions share these) ──
+
+  Future<void> _run(Future<void> Function() action) async {
+    try {
+      await action();
+    } catch (e) {
+      if (mounted) showAppSnackBar(context, chatErrorText(e), error: true);
+    }
+  }
+
+  Future<void> _copy(ChatMessage m) async {
+    await Clipboard.setData(ClipboardData(text: safeChatText(m.content)));
+    if (mounted) showAppSnackBar(context, 'Kopyalandı');
+  }
+
+  Future<void> _delete(ChatMessage m) async {
+    final ok = await showConfirmDialog(
+      context,
+      title: 'Mesajı sil',
+      message: 'Mesaj herkes için "silindi" olarak görünecek.',
+      confirmLabel: 'Sil',
+      destructive: true,
+    );
+    if (ok && mounted) await _chat.deleteMessage(_group!, m);
+  }
+
+  Future<void> _ban(ChatMessage m) async {
+    final ok = await showConfirmDialog(
+      context,
+      title: 'Yazmasını yasakla',
+      message:
+          '"${safeChatText(m.senderName)}" bu grupta artık yazamayacak (okuma serbest). Yasak sonradan kaldırılabilir.',
+      confirmLabel: 'Yasakla',
+      destructive: true,
+    );
+    if (!ok || !mounted) return;
+    await _chat.ban(_group!, m);
+    if (mounted) showAppSnackBar(context, 'Kullanıcı yasaklandı');
+  }
+
+  Future<void> _unban(ChatMessage m) async {
+    await _chat.unban(_group!, m);
+    if (mounted) showAppSnackBar(context, 'Yasak kaldırıldı');
+  }
+
   Future<void> _messageActions(ChatMessage m, {required bool own, required bool canModerate}) async {
-    final group = _group!;
     final banned = m.banKey != null && _chat.bannedKeys.contains(m.banKey);
     final canCopy = !m.deleted && !m.isFile;
     final canDelete = own && !m.deleted;
     if (!canCopy && !canDelete && !canModerate) return;
-    final action = await showModalBottomSheet<String>(
+    final action = await showModalBottomSheet<Future<void> Function()>(
       context: context,
       showDragHandle: true,
       builder: (sheet) => SafeArea(
@@ -250,14 +355,14 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
               ListTile(
                 leading: const Icon(Icons.copy_rounded),
                 title: const Text('Metni kopyala'),
-                onTap: () => Navigator.pop(sheet, 'copy'),
+                onTap: () => Navigator.pop(sheet, () => _copy(m)),
               ),
             if (canModerate)
               ListTile(
                 key: const ValueKey('chat_action_ban'),
                 leading: Icon(banned ? Icons.verified_user_outlined : Icons.block_rounded),
                 title: Text(banned ? 'Yasağı kaldır' : 'Yazmasını yasakla'),
-                onTap: () => Navigator.pop(sheet, banned ? 'unban' : 'ban'),
+                onTap: () => Navigator.pop(sheet, () => banned ? _unban(m) : _ban(m)),
               ),
             if (canDelete)
               ListTile(
@@ -266,55 +371,58 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                 textColor: Theme.of(sheet).colorScheme.onErrorContainer,
                 leading: const Icon(Icons.delete_outline_rounded),
                 title: const Text('Mesajı sil'),
-                onTap: () => Navigator.pop(sheet, 'delete'),
+                onTap: () => Navigator.pop(sheet, () => _delete(m)),
               ),
           ],
         ),
       ),
     );
-    if (action == null || !mounted) return;
-    try {
-      switch (action) {
-        case 'copy':
-          await Clipboard.setData(ClipboardData(text: safeChatText(m.content)));
-          if (mounted) showAppSnackBar(context, 'Kopyalandı');
-        case 'delete':
-          if (await showConfirmDialog(
-                context,
-                title: 'Mesajı sil',
-                message: 'Mesaj herkes için "silindi" olarak görünecek.',
-                confirmLabel: 'Sil',
-                destructive: true,
-              ) &&
-              mounted) {
-            await _chat.deleteMessage(group, m);
-          }
-        case 'ban':
-          if (await showConfirmDialog(
-                context,
-                title: 'Yazmasını yasakla',
-                message:
-                    '"${safeChatText(m.senderName)}" bu grupta artık yazamayacak (okuma serbest). Yasak sonradan kaldırılabilir.',
-                confirmLabel: 'Yasakla',
-                destructive: true,
-              ) &&
-              mounted) {
-            await _chat.ban(group, m);
-            if (mounted) showAppSnackBar(context, 'Kullanıcı yasaklandı');
-          }
-        case 'unban':
-          await _chat.unban(group, m);
-          if (mounted) showAppSnackBar(context, 'Yasak kaldırıldı');
+    if (action != null && mounted) await _run(action);
+  }
+
+  /// The same actions for screen readers (one semantics node per message has no inner buttons).
+  Map<CustomSemanticsAction, VoidCallback> _semanticActions(
+    ChatMessage m, {
+    required bool own,
+    required bool canModerate,
+    required bool banned,
+  }) {
+    final actions = <CustomSemanticsAction, VoidCallback>{};
+    if (!m.deleted) {
+      final path = chatFilePath(contentType: m.contentType, fileUrl: m.fileUrl, content: m.content);
+      if (path != null) {
+        actions[CustomSemanticsAction(label: 'Dosyayı aç: ${fileNameOf(path)}')] = () =>
+            _openLink(Uri.parse(chatFileUrl(path)));
+      } else {
+        actions[const CustomSemanticsAction(label: 'Metni kopyala')] = () => _run(() => _copy(m));
+        for (final (_, uri) in linkSegments(safeChatText(m.content)).where((s) => s.$2 != null).take(5)) {
+          actions[CustomSemanticsAction(label: 'Bağlantıyı aç: $uri')] = () => _openLink(uri!);
+        }
       }
-    } catch (e) {
-      if (mounted) showAppSnackBar(context, chatErrorText(e), error: true);
     }
+    if (canModerate) {
+      actions[CustomSemanticsAction(label: banned ? 'Yasağı kaldır' : 'Yazmasını yasakla')] = () =>
+          _run(() => banned ? _unban(m) : _ban(m));
+    }
+    if (own && !m.deleted) actions[const CustomSemanticsAction(label: 'Mesajı sil')] = () => _run(() => _delete(m));
+    return actions;
   }
 
   @override
   Widget build(BuildContext context) {
-    final chat = context.watch<ChatProvider>();
     final auth = context.watch<AuthProvider>();
+    // Only this conversation's data: other groups' traffic does not rebuild the screen.
+    final view = context.select(
+      (ChatProvider c) => (
+        messages: c.messagesOf(widget.groupId),
+        loaded: c.historyLoaded(widget.groupId),
+        hasMore: c.hasMore(widget.groupId),
+        access: c.accessOf(widget.groupId),
+        typing: c.typingText(widget.groupId),
+        seen: c.seenBy(widget.groupId).join('\u0000'),
+        banned: c.bannedKeys,
+      ),
+    );
     final group = _group;
     final title = group == null ? 'Sohbet' : safeChatText(group.title);
     // Backend: chat:manage and (owner or SUPER_ADMIN); unknown own id → no delete (fail closed).
@@ -350,42 +458,46 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const ConnectionBanner(),
-          Expanded(child: _body(chat, auth)),
-          if (group != null && _error == null) _composerArea(chat, group),
+          Expanded(child: _body(view.messages, view.loaded, view.hasMore, view.banned, auth)),
         ],
       ),
+      // As bottomNavigationBar: SnackBars show above it (never over the composer), keyboard handled by AppScaffold.
+      bottomNavigationBar: group != null && _error == null ? _composerArea(view.access, view.typing) : null,
     );
   }
 
-  Widget _body(ChatProvider chat, AuthProvider auth) {
+  Widget _body(List<ChatMessage> all, bool loaded, bool hasMore, Set<String> bannedKeys, AuthProvider auth) {
     if (_error != null) {
       return ErrorView(message: _error!, onRetry: _group == null ? _open : () => _reload(_group!));
     }
     final group = _group;
-    if (group == null || !chat.historyLoaded(group.id)) return const LoadingView(label: 'Mesajlar yükleniyor');
-    final messages = chat.messagesOf(group.id);
-    if (messages.isEmpty) {
+    if (group == null || !loaded) return const LoadingView(label: 'Mesajlar yükleniyor');
+    if (all.isEmpty) {
       return const EmptyView(
         icon: Icons.chat_bubble_outline_rounded,
         message: 'Henüz mesaj yok. İlk mesajı siz gönderin.',
       );
     }
+    final frozen = _frozenAt == null ? -1 : all.indexWhere((m) => m.id == _frozenAt);
+    final messages = frozen < 0 ? all : all.sublist(0, frozen + 1);
+    final unseen = frozen < 0 ? 0 : all.skip(frozen + 1).where((m) => !_chat.isOwn(m)).length;
     final canModerate = auth.has('chat:manage');
-    final seen = chat.seenBy(group.id);
+    final seen = _chat.seenBy(group.id);
     final now = DateTime.now();
     // index 0 = newest (reversed list); last index = older-page loader / start marker.
-    return ListView.builder(
+    final list = ListView.builder(
       key: const ValueKey('chat_messages'),
       controller: _scroll,
       reverse: true,
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       itemCount: messages.length + 1,
       itemBuilder: (context, index) {
-        if (index == messages.length) return _historyEnd(chat.hasMore(group.id));
+        if (index == messages.length) return _historyEnd(hasMore);
         final i = messages.length - 1 - index;
         final m = messages[i];
         final prev = i > 0 ? messages[i - 1] : null;
-        final own = chat.isOwn(m);
+        final own = _chat.isOwn(m);
         final continued =
             prev != null &&
             !prev.deleted &&
@@ -393,18 +505,44 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
             m.createdAt != null &&
             prev.createdAt != null &&
             m.createdAt!.difference(prev.createdAt!).inMinutes < 5;
+        final banned = m.banKey != null && bannedKeys.contains(m.banKey);
+        final moderate = canModerate && !own && m.banKey != null;
         return _MessageBubble(
           key: ValueKey('chat_msg_${m.id}'),
           message: m,
           own: own,
           showSender: !own && !continued,
-          banned: m.banKey != null && chat.bannedKeys.contains(m.banKey),
+          banned: banned,
           time: formatMessageTime(m.createdAt, now),
-          seenBy: index == 0 && own ? seen : const [],
+          seenBy: index == 0 && own && frozen < 0 ? seen : const [],
           onOpenLink: _openLink,
-          onActions: () => _messageActions(m, own: own, canModerate: canModerate && !own && m.banKey != null),
+          onActions: () => _messageActions(m, own: own, canModerate: moderate),
+          semanticActions: _semanticActions(m, own: own, canModerate: moderate, banned: banned),
         );
       },
+    );
+    // Always the same Stack: swapping `list` ↔ `Stack(list)` would remount the list and lose the scroll position.
+    return Stack(
+      children: [
+        list,
+        if (unseen > 0)
+          Positioned(
+            bottom: 12,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Semantics(
+                liveRegion: true,
+                child: ActionChip(
+                  key: const ValueKey('chat_new_messages'),
+                  avatar: const Icon(Icons.arrow_downward_rounded, size: 18),
+                  label: Text('$unseen yeni mesaj'),
+                  onPressed: _toLatest,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -437,41 +575,58 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
     _ => 'id:${m.id}',
   };
 
-  Widget _composerArea(ChatProvider chat, ChatGroup group) {
+  Widget _composerArea(ChatGroupAccess? access, String? typing) {
     final scheme = Theme.of(context).colorScheme;
-    final access = chat.accessOf(group.id);
+    final group = _group!;
     final canWrite = access?.canWrite ?? false;
-    final banner = _banner ?? (access != null && !canWrite ? access.denialMessage : null);
-    final typing = chat.typingText(group.id);
-    final busy = _sending || _uploading;
+    final banner = access != null && !canWrite ? access.denialMessage : null;
+    final busy = _sending || _uploadingName != null;
+    final muted = TextStyle(fontSize: 12, color: scheme.onSurface.withValues(alpha: 0.7));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-          child: Semantics(
-            liveRegion: true,
+        // Not a live region: typing changes every few seconds and would keep interrupting the screen reader.
+        if (typing != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
             child: Text(
-              typing ?? '',
+              typing,
               key: const ValueKey('chat_typing'),
-              style: TextStyle(
-                fontSize: 12,
-                fontStyle: FontStyle.italic,
-                color: scheme.onSurface.withValues(alpha: 0.7),
-              ),
+              style: muted.copyWith(fontStyle: FontStyle.italic),
             ),
           ),
-        ),
         if ((banner ?? '').trim().isNotEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
             child: Semantics(liveRegion: true, child: InfoNote(safeChatText(banner!), warning: true)),
+          ),
+        if (_uploadingName != null)
+          Padding(
+            key: const ValueKey('chat_uploading'),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Row(
+              children: [
+                const SizedBox.square(
+                  dimension: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, semanticsLabel: 'Dosya yükleniyor'),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Yükleniyor: $_uploadingName',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: muted,
+                  ),
+                ),
+              ],
+            ),
           ),
         SafeArea(
           top: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(4, 0, 8, 8),
+            padding: const EdgeInsets.fromLTRB(4, 4, 8, 8),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -479,12 +634,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                   key: const ValueKey('chat_attach'),
                   tooltip: 'Dosya ekle',
                   onPressed: canWrite && !busy ? _attach : null,
-                  icon: _uploading
-                      ? const SizedBox.square(
-                          dimension: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, semanticsLabel: 'Dosya yükleniyor'),
-                        )
-                      : const Icon(Icons.attach_file_rounded),
+                  icon: const Icon(Icons.attach_file_rounded),
                 ),
                 Expanded(
                   child: TextField(
@@ -495,15 +645,30 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                     maxLines: 5,
                     maxLength: ChatProvider.maxMessageLength,
                     buildCounter: (_, {required currentLength, required isFocused, maxLength}) =>
-                        currentLength > 3500 ? Text('$currentLength/$maxLength') : null,
+                        currentLength >= maxLength!
+                        ? Semantics(
+                            liveRegion: true,
+                            child: Text(
+                              'Sınıra ulaşıldı: en fazla $maxLength karakter',
+                              key: const ValueKey('chat_length_limit'),
+                              style: TextStyle(color: scheme.onErrorContainer, fontSize: 12),
+                            ),
+                          )
+                        : currentLength > 3500
+                        ? Text('$currentLength/$maxLength', style: muted)
+                        : null,
                     textCapitalization: TextCapitalization.sentences,
                     keyboardType: TextInputType.multiline,
-                    decoration: fieldDecoration(
-                      scheme,
-                      hint: canWrite ? 'Mesaj yazın…' : 'Bu gruba mesaj gönderemezsiniz',
-                    ).copyWith(contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12)),
+                    decoration:
+                        fieldDecoration(
+                          scheme,
+                          hint: canWrite ? 'Mesaj yazın…' : 'Bu gruba mesaj gönderemezsiniz',
+                        ).copyWith(
+                          hintStyle: TextStyle(color: scheme.onSurface.withValues(alpha: 0.6)),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        ),
                     onChanged: (_) {
-                      chat.typing(group);
+                      _chat.typing(group);
                       setState(() {}); // send button state
                     },
                   ),
@@ -517,7 +682,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                           dimension: 20,
                           child: CircularProgressIndicator(strokeWidth: 2, semanticsLabel: 'Gönderiliyor'),
                         )
-                      : Icon(Icons.send_rounded, color: canWrite ? scheme.primary : null),
+                      : Icon(Icons.send_rounded, color: canWrite ? AppColors.primaryLight : null),
                 ),
               ],
             ),
@@ -537,6 +702,7 @@ class _MessageBubble extends StatelessWidget {
   final List<String> seenBy;
   final void Function(Uri uri) onOpenLink;
   final VoidCallback onActions;
+  final Map<CustomSemanticsAction, VoidCallback> semanticActions;
 
   const _MessageBubble({
     super.key,
@@ -548,7 +714,35 @@ class _MessageBubble extends StatelessWidget {
     required this.seenBy,
     required this.onOpenLink,
     required this.onActions,
+    required this.semanticActions,
   });
+
+  (String, Color) _badge(ColorScheme scheme) => switch (message.senderType) {
+    'VISITOR' => ('Ziyaretçi', AppColors.warning),
+    'GUEST' => ('Misafir', scheme.secondary),
+    _ => ('Admin', AppColors.primaryLight),
+  };
+
+  /// One node per message: "`gönderen | Siz`, `zaman`[, Görüldü: …][, rol][, Yasaklı]: `metin`".
+  String _semanticLabel(ColorScheme scheme) {
+    final m = message;
+    final name = safeChatText(m.senderName).trim();
+    final path = m.deleted ? null : chatFilePath(contentType: m.contentType, fileUrl: m.fileUrl, content: m.content);
+    final body = m.deleted
+        ? 'Bu mesaj silindi'
+        : path != null
+        ? '${m.contentType == 'IMAGE' || isImagePath(path) ? 'Görsel' : 'Dosya'}: ${fileNameOf(path)}'
+        : safeChatText(m.content);
+    final head = [
+      own ? 'Siz' : (name.isEmpty ? 'Misafir' : name),
+      time,
+      if (m.edited && !m.deleted) 'düzenlendi',
+      if (seenBy.isNotEmpty) 'Görüldü: ${seenBy.join(', ')}',
+      if (!own) _badge(scheme).$1,
+      if (banned) 'Yasaklı',
+    ].where((s) => s.isNotEmpty).join(', ');
+    return '$head: $body';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -556,72 +750,77 @@ class _MessageBubble extends StatelessWidget {
     final m = message;
     final muted = TextStyle(fontSize: 11, color: scheme.onSurface.withValues(alpha: 0.65));
     final senderName = safeChatText(m.senderName).trim();
-    final (badge, badgeColor) = switch (m.senderType) {
-      'VISITOR' => ('Ziyaretçi', AppColors.warning),
-      'GUEST' => ('Misafir', scheme.secondary),
-      _ => ('Admin', AppColors.primaryLight),
-    };
+    final (badge, badgeColor) = _badge(scheme);
     final bubbleColor = own ? AppColors.primaryStrong : scheme.surface;
     final textColor = own ? scheme.onPrimary : scheme.onSurface;
-    return Padding(
-      padding: EdgeInsets.only(top: showSender ? 10 : 3),
-      child: Column(
-        crossAxisAlignment: own ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-        children: [
-          if (showSender)
-            Padding(
-              padding: const EdgeInsets.only(left: 4, bottom: 2),
-              child: Wrap(
-                spacing: 6,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Text(
-                    senderName.isEmpty ? 'Misafir' : senderName,
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primaryLight),
-                  ),
-                  StatusBadge(label: badge, color: badgeColor),
-                  if (banned) StatusBadge(label: 'Yasaklı', color: scheme.onErrorContainer),
-                ],
-              ),
-            ),
-          ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.8),
-            child: Material(
-              color: bubbleColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(16),
-                  topRight: const Radius.circular(16),
-                  bottomLeft: Radius.circular(own ? 16 : 4),
-                  bottomRight: Radius.circular(own ? 4 : 16),
-                ),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onLongPress: onActions,
-                child: Semantics(
-                  onLongPressHint: 'Mesaj seçenekleri',
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    child: _content(context, textColor),
+    return Semantics(
+      container: true,
+      label: _semanticLabel(scheme),
+      onLongPressHint: 'Mesaj seçenekleri',
+      customSemanticsActions: semanticActions,
+      child: ExcludeSemantics(
+        child: Padding(
+          padding: EdgeInsets.only(top: showSender ? 10 : 3),
+          child: Column(
+            crossAxisAlignment: own ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            children: [
+              if (showSender)
+                Padding(
+                  padding: const EdgeInsets.only(left: 4, bottom: 2),
+                  child: Wrap(
+                    spacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        senderName.isEmpty ? 'Misafir' : senderName,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primaryLight,
+                        ),
+                      ),
+                      StatusBadge(label: badge, color: badgeColor),
+                      if (banned) StatusBadge(label: 'Yasaklı', color: scheme.onErrorContainer),
+                    ],
                   ),
                 ),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.8),
+                child: Material(
+                  color: bubbleColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(16),
+                      topRight: const Radius.circular(16),
+                      bottomLeft: Radius.circular(own ? 16 : 4),
+                      bottomRight: Radius.circular(own ? 4 : 16),
+                    ),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onLongPress: onActions,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      child: _content(context, textColor),
+                    ),
+                  ),
+                ),
               ),
-            ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 2, 4, 0),
+                child: Text(
+                  [
+                    time,
+                    if (m.edited && !m.deleted) 'düzenlendi',
+                    if (seenBy.isNotEmpty) 'Görüldü: ${seenBy.join(', ')}',
+                  ].where((s) => s.isNotEmpty).join(' · '),
+                  key: seenBy.isEmpty ? null : const ValueKey('chat_seen_by'),
+                  style: muted,
+                ),
+              ),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 2, 4, 0),
-            child: Text(
-              [
-                time,
-                if (m.edited && !m.deleted) 'düzenlendi',
-                if (seenBy.isNotEmpty) 'Görüldü: ${seenBy.join(', ')}',
-              ].where((s) => s.isNotEmpty).join(' · '),
-              key: seenBy.isEmpty ? null : const ValueKey('chat_seen_by'),
-              style: muted,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -653,15 +852,34 @@ class _MessageBubble extends StatelessWidget {
         if (image)
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
-            child: ClipRRect(
+            child: InkWell(
+              key: ValueKey('chat_image_${m.id}'),
+              onTap: () => onOpenLink(url),
               borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                url.toString(),
-                height: 180,
-                fit: BoxFit.cover,
-                cacheWidth: 720,
-                semanticLabel: 'Görsel: $name',
-                errorBuilder: (_, _, _) => Icon(Icons.broken_image_outlined, color: textColor),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(
+                  url.toString(),
+                  height: 180,
+                  fit: BoxFit.cover,
+                  cacheWidth: 720,
+                  loadingBuilder: (_, child, progress) => progress == null
+                      ? child
+                      : SizedBox(
+                          height: 180,
+                          width: 180,
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: textColor,
+                              value: progress.expectedTotalBytes == null
+                                  ? null
+                                  : progress.cumulativeBytesLoaded / progress.expectedTotalBytes!,
+                            ),
+                          ),
+                        ),
+                  errorBuilder: (_, _, _) => Icon(Icons.broken_image_outlined, color: textColor),
+                ),
               ),
             ),
           ),

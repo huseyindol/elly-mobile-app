@@ -165,6 +165,13 @@ class RealtimeService extends ChangeNotifier {
     }
   }
 
+  /// "Şimdi dene": skips the backoff wait (no-op while connected / connecting or signed out / in background).
+  void retryNow() {
+    if (!_started || !_foreground || _link != null) return;
+    _attempt = 0;
+    _connect();
+  }
+
   /// Registers [onMessage] for [destination]; active now if connected, and after every reconnect.
   RealtimeSubscription subscribe(String destination, void Function(String body) onMessage) {
     final sub = _Sub(destination, onMessage);

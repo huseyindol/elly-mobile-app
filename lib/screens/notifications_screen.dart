@@ -66,10 +66,13 @@ class NotificationBell extends StatelessWidget {
     return IconButton(
       key: const ValueKey('notification_bell'),
       tooltip: count > 0 ? 'Bildirimler, $count okunmamış' : 'Bildirimler',
-      icon: Badge(
-        isLabelVisible: count > 0,
-        label: Text(count > 99 ? '99+' : '$count'),
-        child: const Icon(Icons.notifications_none_rounded),
+      // The tooltip carries the count; the badge digits would be read a second time.
+      icon: ExcludeSemantics(
+        child: Badge(
+          isLabelVisible: count > 0,
+          label: Text(count > 99 ? '99+' : '$count'),
+          child: const Icon(Icons.notifications_none_rounded),
+        ),
       ),
       onPressed: () => Navigator.of(context).push(
         MaterialPageRoute(
@@ -95,14 +98,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   late final NotificationsProvider _provider = context.read<NotificationsProvider>();
   final _scroll = ScrollController();
   bool _markingAll = false;
-  final Set<int> _deleting = {};
+
+  /// Deleted on screen, sent once the "Geri al" SnackBar closes without undo (the backend has no restore).
+  final Map<int, AppNotification> _pendingDelete = {};
 
   @override
   void initState() {
     super.initState();
     _provider.listVisible = true;
     _scroll.addListener(() {
-      if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 300) _loadMore();
+      // After a failed page the inline "Tekrar dene" retries; scrolling does not hammer the server.
+      if (_provider.loadMoreError == null && _scroll.position.pixels >= _scroll.position.maxScrollExtent - 300) {
+        _loadMore();
+      }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _provider.load());
   }
@@ -117,8 +125,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Future<void> _loadMore() async {
     try {
       await _provider.loadMore();
-    } catch (e) {
-      if (mounted) showAppSnackBar(context, '$e', error: true);
+    } catch (_) {
+      // shown inline (loadMoreError) with "Tekrar dene"
     }
   }
 
@@ -139,18 +147,32 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         if (mounted) showAppSnackBar(context, '$e', error: true);
       });
     }
-    await openNotification(context, n);
+    if (mounted) await openNotification(context, n); // no target: explains why nothing opens
   }
 
-  Future<void> _delete(AppNotification n) async {
-    setState(() => _deleting.add(n.id));
-    try {
-      await _provider.remove(n);
-    } catch (e) {
-      if (mounted) showAppSnackBar(context, '$e', error: true);
-    } finally {
-      if (mounted) setState(() => _deleting.remove(n.id));
-    }
+  void _delete(AppNotification n) {
+    if (_pendingDelete.containsKey(n.id)) return;
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _pendingDelete[n.id] = n);
+    final controller = showSnackBarOn(
+      messenger,
+      'Bildirim silindi',
+      duration: const Duration(seconds: 4),
+      persist: false, // the undo window ends, then the delete is sent
+      action: SnackBarAction(label: 'Geri al', onPressed: () {}),
+    );
+    controller.closed.then((reason) async {
+      if (reason == SnackBarClosedReason.action) {
+        if (mounted) setState(() => _pendingDelete.remove(n.id));
+        return;
+      }
+      try {
+        await _provider.remove(n);
+      } catch (e) {
+        showSnackBarOn(messenger, 'Bildirim silinemedi: $e', error: true);
+      }
+      if (mounted) setState(() => _pendingDelete.remove(n.id));
+    });
   }
 
   @override
@@ -177,12 +199,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ? const LoadingView(label: 'Bildirimler yükleniyor')
           : ErrorView(message: p.error!, onRetry: p.load);
     }
-    final items = p.items;
+    final items = p.items.where((n) => !_pendingDelete.containsKey(n.id)).toList();
     return RefreshIndicator(
       onRefresh: p.load,
       child: Column(
         children: [
-          if (p.loading) const LinearProgressIndicator(minHeight: 2),
+          if (p.loading) const LinearProgressIndicator(minHeight: 2, semanticsLabel: 'Bildirimler yenileniyor'),
           Expanded(
             child: items.isEmpty
                 ? ListView(
@@ -197,20 +219,36 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
                     itemCount: items.length + (p.hasMore ? 1 : 0),
-                    itemBuilder: (_, i) => i == items.length
-                        ? const Padding(
-                            padding: EdgeInsets.all(16),
-                            child: Center(
-                              child: CircularProgressIndicator(semanticsLabel: 'Daha fazla bildirim yükleniyor'),
-                            ),
-                          )
-                        : _tile(items[i]),
+                    itemBuilder: (_, i) => i == items.length ? _moreRow(p) : _tile(items[i]),
                   ),
           ),
         ],
       ),
     );
   }
+
+  Widget _moreRow(NotificationsProvider p) => Padding(
+    padding: const EdgeInsets.all(16),
+    child: Center(
+      child: p.loadMoreError == null
+          ? const CircularProgressIndicator(semanticsLabel: 'Daha fazla bildirim yükleniyor')
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Sonraki sayfa yüklenemedi: ${p.loadMoreError}',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
+                ),
+                TextButton(
+                  key: const ValueKey('notifications_load_more_retry'),
+                  onPressed: _loadMore,
+                  child: const Text('Tekrar dene'),
+                ),
+              ],
+            ),
+    ),
+  );
 
   Widget _tile(AppNotification n) {
     final scheme = Theme.of(context).colorScheme;
@@ -248,13 +286,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               if (n.message.isNotEmpty)
                 Text(safeChatText(n.message), maxLines: 3, overflow: TextOverflow.ellipsis, style: muted),
               Text(formatRelativeTr(n.createdAt, DateTime.now()), style: muted.copyWith(fontSize: 12)),
+              if (notificationTarget(n.link, n.metadata) == null)
+                Text(
+                  'Mobilde açılacak bir ekranı yok',
+                  style: muted.copyWith(fontSize: 12, fontStyle: FontStyle.italic),
+                ),
             ],
           ),
           trailing: IconButton(
             key: ValueKey('notification_delete_${n.id}'),
             tooltip: 'Sil: ${title.isEmpty ? 'Bildirim' : title}',
             icon: const Icon(Icons.delete_outline_rounded),
-            onPressed: _deleting.contains(n.id) ? null : () => _delete(n),
+            onPressed: () => _delete(n),
           ),
           onTap: () => _open(n),
         ),

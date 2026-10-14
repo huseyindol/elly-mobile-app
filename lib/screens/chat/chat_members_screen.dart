@@ -121,6 +121,7 @@ class _ChatMembersScreenState extends State<ChatMembersScreen> {
                 : RefreshIndicator(
                     onRefresh: _load,
                     child: ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(), // pull-to-refresh also with few members
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       itemCount: members.length,
                       itemBuilder: (_, i) => _tile(members[i], chat, auth, canManage),
@@ -184,53 +185,74 @@ class _ChatMembersScreenState extends State<ChatMembersScreen> {
 
   Widget _invitePanel(int level) {
     final scheme = Theme.of(context).colorScheme;
-    return SafeArea(
-      top: false,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: scheme.onSurface.withValues(alpha: 0.1))),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            InfoNote(inviteHint(level)),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+    // Scrollable and capped: on small screens with the keyboard open the member list keeps some room.
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.45),
+      child: SingleChildScrollView(
+        child: SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: scheme.onSurface.withValues(alpha: 0.1))),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: TextFormField(
-                    key: const ValueKey('chat_invite_input'),
-                    controller: _invite,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: fieldDecoration(scheme, label: 'Kullanıcı ID veya e-posta').copyWith(errorMaxLines: 3),
-                    forceErrorText: _inviteError, // input rule or backend refusal (hierarchy, not found, member)
-                    onChanged: (_) {
-                      if (_inviteError != null) setState(() => _inviteError = null);
-                    },
-                    onFieldSubmitted: (_) => _sendInvite(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  height: 56,
-                  child: FilledButton(
-                    key: const ValueKey('chat_invite_submit'),
-                    onPressed: _inviting ? null : _sendInvite,
-                    child: _inviting
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, semanticsLabel: 'Davet ediliyor'),
-                          )
-                        : const Text('Davet et'),
-                  ),
+                if (keyboardOpen)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      inviteHint(level),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: scheme.onSurface.withValues(alpha: 0.7)),
+                    ),
+                  )
+                else
+                  InfoNote(inviteHint(level)),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        key: const ValueKey('chat_invite_input'),
+                        controller: _invite,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: fieldDecoration(
+                          scheme,
+                          label: 'Kullanıcı ID veya e-posta',
+                        ).copyWith(errorMaxLines: 3),
+                        forceErrorText: _inviteError, // input rule or backend refusal (hierarchy, not found, member)
+                        onChanged: (_) {
+                          if (_inviteError != null) setState(() => _inviteError = null);
+                        },
+                        onFieldSubmitted: (_) => _sendInvite(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      height: 56,
+                      child: FilledButton(
+                        key: const ValueKey('chat_invite_submit'),
+                        onPressed: _inviting ? null : _sendInvite,
+                        child: _inviting
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2, semanticsLabel: 'Davet ediliyor'),
+                              )
+                            : const Text('Davet et'),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );

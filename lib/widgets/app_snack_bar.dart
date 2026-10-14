@@ -2,25 +2,38 @@ import 'package:flutter/material.dart';
 
 /// The app's only way to show a SnackBar: replaces the current one (no queue of stale messages), error →
 /// `colorScheme.error` background. Text/action colors come from `appTheme.snackBarTheme`.
-void showAppSnackBar(
+ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? showAppSnackBar(
   BuildContext context,
   String message, {
   bool error = false,
   SnackBarAction? action,
   Duration? duration,
+  bool? persist,
 }) {
   final messenger = ScaffoldMessenger.maybeOf(context);
-  if (messenger == null) return;
-  messenger
-    ..hideCurrentSnackBar()
-    ..showSnackBar(
-      SnackBar(
-        content: Text(message.replaceFirst('Exception: ', '')),
-        backgroundColor: error ? Theme.of(context).colorScheme.error : null,
-        action: action,
-        duration: duration ?? Duration(seconds: error ? 6 : 3),
-      ),
-    );
+  if (messenger == null) return null;
+  return showSnackBarOn(messenger, message, error: error, action: action, duration: duration, persist: persist);
+}
+
+/// [showAppSnackBar] on a messenger captured before the screen closes (the message outlives the popped route).
+ScaffoldFeatureController<SnackBar, SnackBarClosedReason> showSnackBarOn(
+  ScaffoldMessengerState messenger,
+  String message, {
+  bool error = false,
+  SnackBarAction? action,
+  Duration? duration,
+  bool? persist,
+}) {
+  messenger.hideCurrentSnackBar();
+  return messenger.showSnackBar(
+    SnackBar(
+      content: Text(message.replaceFirst('Exception: ', '')),
+      backgroundColor: error ? Theme.of(messenger.context).colorScheme.error : null,
+      action: action,
+      duration: duration ?? Duration(seconds: error ? 6 : 3),
+      persist: persist, // null: Flutter default (a SnackBar with an action stays until dismissed)
+    ),
+  );
 }
 
 /// Failed `validateGranularly`: scrolls to the first invalid field and names it ("2 alan hatalı: Etiket").
