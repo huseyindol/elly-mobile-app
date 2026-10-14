@@ -12,9 +12,6 @@ import 'package:http/http.dart' as http;
 import '../helpers/fake_backend.dart';
 import '../helpers/fake_realtime.dart';
 
-/// `--dart-define=VERIFY_FINDINGS=true` runs the skipped BULGU tests (they fail today, proving the finding).
-const _verify = bool.fromEnvironment('VERIFY_FINDINGS');
-
 /// Deterministic [Random]: only `nextDouble` (the jitter) is used by RealtimeService.
 class _Rand implements Random {
   final double Function() draw;
@@ -516,11 +513,6 @@ void main() {
           expect(got, isEmpty);
         });
       },
-      skip: _verify
-          ? null
-          : 'BULGU (düşük): stop() `_subs`i temizliyor ama eski bağlantıdaki işleyici sarmalayıcısı pasifleştirilmiyor '
-                '(_attach içinde `_link != link` / abonelik hâlâ kayıtlı mı kontrolü yok) — kuyrukta kalan MESSAGE çıkış sonrası '
-                'eski abonelere ulaşır. stomp_dart_client deactivate sonrası çerçeve vermez; derinlemesine savunma boşluğu.',
     );
 
     test(
@@ -540,7 +532,6 @@ void main() {
           rt.stop();
         });
       },
-      skip: _verify ? null : 'BULGU (düşük): ölü bağlantının sarmalayıcısı sub.onMessage\'ı hâlâ çağırır (yukarıdaki ile aynı kök neden).',
     );
   });
 
@@ -696,10 +687,6 @@ void main() {
           rt.stop();
         });
       },
-      skip: _verify
-          ? null
-          : 'BULGU (düşük): `_sessionChecked` stop()/start() ile sıfırlanmıyor — bir önceki oturumun ret serisi '
-                'bittiyse yeni kullanıcının ilk CONNECT reddi oturum kontrolü yapmadan yalnız backoff\'a düşer.',
     );
   });
 

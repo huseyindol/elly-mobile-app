@@ -122,11 +122,6 @@ void main() {
         expect(cut, isTrue);
         expect(RegExp('[\n\u2028\u2029]').allMatches(clipped).length, lessThan(20));
       },
-      skip: const bool.fromEnvironment('VERIFY_FINDINGS')
-          ? null
-          : 'BULGU (düşük): safeChatText/clipChatText yalnız "\\n" sayıyor; U+2028/U+2029 Flutter metin motorunda zorunlu '
-                'satır sonu → 1000 karakterlik "\\u2028" mesajı 20 satır sınırını aşıp ~1000 satırlık balon üretir ("Tümünü '
-                'göster" çıkmaz). Öneri: safeChatText U+2028/2029/0085 → "\\n" normalize etsin.',
     );
   });
 

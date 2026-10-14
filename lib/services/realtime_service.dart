@@ -143,6 +143,7 @@ class RealtimeService extends ChangeNotifier {
     if (_started) return;
     _started = true;
     _attempt = 0;
+    _sessionChecked = false; // a new session starts with a clean rejection streak
     _connect();
   }
 
@@ -195,6 +196,9 @@ class RealtimeService extends ChangeNotifier {
     if (link == null) return;
     try {
       sub.detach = link.subscribe(sub.destination, (body) {
+        // A frame still in flight on a dead/replaced link, or for a cancelled / signed-out subscription, is dropped:
+        // it must never reach the next session's handlers or be handled twice after a reconnect.
+        if (_link != link || !_connected || !_subs.contains(sub)) return;
         try {
           sub.onMessage(body);
         } catch (_) {

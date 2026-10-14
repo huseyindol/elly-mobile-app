@@ -6,8 +6,6 @@ import '../helpers/fake_backend.dart';
 import '../helpers/fake_realtime.dart';
 import '../helpers/gated_backend.dart';
 
-/// `--dart-define=VERIFY_FINDINGS=true` runs the skipped BULGU tests (they fail today, proving the finding).
-const _verify = bool.fromEnvironment('VERIFY_FINDINGS');
 
 Map<String, dynamic> n(int id, {bool read = false}) => {
   'id': id,
@@ -125,10 +123,6 @@ void main() {
         live.push('/user/queue/notifications/unread-count', {'count': -5});
         expect(live.notifications.unreadCount, greaterThanOrEqualTo(0));
       },
-      skip: _verify
-          ? null
-          : 'BULGU (düşük): _onCount negatif sayıyı olduğu gibi saklıyor (unreadCount → -5). '
-                'Rozet ≤0 iken gizli ama tooltip/semantik ve sonraki "-1" hesapları bozulur; max(0, …) ile kıskaçlanmalı.',
     );
 
     test('count garbage is ignored: null, string, bool, list, missing key', () async {
@@ -171,12 +165,6 @@ void main() {
         expect(live.notifications.unreadCount, 2);
         expect(item(3).read, isTrue);
       },
-      skip: _verify
-          ? null
-          : 'BULGU (orta): markRead yanıtı gelince sayaç yerelde bir daha azaltılıyor; backend '
-                'markRead içinde unread-count push\'u yolladığı için push önce gelirse (2) yerel düşüş 1 yapar ve bir sonraki '
-                'senkrona kadar rozet yanlış (gerçekte 2 okunmamış). Düzeltme: düşüşü yalnız push gelmediyse uygula ya da '
-                'markRead sonrası refreshCount() çağır.',
     );
 
     test(
@@ -193,11 +181,6 @@ void main() {
         expect(live.notifications.unreadCount, 2);
         expect(backend.requestsTo('/notifications/3/read'), hasLength(1));
       },
-      skip: _verify
-          ? null
-          : 'BULGU (orta): markRead aynı bildirim için uçuştaki isteği izlemiyor — art arda iki dokunuş '
-                '(ya da banner "Aç" + liste dokunuşu) iki POST + iki yerel düşüş yapar (3 → 1). Açılamayan '
-                'bildirimde ekran kapanmadığı için çift dokunuş gerçekçi.',
     );
 
     test(
@@ -210,10 +193,6 @@ void main() {
         expect(live.notifications.unreadCount, 2);
         expect(backend.requestsTo('/notifications/3/read'), hasLength(1));
       },
-      skip: _verify
-          ? null
-          : 'BULGU (düşük): markRead `n.read` bayrağına yakalanan nesneden bakıyor, güncel listedeki '
-                'durumdan değil — bayat nesneyle ikinci çağrı yeniden POST eder ve sayacı bir daha düşürür.',
     );
 
     test(
@@ -231,11 +210,6 @@ void main() {
         await refresh;
         expect(live.notifications.unreadCount, 4);
       },
-      skip: _verify
-          ? null
-          : 'BULGU (düşük): refreshCount yanıtı, daha yeni bir WS push\'unu (yeni bildirim / count) eziyor; '
-                'istek sıra numarası ya da "push geldiyse yanıtı yok say" kontrolü yok. Bir sonraki push / yeniden bağlanmaya '
-                'kadar rozet 1 eksik.',
     );
 
     test('a stale refresh answer must not overwrite a server count push that arrived meanwhile', () async {
@@ -248,7 +222,7 @@ void main() {
       gate.complete();
       await refresh;
       expect(live.notifications.unreadCount, 0);
-    }, skip: _verify ? null : 'BULGU (düşük): aynı kök neden — refreshCount sonucu daha yeni push\'u eziyor.');
+    },);
 
     test(
       'the same notification pushed twice while the list is NOT loaded counts once (and banners once)',
@@ -263,10 +237,6 @@ void main() {
         expect(banner, hasLength(1));
         await sub.cancel();
       },
-      skip: _verify
-          ? null
-          : 'BULGU (düşük): _onPush tekilleştirmeyi yalnız yüklü listeye göre yapıyor (`_items.any`); '
-                'liste hiç açılmadıysa aynı id\'li tekrar push sayacı iki kez artırır ve ikinci banner gösterir.',
     );
 
     test('a push for an already-read notification does not raise the count; a loaded duplicate is ignored', () async {

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
@@ -29,6 +30,19 @@ class NotificationsProvider extends ChangeNotifier {
   final _incoming = StreamController<AppNotification>.broadcast();
 
   int? _unreadCount;
+
+  /// Bumps on every count change (server push, new notification, local action): an older REST count answer
+  /// must not overwrite a newer value.
+  int _countVersion = 0;
+
+  /// Bumps on every server count push (`/unread-count`): a local -1 after a request is skipped when the server
+  /// already sent the new number meanwhile (no double effect).
+  int _serverCountSeq = 0;
+
+  /// Ids seen in a list page or a push (de-duplication works without a loaded list) / marked read this session.
+  final Set<int> _seenIds = {};
+  final Set<int> _readIds = {};
+  final Map<int, Future<void>> _inFlight = {};
   List<AppNotification> _items = const [];
   bool _loaded = false;
   bool _loading = false;
@@ -71,6 +85,10 @@ class NotificationsProvider extends ChangeNotifier {
     }
     _subs.clear();
     _unreadCount = null;
+    _countVersion++;
+    _seenIds.clear();
+    _readIds.clear();
+    _inFlight.clear();
     _items = const [];
     _loaded = _loading = _loadingMore = _hasMore = false;
     _page = 0;
@@ -86,14 +104,25 @@ class NotificationsProvider extends ChangeNotifier {
     if (_loaded) load();
   }
 
+  void _setCount(int? count) {
+    _unreadCount = count == null ? null : max(0, count);
+    _countVersion++;
+  }
+
+  /// Local -1 after an action, unless a server count push already arrived since [serverSeq].
+  void _decrement(int serverSeq) {
+    if (serverSeq == _serverCountSeq && _unreadCount != null) _setCount(_unreadCount! - 1);
+  }
+
   Future<void> refreshCount() async {
     final epoch = _epoch;
+    final version = _countVersion;
     try {
       final data = await api.get('/notifications/unread-count');
-      if (epoch != _epoch) return;
+      if (epoch != _epoch || version != _countVersion) return; // a newer push / action wins
       final count = data is Map ? data['count'] : null;
       if (count is num) {
-        _unreadCount = count.toInt();
+        _setCount(count.toInt());
         notifyListeners();
       }
     } catch (_) {
@@ -111,6 +140,7 @@ class NotificationsProvider extends ChangeNotifier {
       final data = await api.get('/notifications?page=0&size=$pageSize');
       if (epoch != _epoch) return;
       _items = _parse(data);
+      _seenIds.addAll(_items.map((n) => n.id));
       _page = 0;
       _hasMore = !isLastPage(data, pageSize);
       _loaded = true;
@@ -133,6 +163,7 @@ class NotificationsProvider extends ChangeNotifier {
       if (epoch != _epoch) return;
       final known = {for (final n in _items) n.id};
       _items = [..._items, ..._parse(data).where((n) => !known.contains(n.id))];
+      _seenIds.addAll(_items.map((n) => n.id));
       _page++;
       _hasMore = !isLastPage(data, pageSize);
     } catch (e) {
@@ -148,28 +179,52 @@ class NotificationsProvider extends ChangeNotifier {
   static List<AppNotification> _parse(dynamic data) =>
       extractItems(data).map(AppNotification.fromJson).whereType<AppNotification>().toList();
 
+  /// Read state from the current list / this session, not from a (possibly stale) captured object.
+  bool _isRead(AppNotification n) =>
+      _readIds.contains(n.id) || (_items.where((x) => x.id == n.id).firstOrNull?.read ?? n.read);
+
+  /// One request per notification at a time: a second tap / the banner's "Aç" joins the one in flight.
+  Future<void> _once(int id, Future<void> Function() action) => _inFlight[id] ??= action().whenComplete(() {
+    _inFlight.remove(id); // block body: returning the removed future would make it wait for itself
+  });
+
   /// Marks [n] read (no-op when already read). Throws on failure.
-  Future<void> markRead(AppNotification n) async {
-    if (n.read) return;
-    await api.post('/notifications/${n.id}/read', const {});
-    _replace(n.id, (x) => x.asRead());
-    if (_unreadCount != null && _unreadCount! > 0) _unreadCount = _unreadCount! - 1;
-    notifyListeners();
+  Future<void> markRead(AppNotification n) {
+    if (_isRead(n)) return Future.value();
+    return _once(n.id, () async {
+      final epoch = _epoch;
+      final serverSeq = _serverCountSeq;
+      await api.post('/notifications/${n.id}/read', const {});
+      if (epoch != _epoch) return; // the previous session's late answer
+      _readIds.add(n.id);
+      _replace(n.id, (x) => x.asRead());
+      _decrement(serverSeq);
+      notifyListeners();
+    });
   }
 
   Future<void> markAllRead() async {
+    final epoch = _epoch;
+    final serverSeq = _serverCountSeq;
     await api.post('/notifications/read-all', const {});
+    if (epoch != _epoch) return;
+    _readIds.addAll(_items.map((n) => n.id));
     _items = [for (final n in _items) n.asRead()];
-    _unreadCount = 0;
+    if (serverSeq == _serverCountSeq) _setCount(0);
     notifyListeners();
   }
 
-  Future<void> remove(AppNotification n) async {
+  Future<void> remove(AppNotification n) => _once(-n.id - 1, () async {
+    final epoch = _epoch;
+    final serverSeq = _serverCountSeq;
+    final wasUnread = !_isRead(n);
     await api.delete('/notifications/${n.id}');
+    if (epoch != _epoch) return;
+    final before = _items.length;
     _items = _items.where((x) => x.id != n.id).toList();
-    if (!n.read && _unreadCount != null && _unreadCount! > 0) _unreadCount = _unreadCount! - 1;
+    if (wasUnread && (before != _items.length || !_loaded)) _decrement(serverSeq);
     notifyListeners();
-  }
+  });
 
   void _replace(int id, AppNotification Function(AppNotification) update) {
     _items = [for (final n in _items) n.id == id ? update(n) : n];
@@ -177,10 +232,9 @@ class NotificationsProvider extends ChangeNotifier {
 
   void _onPush(String body) {
     final n = AppNotification.fromJson(jsonDecode(body));
-    if (n == null) return;
-    if (_items.any((x) => x.id == n.id)) return;
+    if (n == null || !_seenIds.add(n.id)) return;
     if (_loaded) _items = [n, ..._items];
-    if (!n.read) _unreadCount = (_unreadCount ?? 0) + 1;
+    if (!n.read) _setCount((_unreadCount ?? 0) + 1);
     notifyListeners();
     _incoming.add(n);
   }
@@ -190,7 +244,8 @@ class NotificationsProvider extends ChangeNotifier {
     final data = jsonDecode(body);
     final count = data is Map ? data['count'] : null;
     if (count is! num) return;
-    _unreadCount = count.toInt();
+    _serverCountSeq++;
+    _setCount(count.toInt());
     notifyListeners();
   }
 

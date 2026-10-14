@@ -9,8 +9,6 @@ import '../helpers/fake_backend.dart';
 import '../helpers/fake_realtime.dart';
 import '../helpers/gated_backend.dart';
 
-/// `--dart-define=VERIFY_FINDINGS=true` runs the skipped BULGU tests (they fail today, proving the finding).
-const _verify = bool.fromEnvironment('VERIFY_FINDINGS');
 
 const gA = '11111111-1111-4111-8111-111111111111';
 const gB = '22222222-2222-4222-8222-222222222222';
@@ -282,11 +280,6 @@ void main() {
           await pumpEvents();
           expect(live.notifications.unreadCount, 4);
         },
-        skip: _verify
-            ? null
-            : 'BULGU (düşük): NotificationsProvider.markRead/markAllRead/remove '
-                  '`await` sonrası epoch kontrolü yapmıyor — önceki oturumun geç tamamlanan isteği yeni kullanıcının rozet '
-                  'sayısını değiştirir (markAllRead → 0, markRead/remove → bir eksik). Veri sızıntısı yok, yalnız yanlış sayaç.',
       );
     }
   });

@@ -45,11 +45,34 @@ String decodeHtmlEntities(String text) => text.replaceAllMapped(_entity, (m) {
   return String.fromCharCode(valid ? code : 0xFFFD);
 });
 
-/// Untrusted chat text → plain display text: entities decoded, CR/LF normalized, other C0/C1 control characters
+/// Lone UTF-16 surrogates (not well-formed text; `Text` throws on them) → U+FFFD.
+String wellFormedUtf16(String text) {
+  final units = text.codeUnits;
+  StringBuffer? out;
+  for (var i = 0; i < units.length; i++) {
+    final c = units[i];
+    final high = c >= 0xD800 && c <= 0xDBFF;
+    final paired = high && i + 1 < units.length && units[i + 1] >= 0xDC00 && units[i + 1] <= 0xDFFF;
+    if (paired) {
+      i++; // not inside `out?.…(…)`: null-shorting would skip the increment
+      out
+        ?..writeCharCode(c)
+        ..writeCharCode(units[i]);
+    } else if (high || (c >= 0xDC00 && c <= 0xDFFF)) {
+      (out ??= StringBuffer(text.substring(0, i))).writeCharCode(0xFFFD);
+    } else {
+      out?.writeCharCode(c);
+    }
+  }
+  return out?.toString() ?? text;
+}
+
+/// Untrusted chat text → plain display text: well-formed UTF-16, entities decoded, CR/LF and U+2028/U+2029 (line
+/// breaks to the renderer, so they count as lines when clipping) normalized to "\n", other C0/C1 control characters
 /// dropped, bidi controls shown as visible `⟨U+202E⟩` markers (cannot reorder what the admin reads).
 String safeChatText(String text) => revealBidi(
-  decodeHtmlEntities(text)
-      .replaceAll(RegExp(r'\r\n?'), '\n')
+  wellFormedUtf16(decodeHtmlEntities(text))
+      .replaceAll(RegExp('\r\n?|[\u2028\u2029]'), '\n')
       .replaceAll(RegExp('[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]'), ''),
 );
 

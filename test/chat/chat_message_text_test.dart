@@ -10,8 +10,6 @@ import 'package:provider/provider.dart';
 import '../helpers/fake_backend.dart';
 import '../helpers/fake_realtime.dart';
 
-/// `--dart-define=VERIFY_FINDINGS=true` runs the skipped BULGU tests (they fail today, proving the finding).
-const _verify = bool.fromEnvironment('VERIFY_FINDINGS');
 
 const g1 = '11111111-1111-4111-8111-111111111111';
 
@@ -150,10 +148,6 @@ void main() {
         expect(tester.takeException(), isNull, reason: bad.codeUnits.toString());
       }
     },
-    // BULGU (düşük): safeChatText iyi biçimli olmayan UTF-16'yı (tek başına vekil) temizlemiyor; Text.rich
-    // "string is not well-formed UTF-16" ArgumentError atar (release'te mesaj satırı ErrorWidget olur). Backend
-    // (PostgreSQL UTF-8) bunu normalde saklamaz; yine de WS/REST'ten gelen güvenilmez metin için U+FFFD'ye çevrilmeli.
-    skip: !_verify,
   );
 
   testWidgets('one 4000-char unbroken word (backend maximum) in a narrow bubble: collapsed and expanded, no overflow', (
@@ -190,7 +184,6 @@ void main() {
       final separatorHeight = tester.getSize(find.byType(ChatMessageText)).height;
       expect(separatorHeight, lessThanOrEqualTo(newlineHeight * 1.2));
     },
-    skip: !_verify, // BULGU (düşük): U+2028/U+2029 satır sayımına girmiyor (bkz. chat_format_untrusted_test.dart).
   );
 
   group('confirm dialog in the conversation shows the exact URL (no hidden host)', () {
