@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
 import '../models/login_response.dart';
 import '../services/api_service.dart';
+import '../services/user_admin.dart';
 
 class AuthProvider with ChangeNotifier {
   final ApiService _apiService;
@@ -26,6 +28,9 @@ class AuthProvider with ChangeNotifier {
   String? _permissionsError;
   bool _permissionsLoading = false;
 
+  // GET /users/me (DtoUserResponse); null until loaded — the login response has only the username.
+  Map<String, dynamic>? _profile;
+
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _isAuthenticated;
   String? get errorMessage => _errorMessage;
@@ -34,8 +39,48 @@ class AuthProvider with ChangeNotifier {
   bool get permissionsLoaded => _permissions != null;
   String? get permissionsError => _permissionsError;
 
-  /// Role names (SUPER_ADMIN, ADMIN, …) — display only; gating always uses permissions.
+  /// Role names (SUPER_ADMIN, ADMIN, …). Gating uses permissions; roles only where the backend itself checks a
+  /// role: the user-management hierarchy ([roleLevel]) and `ROLE_SUPER_ADMIN` endpoints (storage quota limit).
   List<String> get roles => _roles;
+
+  /// Highest role level (SUPER_ADMIN 4 … VIEWER 1; unknown/none 1 = most restrictive), admin `useMyRoleLevel`.
+  int get roleLevel => maxRoleLevel(_roles);
+
+  /// Sorted `<module>:<action>` keys (profile "İzinler").
+  List<String> get permissions => (_permissions?.toList() ?? <String>[])..sort();
+
+  Map<String, dynamic>? get profile => _profile;
+
+  /// Signed-in user's id (self-action guards); from the profile, else the login response.
+  int? get userId => (_profile?['id'] as num?)?.toInt() ?? int.tryParse(_currentUser?.userId ?? '');
+
+  /// Drawer / dashboard name: "Ad Soyad" (admin sidebar), else the username; '' while unknown.
+  String get displayName {
+    final name = displayNameOf(_profile);
+    return name.isNotEmpty ? name : (_currentUser?.username ?? '');
+  }
+
+  /// GET /users/me. Errors are swallowed (callers that show the profile use [fetchProfile]); the drawer then
+  /// falls back to the login username.
+  Future<void> loadProfile() async {
+    try {
+      await fetchProfile();
+    } catch (_) {}
+  }
+
+  /// GET /users/me → [profile] (throws on failure).
+  Future<Map<String, dynamic>> fetchProfile() async {
+    final data = await _apiService.get('/users/me');
+    setProfile(Map<String, dynamic>.from(data as Map));
+    return _profile!;
+  }
+
+  /// After PUT /users/me: the response is the new profile.
+  void setProfile(Map<String, dynamic> profile) {
+    if (!_isAuthenticated) return; // a late response after logout must not resurrect the old user
+    _profile = profile;
+    notifyListeners();
+  }
 
   /// Same label as the admin sidebar profile card.
   String get roleLabel {
@@ -62,7 +107,7 @@ class AuthProvider with ChangeNotifier {
     if (token != null) {
       _isAuthenticated = true;
       notifyListeners();
-      await loadPermissions();
+      await Future.wait([loadPermissions(), loadProfile()]);
     }
     notifyListeners();
   }
@@ -88,22 +133,14 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> login({
-    required String usernameOrEmail,
-    required String password,
-    required String tenantId,
-  }) =>
+  Future<bool> login({required String usernameOrEmail, required String password, required String tenantId}) =>
       _authenticate(
-        () => _apiService.post(
-          '/auth/login',
-          {
-            'usernameOrEmail': usernameOrEmail,
-            'password': password,
-            'tenantId': tenantId,
-            'loginType': 'admin', // As requested, behaves like the admin panel
-          },
-          tenantId: tenantId,
-        ),
+        () => _apiService.post('/auth/login', {
+          'usernameOrEmail': usernameOrEmail,
+          'password': password,
+          'tenantId': tenantId,
+          'loginType': 'admin', // As requested, behaves like the admin panel
+        }, tenantId: tenantId),
         tenantId,
       );
 
@@ -153,7 +190,7 @@ class AuthProvider with ChangeNotifier {
       _roles = user.roles ?? const [];
       _permissionsError = null;
       _isAuthenticated = true;
-      await loadPermissions();
+      await Future.wait([loadPermissions(), loadProfile()]);
       _isLoading = false;
       notifyListeners();
       return true;
@@ -174,6 +211,7 @@ class AuthProvider with ChangeNotifier {
     _permissions = null;
     _roles = const [];
     _permissionsError = null;
+    _profile = null;
     notifyListeners();
   }
 }

@@ -43,6 +43,9 @@ class SearchablePagedList extends StatefulWidget {
   /// Default bottom inset keeps the last row clear of a FloatingActionButton.
   final EdgeInsetsGeometry padding;
 
+  /// Scrolls with the list above the first row (e.g. a summary card); also shown when the list is empty.
+  final Widget? header;
+
   const SearchablePagedList({
     super.key,
     required this.api,
@@ -57,6 +60,7 @@ class SearchablePagedList extends StatefulWidget {
     this.onRefresh,
     this.onLoad,
     this.padding = const EdgeInsets.fromLTRB(16, 16, 16, 88),
+    this.header,
   });
 
   @override
@@ -222,6 +226,8 @@ class SearchablePagedListState extends State<SearchablePagedList> {
         .toList();
     if (widget.compare != null) visible.sort(widget.compare);
     final showFooter = _hasMore;
+    final header = widget.header;
+    final offset = header == null ? 0 : 1;
 
     return Column(
       children: [
@@ -260,17 +266,22 @@ class SearchablePagedListState extends State<SearchablePagedList> {
             child: visible.isEmpty && !showFooter
                 ? ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
+                    padding: header == null ? null : widget.padding,
                     children: [
-                      const SizedBox(height: 120),
+                      ?header,
+                      SizedBox(height: header == null ? 120 : 40),
                       EmptyView(message: _query.isEmpty ? widget.emptyMessage : 'Aramayla eşleşen kayıt yok.'),
                     ],
                   )
                 : ListView.builder(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: widget.padding,
-                    itemCount: visible.length + (showFooter ? 1 : 0),
-                    itemBuilder: (context, index) =>
-                        index < visible.length ? widget.itemBuilder(context, visible[index]) : _footer(visible.isEmpty),
+                    itemCount: offset + visible.length + (showFooter ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index < offset) return header!;
+                      final i = index - offset;
+                      return i < visible.length ? widget.itemBuilder(context, visible[i]) : _footer(visible.isEmpty);
+                    },
                   ),
           ),
         ),

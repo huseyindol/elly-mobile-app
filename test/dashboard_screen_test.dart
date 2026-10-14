@@ -1,7 +1,9 @@
 import 'package:elly_mobile_app/config/app_theme.dart';
 import 'package:elly_mobile_app/providers/auth_provider.dart';
+import 'package:elly_mobile_app/screens/account/settings_screen.dart';
 import 'package:elly_mobile_app/screens/coming_soon_screen.dart';
 import 'package:elly_mobile_app/screens/dashboard_screen.dart';
+import 'package:elly_mobile_app/screens/users/users_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -211,13 +213,35 @@ void main() {
   });
 
   testWidgets('tapping a card of an area not on mobile yet opens the "yakında" screen', (tester) async {
-    await pumpDashboard(tester, ['users:manage']);
+    await pumpDashboard(tester, ['chat:read']);
 
-    await tester.tap(card('users'));
+    await tester.tap(card('chat'));
     await tester.pumpAndSettle();
 
     expect(find.byType(ComingSoonScreen), findsOneWidget);
-    expect(find.descendant(of: find.byType(AppBar), matching: find.text('Kullanıcılar')), findsOneWidget);
+    expect(find.descendant(of: find.byType(AppBar), matching: find.text('Chat')), findsOneWidget);
+  });
+
+  testWidgets('"Kullanıcılar" card opens the users screen', (tester) async {
+    await pumpDashboard(tester, ['users:manage']);
+
+    await tester.tap(card('users'));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(UsersScreen), findsOneWidget);
+    expect(find.byType(ComingSoonScreen), findsNothing);
+  });
+
+  testWidgets('storage "Yönet" opens the settings screen', (tester) async {
+    await pumpDashboard(tester, ['posts:read']);
+
+    await settle(tester);
+    await tester.tap(find.descendant(of: find.byKey(const ValueKey('storage_card')), matching: find.text('Yönet')));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SettingsScreen), findsOneWidget);
   });
 
   testWidgets('no module permission shows the empty-access message; "Yenile" reveals the dashboard', (tester) async {

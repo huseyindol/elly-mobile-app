@@ -46,6 +46,7 @@ dependencies:
   flutter_quill: 11.6.0
   html: 0.15.7
   webview_flutter: ^4.14.1
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

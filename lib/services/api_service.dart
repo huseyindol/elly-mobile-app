@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:mime/mime.dart';
@@ -22,8 +23,10 @@ class UploadFile {
 
 class ApiService {
   // Override per build: --dart-define=API_BASE_URL=http://10.0.2.2:8080/api/v1
-  static const String baseUrl =
-      String.fromEnvironment('API_BASE_URL', defaultValue: 'https://api.huseyindol.com/api/v1');
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://api.huseyindol.com/api/v1',
+  );
 
   /// Called when the session can't be refreshed (refresh token expired/invalid).
   static void Function()? onSessionExpired;
@@ -51,19 +54,39 @@ class ApiService {
   Future<dynamic> get(String endpoint, {String? tenantId}) =>
       _send(() async => _client.get(_uri(endpoint), headers: await _getHeaders(overrideTenantId: tenantId)), endpoint);
 
+  /// `/auth/*` calls made without a session (login, refresh, 2FA login step): no Bearer, and a 401 is a wrong
+  /// credential, not an expired session. The 2FA management endpoints (`/auth/mfa/status|setup|setup/verify|
+  /// disable`) need the session: Bearer + refresh on 401 — a wrong code/password (also 401) then fails again after
+  /// the refresh and its backend message is shown, the session stays.
+  static bool isPublicAuthEndpoint(String endpoint) =>
+      endpoint.startsWith('/auth/') && (!endpoint.startsWith('/auth/mfa/') || endpoint == '/auth/mfa/verify');
+
   Future<dynamic> post(String endpoint, Map<String, dynamic> body, {String? tenantId}) => _send(
-      () async => _client.post(_uri(endpoint),
-          headers: await _getHeaders(overrideTenantId: tenantId, auth: !endpoint.startsWith('/auth/')),
-          body: jsonEncode(body)),
-      endpoint);
+    () async => _client.post(
+      _uri(endpoint),
+      headers: await _getHeaders(overrideTenantId: tenantId, auth: !isPublicAuthEndpoint(endpoint)),
+      body: jsonEncode(body),
+    ),
+    endpoint,
+  );
 
   Future<dynamic> put(String endpoint, Map<String, dynamic> body, {String? tenantId}) => _send(
-      () async => _client.put(_uri(endpoint),
-          headers: await _getHeaders(overrideTenantId: tenantId), body: jsonEncode(body)),
-      endpoint);
+    () async => _client.put(
+      _uri(endpoint),
+      headers: await _getHeaders(overrideTenantId: tenantId),
+      body: jsonEncode(body),
+    ),
+    endpoint,
+  );
 
-  Future<dynamic> delete(String endpoint, {String? tenantId}) =>
-      _send(() async => _client.delete(_uri(endpoint), headers: await _getHeaders(overrideTenantId: tenantId)), endpoint);
+  /// Body-less PATCH (`/users/{id}/status?isActive=…`).
+  Future<dynamic> patch(String endpoint) =>
+      _send(() async => _client.patch(_uri(endpoint), headers: await _getHeaders()), endpoint);
+
+  Future<dynamic> delete(String endpoint, {String? tenantId}) => _send(
+    () async => _client.delete(_uri(endpoint), headers: await _getHeaders(overrideTenantId: tenantId)),
+    endpoint,
+  );
 
   /// multipart/form-data request (banners: `data` JSON part, assets: `file` + `subFolder`).
   Future<dynamic> multipart(
@@ -71,19 +94,18 @@ class ApiService {
     String endpoint, {
     Map<String, String> fields = const {},
     List<UploadFile> files = const [],
-  }) =>
-      _send(() async {
-        final request = http.MultipartRequest(method, _uri(endpoint))
-          ..headers.addAll(await _getHeaders(json: false))
-          ..fields.addAll(fields);
-        for (final f in files) {
-          // Without an explicit type the part is application/octet-stream and the
-          // backend's image check fails ("File is not an image").
-          final mime = lookupMimeType(f.path) ?? 'application/octet-stream';
-          request.files.add(await http.MultipartFile.fromPath(f.field, f.path, contentType: MediaType.parse(mime)));
-        }
-        return http.Response.fromStream(await _client.send(request));
-      }, endpoint);
+  }) => _send(() async {
+    final request = http.MultipartRequest(method, _uri(endpoint))
+      ..headers.addAll(await _getHeaders(json: false))
+      ..fields.addAll(fields);
+    for (final f in files) {
+      // Without an explicit type the part is application/octet-stream and the
+      // backend's image check fails ("File is not an image").
+      final mime = lookupMimeType(f.path) ?? 'application/octet-stream';
+      request.files.add(await http.MultipartFile.fromPath(f.field, f.path, contentType: MediaType.parse(mime)));
+    }
+    return http.Response.fromStream(await _client.send(request));
+  }, endpoint);
 
   Uri _uri(String endpoint) => Uri.parse('$baseUrl$endpoint');
 
@@ -96,7 +118,7 @@ class ApiService {
 
   Future<dynamic> _send(Future<http.Response> Function() request, String endpoint) async {
     var response = await request();
-    if (response.statusCode == 401 && !endpoint.startsWith('/auth/')) {
+    if (response.statusCode == 401 && !isPublicAuthEndpoint(endpoint)) {
       if (await _refreshSession()) {
         response = await request();
       } else {

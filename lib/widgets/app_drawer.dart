@@ -3,12 +3,16 @@ import 'package:provider/provider.dart';
 
 import '../config/nav_config.dart';
 import '../providers/auth_provider.dart';
+import '../screens/account/profile_screen.dart';
+import '../screens/account/settings_screen.dart';
 import '../screens/assets_screen.dart';
 import '../screens/coming_soon_screen.dart';
 import '../screens/crud/generic_crud_list_screen.dart';
 import '../screens/mail/email_logs_screen.dart';
 import '../screens/mail/email_templates_screen.dart';
 import '../screens/mail/mail_accounts_screen.dart';
+import '../screens/rabbit/rabbit_screen.dart';
+import '../screens/users/users_screen.dart';
 import '../services/text_format.dart';
 
 bool isNavItemVisible(AuthProvider auth, NavItem item) => item.permission == null || auth.has(item.permission!);
@@ -19,6 +23,10 @@ Widget? navScreen(NavItem item) => switch (item.id) {
   'mail-accounts' => const MailAccountsScreen(),
   'email-templates' => const EmailTemplatesScreen(),
   'email-logs' => const EmailLogsScreen(),
+  'users' => const UsersScreen(),
+  'rabbitmq' => const RabbitScreen(),
+  'settings' => const SettingsScreen(),
+  'profile' => const ProfileScreen(),
   _ => item.module == null ? null : GenericCrudListScreen(module: item.module!),
 };
 
@@ -36,8 +44,16 @@ void openNavItem(BuildContext context, NavItem item) {
   );
 }
 
-/// "hüseyin" → "HÜ" (grapheme-safe, Turkish upper case).
-String avatarInitials(String name) => name.trim().isEmpty ? 'U' : upperTr(name.trim().characters.take(2).toString());
+/// "Hüseyin Dol" → "HD" (first letters of the first two words, like the admin sidebar); one word "hüseyin" →
+/// "HÜ". Grapheme-safe, Turkish upper case.
+String avatarInitials(String name) {
+  final words = name.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+  if (words.isEmpty) return 'U';
+  final initials = words.length == 1
+      ? words.first.characters.take(2).toString()
+      : words.take(2).map((w) => w.characters.first).join();
+  return upperTr(initials);
+}
 
 /// Main navigation: admin sidebar groups filtered by permission, profile header, logout.
 class AppDrawer extends StatelessWidget {
@@ -87,7 +103,7 @@ class AppDrawer extends StatelessWidget {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final scheme = Theme.of(context).colorScheme;
-    final name = auth.currentUser?.username ?? '';
+    final name = auth.displayName;
 
     return Drawer(
       backgroundColor: scheme.surface,

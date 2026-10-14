@@ -7,11 +7,13 @@ import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../services/crud_payload.dart';
 import '../services/mail_payload.dart';
-import '../services/text_format.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/app_scaffold.dart';
 import '../widgets/state_views.dart';
 import '../widgets/app_snack_bar.dart';
+import '../widgets/storage_quota_card.dart';
+
+export '../widgets/storage_quota_card.dart' show quotaColor;
 
 /// A summary card of the elly-admin dashboard (`(baseLayout)/dashboard/page.tsx`).
 class _Stat {
@@ -37,10 +39,6 @@ const _stats = [
   _Stat('banners', 'Bannerlar', 'banners:read', '/banners/list/summary', Color(0xFF0EA5E9)),
   _Stat('assets', 'Medya', 'assets:read', '/assets/list/paged?page=0&size=1', Color(0xFF84CC16)),
 ];
-
-/// Storage usage color, same thresholds as the admin StorageUsageWidget: <70 ok, 70–90 warning, ≥90 critical.
-Color quotaColor(double percent, ColorScheme scheme) =>
-    percent >= 90 ? scheme.onErrorContainer : (percent >= 70 ? AppColors.warning : AppColors.success);
 
 /// 1234567 → "1.234.567" (tr-TR grouping, like the admin).
 String _formatCount(int? n) =>
@@ -75,17 +73,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   _Stat _stat(String navId) => _stats.firstWhere((s) => s.navId == navId);
 
-  /// Storage quota of the session tenant; needs only a signed-in user (`isAuthenticated()`).
-  Future<dynamic>? _quota;
-  Future<dynamic> _quotaFuture() => _quota ??= () async {
-    final tenantId = await _api.secureStorage.read(key: 'tenantId');
-    // Same URL as the admin StorageUsageWidget: target tenant in the path; none → own context.
-    return _api.get(
-      tenantId == null || tenantId.isEmpty
-          ? '/storage/quota'
-          : '/storage/tenant/${Uri.encodeComponent(tenantId)}/quota',
-    );
-  }();
+  final _quotaKey = GlobalKey<StorageQuotaCardState>();
 
   bool _refreshing = false;
 
@@ -106,13 +94,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
       setState(() {
         _futures.clear();
-        _quota = null;
         for (final stat in _stats.where((s) => auth.has(s.permission))) {
           _future(stat);
         }
-        _quotaFuture();
       });
-      await Future.wait([..._futures.values, _quota!].map((f) => f.then((_) {}, onError: (_) {})));
+      await Future.wait([
+        ..._futures.values.map((f) => f.then((_) {}, onError: (_) {})),
+        if (_quotaKey.currentState != null) _quotaKey.currentState!.reload(),
+      ]);
     } finally {
       if (mounted) setState(() => _refreshing = false);
     }
@@ -176,11 +165,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final canEmails = auth.has(_stat('email-logs').permission);
     final canPosts = auth.has(_stat('posts').permission);
     return [
-      _greeting(auth.currentUser?.username),
+      _greeting(auth.displayName),
       const SizedBox(height: 24),
       if (stats.isNotEmpty) _statsGrid(stats),
       const SizedBox(height: 24),
-      _storageCard(),
+      StorageQuotaCard(key: _quotaKey, api: _api, onManage: () => openNavItem(context, NavConfig.byId('settings'))),
       if (canEmails) ...[
         const SizedBox(height: 24),
         _recentSection(
@@ -334,126 +323,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       },
     );
   }
-
-  /// Admin StorageUsageWidget: usage bar, percent, used / limit / remaining (read-only; limit is set in Ayarlar).
-  Widget _storageCard() {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      key: const ValueKey('storage_card'),
-      padding: const EdgeInsets.all(16),
-      decoration: _cardDecoration(context),
-      child: FutureBuilder<dynamic>(
-        future: _quotaFuture(),
-        builder: (context, snapshot) {
-          final quota = snapshot.data is Map ? snapshot.data as Map : null;
-          final percent = ((quota?['usedPercent'] as num?)?.toDouble() ?? 0).clamp(0.0, 100.0);
-          final color = quotaColor(percent, scheme);
-          final used = (quota?['usedBytes'] as num?) ?? 0;
-          final limit = (quota?['limitBytes'] as num?) ?? 0;
-          final Widget body;
-          if (snapshot.connectionState != ConnectionState.done) {
-            body = const Padding(
-              padding: EdgeInsets.all(16),
-              child: LoadingView(label: 'Depolama yükleniyor'),
-            );
-          } else if (snapshot.hasError || quota == null) {
-            body = Row(
-              children: [
-                Expanded(
-                  child: Text('Depolama bilgisi yüklenemedi.', style: TextStyle(color: scheme.onErrorContainer)),
-                ),
-                TextButton(onPressed: () => setState(() => _quota = null), child: const Text('Tekrar Dene')),
-              ],
-            );
-          } else {
-            body = Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  '%${percent.toStringAsFixed(1).replaceAll('.', ',')}',
-                  key: const ValueKey('storage_percent'),
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color),
-                ),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: LinearProgressIndicator(
-                    value: percent / 100,
-                    minHeight: 10,
-                    color: color,
-                    backgroundColor: scheme.onSurface.withValues(alpha: 0.08),
-                    semanticsLabel: 'Depolama kullanımı',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 24,
-                  runSpacing: 8,
-                  children: [
-                    _metric('Kullanılan', formatBytes(used)),
-                    _metric('Toplam Limit', formatBytes(limit)),
-                    _metric('Kalan', formatBytes(limit - used < 0 ? 0 : limit - used)),
-                  ],
-                ),
-                if (percent >= 70) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    percent >= 90 ? 'Kota neredeyse dolu — yeni yüklemeler reddedilebilir.' : 'Kota dolmak üzere.',
-                    style: TextStyle(color: color, fontSize: 12),
-                  ),
-                ],
-              ],
-            );
-          }
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.storage_rounded, color: scheme.primary),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Semantics(
-                          header: true,
-                          child: const Text(
-                            'Depolama Kullanımı',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        Text(
-                          '${quota?['tenantId'] ?? 'Genel / Admin'}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 12, color: _muted(context)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => openNavItem(context, NavConfig.byId('settings')),
-                    child: const Text('Yönet'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              body,
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _metric(String label, String value) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(label, style: TextStyle(fontSize: 12, color: _muted(context))),
-      Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
-    ],
-  );
 
   /// "Son …" list under the cards; shares the card's request (same as the admin).
   Widget _recentSection({
