@@ -187,6 +187,14 @@ void main() {
         StompDest.chatErrors: 3,
         StompDest.notifications: 3,
         StompDest.notificationsUnreadCount: 4,
+        StompDest.userRtc(7): 4,
+        StompDest.rtcCall: 3,
+        StompDest.rtcAnswer(gid): 4,
+        StompDest.rtcReject(gid): 4,
+        StompDest.rtcCancel(gid): 4,
+        StompDest.rtcHangup(gid): 4,
+        StompDest.rtcSdp(gid): 4,
+        StompDest.rtcIce(gid): 4,
       };
       for (final e in built.entries) {
         expect(e.key.split('/').where((p) => p.isNotEmpty), hasLength(e.value), reason: e.key);
@@ -218,6 +226,22 @@ void main() {
     });
   });
 
+  test('WebRTC destinations: backend CallSignalController / CallSessionService shapes', () {
+    expect(StompDest.userRtc(7), '/topic/user/7/rtc');
+    expect(StompDest.rtcCall, '/app/rtc/call');
+    for (final action in ['answer', 'reject', 'cancel', 'hangup', 'sdp', 'ice']) {
+      final built = switch (action) {
+        'answer' => StompDest.rtcAnswer(gid),
+        'reject' => StompDest.rtcReject(gid),
+        'cancel' => StompDest.rtcCancel(gid),
+        'hangup' => StompDest.rtcHangup(gid),
+        'sdp' => StompDest.rtcSdp(gid),
+        _ => StompDest.rtcIce(gid),
+      };
+      expect(built, '/app/rtc/$gid/$action');
+    }
+  });
+
   group('source guard: every destination goes through StompDest', () {
     final libFiles = Directory('lib')
         .listSync(recursive: true)
@@ -239,10 +263,34 @@ void main() {
       for (final f in libFiles.where((f) => !f.path.endsWith('realtime_service.dart'))) {
         for (final m in call.allMatches(code(f))) {
           seen++;
+          // CallProvider._send forwards CallSend destinations (checked below) and its own StompDest.rtcSdp/rtcIce.
+          if (f.path.endsWith('call_provider.dart') && m[2]!.trim() == 'destination') continue;
           expect(m[2]!.trim(), startsWith('StompDest.'), reason: '${f.path}: ${m[0]}');
         }
       }
       expect(seen, greaterThan(10), reason: 'the scan actually found the call sites');
+    });
+
+    test('call signalling destinations (CallSend / _send) are StompDest values only', () {
+      final call = RegExp(r'(CallSend|_send)\(\s*([^,)]+)');
+      var seen = 0;
+      for (final f in libFiles.where((f) => f.path.contains('call_'))) {
+        for (final m in call.allMatches(code(f))) {
+          // declarations / the pattern match that unpacks a CallSend
+          if (const [
+            'String destination',
+            'this.destination',
+            ':final destination',
+            r'$destination',
+          ].contains(m[2]!.trim())) {
+            continue;
+          }
+          if (f.path.endsWith('call_provider.dart') && m[2]!.trim() == 'destination') continue; // forwards CallSend
+          seen++;
+          expect(m[2]!.trim(), startsWith('StompDest.'), reason: '${f.path}: ${m[0]}');
+        }
+      }
+      expect(seen, greaterThan(8), reason: 'the scan actually found the call sites');
     });
   });
 }

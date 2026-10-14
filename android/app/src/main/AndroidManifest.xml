@@ -1,4 +1,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- API, STOMP and WebRTC media (release builds had no INTERNET: only the debug/profile manifests declare it). -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- WebRTC network monitor (interface changes, ICE restarts on Wi-Fi ↔ mobile). Normal permission. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Calls: asked at run time only when the user dials or answers. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Call audio mode and loudspeaker/earpiece switch. Normal permission. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- Voice-only calls must also install on devices without a camera. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <application
         android:label="elly_mobile_app"
         android:name="${applicationName}"
