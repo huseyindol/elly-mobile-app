@@ -23,8 +23,35 @@ class FakeCallMedia implements CallMedia {
   bool connected = false;
   bool closed = false;
 
+  /// Holds [connect] until completed (peer connection still being created).
+  Completer<void>? connectGate;
+
+  /// Holds [setRemote] until completed (remote description still being applied).
+  Completer<void>? setRemoteGate;
+
+  /// true: [addIce] of that candidate throws (the platform refused it).
+  bool Function(String candidate)? addIceError;
+
+  /// [close] releases everything and then throws this (the provider must shrug it off).
+  Object? closeError;
+
   /// The microphone/camera were released (tracks stopped).
   bool tracksStopped = false;
+
+  /// Resources that are held right now. Anything still true after a call is over is a leak: microphone/camera
+  /// tracks running, a peer connection open, video renderers undisposed.
+  bool tracksLive = false;
+  bool pcLive = false;
+  bool renderersLive = false;
+
+  /// Names of the resources still held (empty: everything was released).
+  List<String> get leaks => [if (tracksLive) 'tracks', if (pcLive) 'peerConnection', if (renderersLive) 'renderers'];
+
+  /// Remote ICE candidates / descriptions applied to this media, in order.
+  List<String> get applied => [
+    for (final o in ops)
+      if (o.startsWith('ice:') || o.startsWith('remote:')) o,
+  ];
   bool remoteVideo = false;
   Object? setRemoteError;
   List<Map<String, Object>>? iceServers;
@@ -47,6 +74,7 @@ class FakeCallMedia implements CallMedia {
       throw const CallMediaException(CallMediaError.other);
     }
     opened = true;
+    tracksLive = true;
     videoOpen = video;
   }
 
@@ -64,6 +92,13 @@ class FakeCallMedia implements CallMedia {
     required void Function() onRemote,
   }) async {
     ops.add('connect');
+    if (connectGate != null) await connectGate!.future;
+    if (closed) {
+      // like the real media: closed while the connection was being created → nothing is left behind
+      throw const CallMediaException(CallMediaError.other);
+    }
+    pcLive = true;
+    renderersLive = true;
     this.iceServers = iceServers;
     this.onIce = onIce;
     this.onState = onState;
@@ -80,12 +115,16 @@ class FakeCallMedia implements CallMedia {
   @override
   Future<String?> setRemote(String type, String sdp) async {
     ops.add('remote:$type');
+    if (setRemoteGate != null) await setRemoteGate!.future;
     if (setRemoteError != null) throw setRemoteError!;
     return type == 'offer' ? 'v=0 answer' : null;
   }
 
   @override
-  Future<void> addIce(String candidate, String? sdpMid, int? sdpMLineIndex) async => ops.add('ice:$candidate');
+  Future<void> addIce(String candidate, String? sdpMid, int? sdpMLineIndex) async {
+    if (addIceError != null && addIceError!(candidate)) throw StateError('addCandidate failed: $candidate');
+    ops.add('ice:$candidate');
+  }
 
   @override
   void setMic(bool on) => mic = on;
@@ -110,6 +149,10 @@ class FakeCallMedia implements CallMedia {
     ops.add('close');
     closed = true;
     if (opened) tracksStopped = true;
+    tracksLive = false;
+    pcLive = false;
+    renderersLive = false;
+    if (closeError != null) throw closeError!;
   }
 }
 
@@ -157,6 +200,12 @@ class FakeCalls {
   void signal(int userId, Map<String, Object?> body) => live.push('/topic/user/$userId/rtc', body);
 
   List<SingleChildWidget> get providers => [ChangeNotifierProvider<CallProvider>.value(value: provider)];
+
+  /// Every resource of every media this provider ever opened, still held (empty: nothing leaked).
+  List<String> get leaks => [
+    for (var i = 0; i < medias.length; i++)
+      for (final l in medias[i].leaks) 'media#$i:$l',
+  ];
 
   void dispose() {
     _sub?.cancel();
