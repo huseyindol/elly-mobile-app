@@ -2,7 +2,7 @@
 
 `elly-admin` yönetim panelinin **Flutter** mobil karşılığı: sayfa, bileşen, post, içerik, widget, banner,
 form, asset, mail hesabı, e-posta şablonu, e-posta logu, kullanıcı/rol, profil, ayarlar (2FA, depolama), RabbitMQ
-yönetimi, bildirimler ve chat (STOMP ile gerçek zamanlı). Backend: `elly-backend` (Spring Boot,
+yönetimi, bildirimler, chat (STOMP ile gerçek zamanlı) ve sesli/görüntülü arama (WebRTC). Backend: `elly-backend` (Spring Boot,
 db-per-tenant). Bu repo `elly-studio` orchestrator'ının bir parçasıdır; çapraz repo kuralları kökteki `AGENTS.md`'dedir.
 
 ## Stack
@@ -10,14 +10,15 @@ db-per-tenant). Bu repo `elly-studio` orchestrator'ının bir parçasıdır; ça
 | Katman | Teknoloji |
 |---|---|
 | Framework | Flutter 3.x (Dart `^3.13`), Material 3, koyu tema |
-| State | `provider` (`ChangeNotifier`) — `AuthProvider`, `RealtimeService`, `NotificationsProvider`, `ChatProvider` |
+| State | `provider` (`ChangeNotifier`) — `AuthProvider`, `RealtimeService`, `NotificationsProvider`, `ChatProvider`, `CallProvider` |
 | Gerçek zamanlı | `stomp_dart_client` 3.0 (BSD-3) — STOMP, SockJS websocket transport (`RealtimeService` dışında kullanma) |
+| Arama (WebRTC) | `flutter_webrtc` 1.6.2+hotfix.4 (MIT, sabit sürüm) — yalnız `WebrtcCallMedia` üzerinden (`CallMedia` seam'i) |
 | HTTP | `http` + `http_parser`/`mime` (multipart) |
 | Güvenli depo | `flutter_secure_storage` (accessToken, refreshToken, tenantId) |
 | Dosya seçimi | `file_picker` |
 | Zengin metin | `flutter_quill` 11.6.0 (MIT) + `html` 0.15.7 (BSD) — kendi HTML ↔ Delta kodeği |
 | HTML önizleme | `webview_flutter` 4.14 (BSD-3, flutter.dev) — yalnız `SafeHtmlView` üzerinden (e-posta şablonu önizlemesi) |
-| Harici link | `url_launcher` 6.3 (BSD-3, flutter.dev) — yalnız 2FA `otpauth://` linki (doğrulanmış URI) |
+| Harici link | `url_launcher` 6.3 (BSD-3, flutter.dev) — yalnız 2FA `otpauth://` linki (doğrulanmış URI) ve iOS `app-settings:` (izin reddi) |
 | Yerelleştirme | `flutter_localizations` (Flutter SDK) — uygulama sabit `tr` |
 | Test | `flutter_test`, `integration_test`, `fake_async` (Apache-2.0, dev; zamanlayıcılı STOMP testleri) |
 | Lint | `flutter_lints` (`analysis_options.yaml`) |
@@ -35,7 +36,8 @@ lib/
 ├── providers/
 │   ├── auth_provider.dart         # login (+2FA adımı) / logout / oturum + permission durumu
 │   ├── notifications_provider.dart # okunmamış sayısı, liste, okundu/sil, canlı push, banner akışı
-│   └── chat_provider.dart         # gruplar, mesajlar, okunmamış, typing/read, presence, üyelik/silme olayları
+│   ├── chat_provider.dart         # gruplar, mesajlar, okunmamış, typing/read, presence, üyelik/silme olayları
+│   └── call_provider.dart         # WebRTC arama: sinyal aboneliği, medya yaşam döngüsü, SDP/ICE kuyruğu, korumalar, bildirimler
 ├── services/
 │   ├── api_service.dart           # tüm HTTP istekleri, header'lar, 401 → refresh
 │   ├── crud_payload.dart          # saf: getPath/setPath, buildPayload (ilişki semantiği), extractItems, paging, compareByKey
@@ -47,12 +49,17 @@ lib/
 │   ├── rabbit_admin.dart          # saf: kuyruk path'i, peek sınırı, payload biçimi, republish payload/doğrulama, hata metni
 │   ├── realtime_service.dart      # tek STOMP bağlantısı (Bearer CONNECT, backoff, resubscribe, ön/arka plan) + StompLink seam
 │   ├── stomp_destinations.dart    # saf: kullanılan TÜM STOMP destination'ları (StompDest) + isUuid / isSafeTenantId
+│   ├── call_machine.dart          # saf: çağrı durum makinesi (admin call-store geçişleri) + CallSignal savunmacı parse
+│   ├── call_media.dart            # CallMedia seam'i (yerel medya + peer connection) + medya hata metni
+│   ├── webrtc_call_media.dart     # CallMedia'nın flutter_webrtc uygulaması (tek platform kodu; unit test yok)
+│   ├── app_settings.dart          # openAppSettings: iOS app-settings:, Android MainActivity kanalı (izin reddi)
 │   ├── chat_format.dart           # saf: güvenilmez mesaj metni (entity, kontrol, bidi, kısaltma, link), dosya yolu, bildirim hedefi, davet kuralı, hata metni
 │   └── text_format.dart           # saf: foldTr (Türkçe arama anahtarı), upperTr, formatBytes, slugify, formatDateTimeTr, revealBidi
 ├── screens/
 │   ├── login_screen.dart
 │   ├── dashboard_screen.dart      # admin dashboard özet kartları + son e-postalar/yazılar (permission'a göre)
 │   ├── coming_soon_screen.dart    # mobilde henüz olmayan admin alanları için yer tutucu (şu an kullanan öğe yok)
+│   ├── call_screen.dart           # CallScreen: gelen / giden / görüşme tam ekranı (AuthWrapper açar/kapatır)
 │   ├── notifications_screen.dart  # NotificationBell (AppBar zili), NotificationsScreen, openNotification (bildirim → ekran)
 │   ├── chat/                      # ChatScreen (liste + DM), konuşma, üyeler, yeni grup formu
 │   ├── assets_screen.dart         # Medya: klasör, sunucu araması, çoklu yükleme, toplu silme (generic'e sığmıyor)
@@ -64,6 +71,7 @@ lib/
 │   └── crud/generic_crud_{list,form}_screen.dart
 └── widgets/                       # ortak bileşenler — yeni ekranlar bunları kullanır
     ├── app_scaffold.dart          # AppScaffold (cam AppBar + AmbientBackground + opsiyonel drawer + bottomNavigationBar; drawer'lı ekranda bildirim zili)
+    ├── call_menu_button.dart      # CallMenuButton: "Ara" → Sesli ara / Görüntülü ara
     ├── chat_message_text.dart     # ChatMessageText: güvenilmez mesaj → düz metin, "Tümünü göster", onaylı http(s) link
     ├── connection_banner.dart     # ConnectionBanner: canlı bağlantı yokken şerit
     ├── app_snack_bar.dart         # showAppSnackBar (tek SnackBar yolu) · reportInvalidFields (kaydır + "N alan hatalı: Etiket")
@@ -82,7 +90,7 @@ lib/
     ├── relation_multi_select.dart # FormField<List<Object>>: ilişki id listesi seçici (componentIds, …)
     ├── rich_text_field.dart       # HTML gövde editörü (Quill; desteklenmeyen HTML → ham HTML modu)
     └── asset_picker.dart          # showAssetPicker (görsel assetten mutlak URL), AssetThumbnail, isImageAsset
-test/                              # unit/widget testleri (helpers/fake_backend.dart, helpers/fake_realtime.dart) + opt-in canlı sözleşme testi
+test/                              # unit/widget testleri (helpers/fake_backend.dart, helpers/fake_realtime.dart, helpers/fake_call_media.dart) + opt-in canlı sözleşme testi
 └── fixtures/                      # admin TS kaynağından üretilen beklenen sonuçlar (gen_form_fixtures.ts, bun) + admin form JSON'u
 integration_test/                  # cihaz/simülatörde uçtan uca test
 ```
@@ -314,13 +322,16 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
   ulaşmaz, reconnect sonrası çift işlenmez). `start()` ret serisini sıfırlar; `retryNow()` ("Şimdi dene") backoff'u atlar.
   CONNECTED'den **önce** STOMP ERROR (süresi dolmuş/iptal token) → `checkSession` (`GET /notifications/unread-count`,
   ApiService'in 401 → refresh akışı; refresh olmazsa normal `onSessionExpired` → logout) → yenilenmiş token'la hemen
-  yeniden dene; aynı seride ikinci ret normal backoff. Yaşam döngüsü `AuthWrapper`'da: giriş → `start` + bildirimler;
-  çıkış → `ChatProvider.reset` + `NotificationsProvider.reset` + `stop` (abonelikler unutulur); `hidden/paused` →
-  soket kapanır (presence offline), `resumed` → hemen yeniden bağlanır (`inactive` dokunmaz). `AuthWrapper` ve
+  yeniden dene; aynı seride ikinci ret normal backoff. Yaşam döngüsü `AuthWrapper`'da: giriş → `start` + bildirimler
+  (kullanıcı id'si bilinince `CallProvider.start(id)`); çıkış → **önce** `CallProvider.reset` (kapatma çerçevesi soket
+  kapanmadan gider) + `ChatProvider.reset` + `NotificationsProvider.reset` + `stop` (abonelikler unutulur);
+  `hidden/paused` → önce `CallProvider.endForBackground`, sonra soket kapanır (presence offline), `resumed` → hemen
+  yeniden bağlanır (`inactive` dokunmaz). `AuthWrapper` ve
   `NotificationBell` provider'ları **nullable** okur (yalnız `AuthProvider` veren eski test düzenekleri çalışır).
   Destination'lar yalnız `stomp_destinations.dart`'ta (`StompDest`); grup id'si UUID, tenant `^[A-Za-z0-9_-]{1,64}$`
-  olmadan destination kurulmaz. **Faz 6 (WebRTC):** `/topic/user/{id}/rtc` ve `/app/rtc/*` aynı dosyaya + aynı
-  `subscribe/send` yolu (yeni bağlantı açma). Testlerde `StompLink` seam'i: `test/helpers/fake_realtime.dart`
+  olmadan destination kurulmaz; çağrı id'si UUID. WebRTC sinyalleri de aynı bağlantıdan (aşağıda "Arama"). Kaynak
+  koruması testi (`stomp_destinations_test`): `lib/`'de destination literal'i yalnız bu dosyada, `subscribe/send` ve
+  `CallSend` yalnız `StompDest` değeriyle. Testlerde `StompLink` seam'i: `test/helpers/fake_realtime.dart`
   (`FakeRealtime.providers`, `push(destination, body)`, `link.drop()/stompError()`), zamanlama `fake_async`.
 - **Bildirimler** (herkes; admin `useNotifications` + `NotificationBell`): zil `AppScaffold`'da yalnız drawer'lı
   ekranlarda (`navId` varken), rozet `GET /notifications/unread-count` + `/user/queue/notifications/unread-count`
@@ -390,6 +401,67 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
     sürrogat → U+FFFD (`wellFormedUtf16`; `Text` iyi biçimsiz metinde atar), U+2028/U+2029 "\n" sayılır (satır
     sınırını aşamaz). Dosya yalnız backend upload deseni `^assets/[\w\-./]+$` (`..` yok) ise dosya/görsel
     (API origin'inde; SVG görsel sayılmaz), değilse düz metin.
+- **Arama (WebRTC, `CallProvider` + `CallMachine` + `CallScreen`)** — admin `call-store.ts` + `useWebRTCCall` +
+  `CallLayer`; backend `CallSignalController` / `CallSessionService` (yalnız sinyalleşme, medya P2P). Sözleşme
+  değişikliği yok. İki mod: panel-içi arama (admin→admin) ve tenant destek çağrısını cevaplama (**ring-all**: tüm
+  çevrimiçi panel kullanıcılarında çalar, ilk cevaplayan alır, diğerlerine `CALL_TAKEN`). Mobil tenant araması
+  başlatmaz (`/app/tenant-rtc/*` yalnız tenant sitesi).
+  - **Sinyalleşme:** abonelik yalnız `/topic/user/{myId}/rtc` (backend'in esas yolu). Backend aynı sinyali
+    `/user/queue/rtc`'ye de kopyalar — **abone olunmaz** (teslim ettiği ortamda her sinyal iki kez gelirdi; admin ikisine
+    de abone: user-queue teslim ederse ikinci `INCOMING_CALL` çalan çağrıyı meşgul diye reddeder). Gönderilen: `/app/rtc/call {calleeUserId,
+    groupId?}` (groupId yalnız UUID; aynı grubun üyeleri hiyerarşiyi atlar), `/app/rtc/{callId}/answer|reject|cancel|
+    hangup` (boş gövde), `…/sdp {sdpType, sdp}`, `…/ice {candidate, sdpMid, sdpMLineIndex}`. Sinyal şeması backend
+    `DtoCallSignal` (admin `types/call.ts`).
+  - **Durum makinesi** (`call_machine.dart`, saf, `call_machine_test`): idle → outgoing | incoming → connecting
+    (ANSWERED) → active (ICE connected) → idle; bitiş `CallEnded(mesaj)` efekti (SnackBar). Admin geçişleriyle aynı,
+    ama **yalnız aktif callId'nin** sinyali uygulanır: yabancı/eski çağrının ANSWERED/SDP/ICE/HANGUP'ı yok sayılır; SDP/ICE
+    yalnız connecting/active'te. Tek çağrı: başka çağrı çalarken/sürerken gelen `INCOMING_CALL` → o çağrıya `reject`
+    (meşgul); aynı callId'nin tekrarı yok sayılır. Kendi çağrısı RINGING gelmeden iptal edilirse sonraki dial yanıtı
+    (RINGING → `cancel`, BUSY/UNAVAILABLE/ERROR → yut) sırayla eşlenir (`_abandonedDials`; yeniden bağlanınca sıfırlanır)
+    — aranan 30 sn boş çalmaz. Bitmiş çağrıya geç gelen ANSWERED → `hangup` (cancel ↔ answer yarışı). Çalarken
+    ANSWERED (kendi cevabı yokken) = aynı hesap başka cihazda cevapladı → sessizce biter. `CallSignal.parse`: bilinmeyen
+    tip / UUID olmayan callId → null; SDP ≤64 KB, aday ≤2 KB, `sdpType` yalnız offer/answer; `peerDisplayName` (backend
+    oturumundaki kullanıcı adı — arayanın yazdığı metin değil) ve `reason` `safeChatText` + kısaltma; ekranda ayrıca "ID n".
+  - **Medya yalnız kullanıcının eylemiyle ve sinyalden ÖNCE:** arama → önce mikrofon/kamera (OS izni burada istenir)
+    sonra dial; cevap → önce medya sonra `answer`. İzin reddi: arama hiç gönderilmez; gelen çağrı `reject` edilir
+    (ring-all'da diğerleri çalmaya devam eder) + "Ayarlar" aksiyonlu SnackBar (`openAppSettings`). Görüntülü istekte kamera
+    açılmazsa admin gibi sesliye düşer (bildirimle). Çalarken medya açılmaz. Medya `CallMedia` seam'i
+    (`WebrtcCallMedia`: getUserMedia → RTCPeerConnection unified-plan; testte `FakeCallMedia`). Teklifi (**offer**) arayan
+    ANSWERED'den sonra üretir; aranan offer'a answer döner. Uzak SDP/ICE tek seri kuyrukta (`_enqueue`, çağrı bitince
+    düşer); remote description'dan önce gelen ICE tamponlanır (≤100). Görüntülü çağrı hoparlörde, sesli ahizede başlar.
+    Görüşme içinde sesliden görüntülüye geçiş yok (yeniden müzakere yok; admin'de de yok).
+  - **Sonlandırma = medya bırakılır** (gizlilik): bitiş, karşı taraf kapatma, CALL_TAKEN/CANCELLED/TIMEOUT, oturum
+    kapanışı (`reset`: kapatma çerçevesi, bildirim yok), uygulama arka plana (`hidden/paused` → `endForBackground`:
+    "arka plana geçtiği için sonlandırıldı") → tüm track'ler durur, peer connection kapanır, renderer'lar bırakılır;
+    izin istemi sürerken biten çağrının geç gelen akışı hemen durdurulur. Arka plan kararı: CallKit/ConnectionService ve
+    `UIBackgroundModes` yok (plan dışı) → iOS uygulamayı askıya alır, Android 11+ arka planda mikrofon/kamerayı keser,
+    Faz 5 soketi kapatır (sinyal kaybolur) — en güvenli ve tutarlı davranış çağrıyı bitirmek. `inactive` (izin istemi,
+    bildirim merkezi) çağrıyı bitirmez. Korumalar: çalma 35 sn (backend 30 sn; TIMEOUT kaybolursa), cevaplandı ama
+    bağlanmadı 30 sn, ICE `failed` → kapat ("Ağınız doğrudan bağlantıya izin vermiyor olabilir"). ICE: yalnız
+    `stun:stun.l.google.com:19302` (admin varsayılanı); **TURN yok** (backend'de de yok) → simetrik NAT/kurumsal ağlarda
+    bağlantı kurulamayabilir. TURN kimlik bilgisi uygulamaya gömülmez (backend'den kısa ömürlü verilmeli).
+  - **UI:** `AuthWrapper` çağrı idle değilken `CallScreen`'i (tam ekran route) yığının üstüne iter, idle olunca
+    `removeRoute` ile kaldırır; çağrı bildirimleri SnackBar. Çağrı sürerken bildirim banner'ı gösterilmez ("Aç" çağrının
+    üstüne ekran açardı). Geri tuşu çağrıdan çıkarmaz (`PopScope(canPop: false)`). Gelen: "Gelen çağrı" / "Gelen destek
+    çağrısı" (+ ring-all açıklaması), Reddet · Sesli cevapla · Görüntülü cevapla (backend çağrı türü taşımaz; kamera
+    yalnız istenirse); kabul edilince cevap düğmeleri kilitli. Giden: Aranıyor… → Çalıyor…, İptal. Görüşme: uzak video
+    (varsa; yoksa baş harfler), sağ üstte kendi önizleme (kamera açıkken), mikrofon, kamera aç/kapat + çevir (yalnız
+    kamera varsa), hoparlör, Kapat, süre. a11y: durum metni `liveRegion` (süre değil — her saniye duyurulmaz), route adı
+    "durum: ad"; düğmeler 64 dp + görünür etiket, tek semantik düğüm (etiket = görünür metin), devre dışıyken soluk; gelen
+    çağrıda titreşim; küçük ekran/büyük yazıda kaydırılabilir. Arama başlatma (admin `ChatMemberList` "Görüntülü ara"):
+    üye listesinde kendisi hariç herkese `CallMenuButton` (Sesli/Görüntülü; `groupId` ile) ve DM konuşmasının AppBar'ında
+    (karşı üye `/members`'tan); kendi id'si bilinmiyorsa düğme yok. Çevrimdışı/yetkisiz/meşgul hedefi backend söyler.
+  - **Native:** iOS `NSMicrophoneUsageDescription` + `NSCameraUsageDescription` (Türkçe, amaç + "yalnız siz
+    başlattığınızda/cevapladığınızda"); `UIBackgroundModes` yok. Android `RECORD_AUDIO`, `CAMERA` (çalışma zamanı izni
+    flutter_webrtc getUserMedia'da ister), `MODIFY_AUDIO_SETTINGS` (çağrı ses modu/hoparlör), `ACCESS_NETWORK_STATE`
+    (WebRTC ağ izleyici), `INTERNET` (ana manifest — önceden yalnız debug/profile'daydı, release ağsızdı); kamera/mikrofon
+    `uses-feature required=false`. Bluetooth izni yok (BLUETOOTH_CONNECT çalışma zamanı izni ister; kulaklık yönlendirmesi
+    plan dışı — kablolu/hoparlör/ahize çalışır). Ayarlar: Android `MainActivity` `elly/app_settings` kanalı
+    (`ACTION_APPLICATION_DETAILS_SETTINGS`), iOS `app-settings:`.
+  - **Testler:** `test/call/` — `call_machine_test` (tüm geçişler, yarışlar: karşılıklı arama, cancel↔answer, RINGING
+    öncesi iptal, timeout, CALL_TAKEN, yabancı callId), `call_provider_test` (medya-önce sırası, izin reddi, ICE tamponu,
+    yabancı SDP/ICE, logout/arka plan temizliği, korumalar), `call_screen_test` (AuthWrapper ile uçtan uca UI, a11y
+    kılavuzları). `FakeCalls(live)` + `calls.signal(myId, body)`; gerçek cihaz/simülatörde doğrulanmadı.
 - **Navigasyon:** dashboard kök ekrandır; `AppDrawer` admin `Sidebar.tsx` gruplarını aynı sırayla gösterir
   (Gösterge Paneli · İçerik Yönetimi · Bileşenler · Medya · Etkileşim · İletişim · Sistem) + profil başlığı
   (Türkçe baş harfler + rol etiketi) + çıkış. Her bölüm ekranında drawer vardır (`AppScaffold(navId:)`,
