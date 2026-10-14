@@ -309,6 +309,9 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
   denemesi token'ı yeniden okur. Kütüphane kendi yeniden bağlanmaz (`reconnectDelay: 0`); servis kopuşta **üstel geri
   çekilme** (1·2·4·8·16·30 sn, ±%20) ile yeniden bağlanır ve **tüm abonelikleri yeniden kurar**; her CONNECTED'de
   `connectionSeq` artar → dinleyiciler kaçırdıklarını REST'ten yeniden çeker (backend kaçan push'ları tekrar etmez).
+  Her işleyici sarmalayıcısı bağlı olduğu link'e kilitli: ölü/değiştirilmiş link'in ya da iptal edilmiş / çıkışta
+  unutulmuş aboneliğin geç gelen çerçevesi **düşürülür** (logout→login sonrası eski oturumun mesajı yeni oturuma
+  ulaşmaz, reconnect sonrası çift işlenmez). `start()` ret serisini sıfırlar; `retryNow()` ("Şimdi dene") backoff'u atlar.
   CONNECTED'den **önce** STOMP ERROR (süresi dolmuş/iptal token) → `checkSession` (`GET /notifications/unread-count`,
   ApiService'in 401 → refresh akışı; refresh olmazsa normal `onSessionExpired` → logout) → yenilenmiş token'la hemen
   yeniden dene; aynı seride ikinci ret normal backoff. Yaşam döngüsü `AuthWrapper`'da: giriş → `start` + bildirimler;
@@ -322,7 +325,14 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
 - **Bildirimler** (herkes; admin `useNotifications` + `NotificationBell`): zil `AppScaffold`'da yalnız drawer'lı
   ekranlarda (`navId` varken), rozet `GET /notifications/unread-count` + `/user/queue/notifications/unread-count`
   push'u (sunucu sayısı esas). Liste `GET /notifications?page&size=20` (createdAt DESC, kaydırınca sonraki sayfa,
-  çek-yenile), `POST /{id}/read`, `POST /read-all`, `DELETE /{id}`. Yeni push (`/user/queue/notifications`) listeye
+  çek-yenile; sonraki sayfa hata verirse otomatik yükleme durur, satır içi "Tekrar dene"), `POST /{id}/read`,
+  `POST /read-all`, `DELETE /{id}` (ekranda hemen gizlenir, "Geri al" SnackBar'ı `persist: false` 4 sn kapanınca
+  gönderilir — backend'de geri alma yok). **Sayaç kuralları:** aynı bildirime tek istek (`_inFlight`, çift dokunuş /
+  banner "Aç" aynı isteğe katılır); okundu durumu güncel listeden + oturumda okunanlar (`_readIds`), bayat nesneden
+  değil; istek sürerken sunucu count push'u geldiyse yerel −1 yapılmaz (`_serverCountSeq`); `refreshCount` yanıtı
+  istekten sonra gelen herhangi bir değişikliği ezmez (`_countVersion`); sayı asla < 0; push tekilleştirmesi görülen id
+  kümesiyle (liste yüklenmemiş olsa da); her `await` sonrası `_epoch` kontrolü (önceki oturumun geç yanıtı yeni
+  kullanıcının rozetini değiştirmez). Hedefi olmayan bildirimde satırda "Mobilde açılacak bir ekranı yok" ipucu. Yeni push (`/user/queue/notifications`) listeye
   eklenir, sayacı artırır ve **in-app SnackBar** ("Aç") gösterir — liste açıkken ya da açık konuşmanın chat mesajıysa
   göstermez. Push bildirim (FCM/APNs) yok (plan dışı). Dokununca `openNotification`: yalnız bilinen admin yolları
   (`notificationTarget`): `/chat` (+ `metadata.groupId` → o konuşma; yığın `[dashboard, chat, konuşma]`),
@@ -341,12 +351,24 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
     `createGroup` `chat:read` ister; Tenant Chat seçeneği yalnız ADMIN+ — backend kuralı). DM: kullanıcı ID → `POST
     /chat/dm/{id}` (tenant alias'ı yok). Backend'de grup güncelleme endpoint'i yok → düzenleme ekranı yok.
   - **Konuşma** (`ChatConversationScreen(groupId)`): önce `GET /access` (okuyamazsa hata; yazamazsa composer kapalı +
-    `denialMessage` bandı), geçmiş `GET /messages?limit=50` (ters liste, en yeni altta), yukarı kaydırınca
+    `denialMessage` bandı — kalıcı bant **yalnız** access'ten; chat-errors / üyelik bildirimleri SnackBar, erişim geri
+    gelince bant kendiliğinden kalkar). Composer `AppScaffold.bottomNavigationBar`'da (SnackBar'lar onun üstünde,
+    klavye payı AppScaffold'da). **Kullanıcı yukarıdayken** (son mesajdan > 48 px) yeni mesajlar listeye eklenmez
+    (görünüm kaymaz; `_frozenAt`), "N yeni mesaj ↓" çipi (liveRegion) gösterilir; okundu sinyali yalnız liste en
+    alttayken (`ChatProvider.setViewingLatest`) — çipe dokunup inince tek okundu gider, yanlış "Görüldü" olmaz. Liste
+    her zaman aynı `Stack` içinde (yapı değişirse ListView yeniden kurulur, kaydırma konumu kaybolur). Her mesaj
+    **tek semantik düğüm** (`container`, etiket "gönderen|Siz, zaman[, düzenlendi][, Görüldü: …][, rol][, Yasaklı]:
+    metin", görsel alt ağaç `ExcludeSemantics`); kopyala / sil / yasakla / bağlantı-dosya aç `CustomSemanticsAction`,
+    uzun basma görsel yol. Gönderim sürerken yazılan metin korunur (yalnız gönderilen kısım silinir). Dosya: seçince
+    ad + boyut onayı, yüklenirken "Yükleniyor: ad" satırı (`pickFile` test seam'i). Görsele dokununca onaylı açılır,
+    `loadingBuilder` ilerleme gösterir. Liste sürüklenince klavye kapanır; 4000 karakterde "Sınıra ulaşıldı" uyarısı;
+    typing satırı yalnız metin varken ve **liveRegion dışında** (sürekli duyuru yapmaz).
+    Geçmiş `GET /messages?limit=50` (ters liste, en yeni altta), yukarı kaydırınca
     `?before=<en eski id>`; yeniden senkronda en yeni sayfa önbellekle hiç çakışmıyorsa önbellek değiştirilir (boşluk
     kalmasın). Gönder `POST /messages {content, contentType: TEXT}` (≤4000), yanıt hemen eklenir, WS echo id ile
-    tekilleşir; 403 → bant + erişim yeniden okunur. Dosya: `POST /files` (multipart `file`, ≤10 MB) → dönen yol FILE
+    tekilleşir; 403 → SnackBar + erişim yeniden okunur (bant access'ten). Dosya: `POST /files` (multipart `file`, ≤10 MB) → dönen yol FILE
     mesajı (admin). Typing `/app/tenant-chat/{tid}/{gid}/typing` en çok 2 sn'de bir; okundu `/read` açılışta ve açık
-    grupta mesaj gelince (2 sn kısıtlı). Başkalarının typing'i 3 sn sonra / mesajlarıyla düşer. "Görüldü: …" son kendi
+    grupta mesaj gelince (2 sn kısıtlı; yalnız liste en alttayken). Başkalarının typing'i 3 sn sonra / mesajlarıyla düşer. "Görüldü: …" son kendi
     mesajından sonra gelen read olaylarından (backend'de okundu listesi endpoint'i yok). Uzun bas → kopyala, kendi
     mesajını sil (`DELETE /messages/{id}`, onaylı), `chat:manage` ile misafir/ziyaretçi **yazma yasağı** (`/bans`,
     onaylı; "Yasaklı" rozeti, `/bans` topic'i canlı). Mesaj düzenleme yok (admin UI'da yok). Grubu sil: `chat:manage`
@@ -355,12 +377,18 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
   - **Üyeler**: `GET /members` (Sahip rozeti, presence olayı gelmişse "Çevrimiçi" — backend anlık presence listesi
     vermez). `chat:manage`: davet (tek alan: ID ya da e-posta → `/members/{id}` ya da `/members/by-email`), hiyerarşi
     notu (`inviteHint`: kendi seviyesi ve altı; SUPER_ADMIN herkes — hedefin seviyesi istemcide bilinmez, ret backend'den
-    Türkçe `chatErrorText`), çıkar (sahip ve kendisi hariç, onaylı).
+    Türkçe `chatErrorText`), çıkar (sahip ve kendisi hariç, onaylı). Davet paneli kaydırılabilir ve ekranın en çok
+    %45'i; klavye açıkken hiyerarşi notu tek satıra iner. Liste satırında son mesaj zamanı.
+  - **Bağlantı şeridi** (`ConnectionBanner`): "Canlı güncellemeler duraksadı; mesaj gönderebilirsiniz. Yeniden
+    bağlanılıyor…"; ≤2 sn'lik kopmalarda (ön plana dönüş dahil) hiç görünmez (gereksiz duyuru yok), önce nötr
+    (`surface`), 10 sn sonra `errorContainer`; "Şimdi dene" → `RealtimeService.retryNow`.
   - **Güvenilmez içerik:** mesaj, gönderen adı, grup adı/açıklaması, typing adı, bildirim metni → `safeChatText`:
     backend `Jsoup.clean` entity'leri çözülür (HTML **asla** render edilmez), C0/C1 kontrol karakterleri atılır, bidi
     kontrolleri `⟨U+202E⟩` görünür; `ChatMessageText` 1000 karakter / 20 satırda keser ("Tümünü göster", sürrogat
     bölmez); link yalnız ASCII `http(s)://` (look-alike IDN host link olmaz), dokununca tam URL'li onay → harici
-    tarayıcı (`launcher` seam'i). Dosya yalnız backend upload deseni `^assets/[\w\-./]+$` (`..` yok) ise dosya/görsel
+    tarayıcı (`launcher` seam'i). "Tümünü göster" balon metin rengini izler (kendi balonda beyaz). Yetim UTF-16
+    sürrogat → U+FFFD (`wellFormedUtf16`; `Text` iyi biçimsiz metinde atar), U+2028/U+2029 "\n" sayılır (satır
+    sınırını aşamaz). Dosya yalnız backend upload deseni `^assets/[\w\-./]+$` (`..` yok) ise dosya/görsel
     (API origin'inde; SVG görsel sayılmaz), değilse düz metin.
 - **Navigasyon:** dashboard kök ekrandır; `AppDrawer` admin `Sidebar.tsx` gruplarını aynı sırayla gösterir
   (Gösterge Paneli · İçerik Yönetimi · Bileşenler · Medya · Etkileşim · İletişim · Sistem) + profil başlığı
@@ -436,7 +464,9 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
   (`error` = #D32F2F dolu yıkıcı buton/SnackBar, beyaz metin AA; hata metni/ikonu `onErrorContainer`);
   colorScheme'da karşılığı olmayan durum renkleri `AppColors.success/warning`. Sabit `Color(0x…)` /
   `Colors.redAccent` kopyalama.
-- **SnackBar yalnız `showAppSnackBar(context, mesaj, error:, action:)` ile** (önceki SnackBar'ı kapatır, hata →
+- **SnackBar yalnız `showAppSnackBar(context, mesaj, error:, action:, persist:)` ile** (ekran kapanırken önceden
+  alınmış messenger için `showSnackBarOn(messenger, …)`; ikisi de controller döner — "Geri al" için `closed`; aksiyonlu
+  SnackBar Flutter'da varsayılan kalıcıdır, süreli geri alma için `persist: false`) (önceki SnackBar'ı kapatır, hata →
   `colorScheme.error` zemin). Metin/aksiyon rengi tek yerde: `appTheme.snackBarTheme` (zemin
   `AppColors.snackBar`, beyaz metin; hata zemininde de beyaz, AA). `ScaffoldMessenger…showSnackBar(SnackBar(…))`
   ve dağınık `backgroundColor` yazma.
