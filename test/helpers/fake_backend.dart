@@ -6,8 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-http.Response jsonResponse(Object body, int status) =>
-    http.Response.bytes(utf8.encode(jsonEncode(body)), status);
+http.Response jsonResponse(Object body, int status) => http.Response.bytes(utf8.encode(jsonEncode(body)), status);
 http.Response okData(Object data) => jsonResponse({'result': true, 'data': data}, 200);
 
 /// In-memory backend for widget tests: path (relative to /api/v1) → handler. No network.
@@ -29,9 +28,9 @@ class FakeBackend {
 
   AuthProvider newAuth() => AuthProvider(apiService: api);
 
-  /// Serves GET /users/me/permissions with the given `<module>:<action>` keys.
-  void permissions(List<String> keys) {
-    routes['/users/me/permissions'] = (_) => okData({'permissions': keys});
+  /// Serves GET /users/me/permissions with the given `<module>:<action>` keys (and role names).
+  void permissions(List<String> keys, {List<String> roles = const []}) {
+    routes['/users/me/permissions'] = (_) => okData({'permissions': keys, 'roles': roles});
   }
 
   /// Serves `{result: true, data}` for [path] (query string ignored).
@@ -39,8 +38,10 @@ class FakeBackend {
 
   /// App start with a stored token: [auth] loads [keys] through this backend.
   /// Call inside `tester.runAsync` in widget tests.
-  Future<void> signIn(AuthProvider auth, List<String> keys) {
-    permissions(keys);
+  /// [me]: GET /users/me profile (drawer name, self guards).
+  Future<void> signIn(AuthProvider auth, List<String> keys, {List<String> roles = const [], Map<String, dynamic>? me}) {
+    permissions(keys, roles: roles);
+    if (me != null) ok('/users/me', me);
     FlutterSecureStorage.setMockInitialValues({'accessToken': 'a', 'tenantId': 't1'});
     return auth.checkAuthStatus();
   }

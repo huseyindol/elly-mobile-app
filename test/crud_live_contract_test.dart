@@ -14,6 +14,8 @@ import 'package:elly_mobile_app/screens/forms/form_submissions_screen.dart' show
 import 'package:elly_mobile_app/services/crud_payload.dart';
 import 'package:elly_mobile_app/services/form_schema.dart';
 import 'package:elly_mobile_app/services/mail_payload.dart';
+import 'package:elly_mobile_app/services/rabbit_admin.dart';
+import 'package:elly_mobile_app/services/user_admin.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -465,6 +467,65 @@ void main() {
       expect(canRetryEmail(sent.first), isFalse);
       await expectLater(api.post('/emails/${sent.first['id']}/retry', const {}),
           throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 400)));
+    });
+  });
+
+  // Read-only on purpose: no user create/delete, no 2FA setup (GET /auth/mfa/setup resets the secret and
+  // disables 2FA), no peek (requeues messages), no purge/republish.
+  group('live system & account contract (read-only)', skip: !_live ? 'set LIVE_API=1' : null, () {
+    late Set<String> perms;
+    setUpAll(() async {
+      final data = await api.get('/users/me/permissions') as Map;
+      perms = {for (final p in data['permissions'] as List) '$p'};
+    });
+
+    test('profile: /users/me has the fields the screens read', () async {
+      final me = Map<String, dynamic>.from(await api.get('/users/me') as Map);
+      for (final k in ['id', 'username', 'email', 'firstName', 'lastName', 'provider', 'isActive', 'roles', 'createdAt']) {
+        expect(me.containsKey(k), isTrue, reason: k);
+      }
+    });
+
+    test('wrong current password → 400 "Current password is incorrect" (mapped), nothing changes', () async {
+      await expectLater(
+        api.put('/users/me/password', {'currentPassword': 'yanlis-$_ts', 'newPassword': 'Yeni${_ts}Aa1'}),
+        throwsA(isA<ApiException>().having((e) => userErrorText(e), 'text', 'Mevcut şifre hatalı.')),
+      );
+    });
+
+    test('2FA status with the session; a refused disable keeps the session', () async {
+      final status = await api.get('/auth/mfa/status') as Map;
+      expect(status['mfaEnabled'], isA<bool>());
+      // 400 (2FA off) or 401 (wrong password) — either way no state change and still signed in.
+      await expectLater(api.post('/auth/mfa/disable', {'password': 'yanlis-$_ts'}), throwsA(isA<ApiException>()));
+      expect(await api.get('/auth/mfa/status'), isA<Map>());
+    });
+
+    test('users (users:manage): panel/tenant lists, roles list for the hierarchy', () async {
+      if (!perms.contains('users:manage')) return markTestSkipped('no users:manage');
+      final panel = extractItems(await api.get('/users?audience=panel'));
+      expect(panel.every((u) => rolesOf(u).any(roleLevels.containsKey)), isTrue);
+      final tenant = extractItems(await api.get('/users?audience=tenant'));
+      expect(tenant.every((u) => rolesOf(u).contains('TENANT')), isTrue);
+      final roles = extractItems(await api.get('/roles'));
+      expect(roles.map((r) => r['name']), containsAll(['SUPER_ADMIN', 'ADMIN', 'EDITOR', 'VIEWER']));
+      if (panel.isNotEmpty) expect(await api.get('/users/${panel.first['id']}'), isA<Map>());
+    });
+
+    test('RabbitMQ (rabbit:read): overview + queues + queue detail', () async {
+      if (!perms.contains('rabbit:read')) return markTestSkipped('no rabbit:read');
+      final overview = await api.get('$rabbitBase/overview') as Map;
+      expect(overview.containsKey('queueCount'), isTrue);
+      final queues = extractItems(await api.get('$rabbitBase/queues'));
+      if (queues.isEmpty) return;
+      final detail = await api.get(queuePath('${queues.first['name']}')) as Map;
+      expect(detail['name'], queues.first['name']);
+    });
+
+    test('storage quota of the session tenant', () async {
+      final tenant = _env['ELLY_TENANT'] ?? 'tenant1';
+      final quota = await api.get('/storage/tenant/$tenant/quota') as Map;
+      expect(quota['limitBytes'], isA<num>());
     });
   });
 }
