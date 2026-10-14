@@ -1,8 +1,8 @@
 # Elly Mobile App — Claude Code Proje Rehberi
 
 `elly-admin` yönetim panelinin **Flutter** mobil karşılığı: sayfa, bileşen, post, içerik, widget, banner,
-form, asset, mail hesabı, e-posta şablonu, e-posta logu, kullanıcı/rol, profil, ayarlar (2FA, depolama) ve RabbitMQ
-yönetimi. Backend: `elly-backend` (Spring Boot,
+form, asset, mail hesabı, e-posta şablonu, e-posta logu, kullanıcı/rol, profil, ayarlar (2FA, depolama), RabbitMQ
+yönetimi, bildirimler ve chat (STOMP ile gerçek zamanlı). Backend: `elly-backend` (Spring Boot,
 db-per-tenant). Bu repo `elly-studio` orchestrator'ının bir parçasıdır; çapraz repo kuralları kökteki `AGENTS.md`'dedir.
 
 ## Stack
@@ -10,7 +10,8 @@ db-per-tenant). Bu repo `elly-studio` orchestrator'ının bir parçasıdır; ça
 | Katman | Teknoloji |
 |---|---|
 | Framework | Flutter 3.x (Dart `^3.13`), Material 3, koyu tema |
-| State | `provider` (`ChangeNotifier`) — `AuthProvider` |
+| State | `provider` (`ChangeNotifier`) — `AuthProvider`, `RealtimeService`, `NotificationsProvider`, `ChatProvider` |
+| Gerçek zamanlı | `stomp_dart_client` 3.0 (BSD-3) — STOMP, SockJS websocket transport (`RealtimeService` dışında kullanma) |
 | HTTP | `http` + `http_parser`/`mime` (multipart) |
 | Güvenli depo | `flutter_secure_storage` (accessToken, refreshToken, tenantId) |
 | Dosya seçimi | `file_picker` |
@@ -18,20 +19,23 @@ db-per-tenant). Bu repo `elly-studio` orchestrator'ının bir parçasıdır; ça
 | HTML önizleme | `webview_flutter` 4.14 (BSD-3, flutter.dev) — yalnız `SafeHtmlView` üzerinden (e-posta şablonu önizlemesi) |
 | Harici link | `url_launcher` 6.3 (BSD-3, flutter.dev) — yalnız 2FA `otpauth://` linki (doğrulanmış URI) |
 | Yerelleştirme | `flutter_localizations` (Flutter SDK) — uygulama sabit `tr` |
-| Test | `flutter_test`, `integration_test` |
+| Test | `flutter_test`, `integration_test`, `fake_async` (Apache-2.0, dev; zamanlayıcılı STOMP testleri) |
 | Lint | `flutter_lints` (`analysis_options.yaml`) |
 
 ## Dizin yapısı
 
 ```
 lib/
-├── main.dart                      # MultiProvider + AuthWrapper (login ↔ dashboard; çıkışta yığın temizliği) + appLocalizationsDelegates
+├── main.dart                      # MultiProvider + AuthWrapper (login ↔ dashboard; çıkışta yığın temizliği; canlı bağlantı yaşam döngüsü + bildirim banner'ı) + appLocalizationsDelegates
 ├── config/
 │   ├── app_theme.dart             # TEK renk kaynağı: AppColors + appTheme (colorScheme)
 │   ├── modules_config.dart        # CRUD modül tanımları (tek kaynak); başlıklar admin sidebar etiketleri
 │   └── nav_config.dart            # drawer menüsü: admin Sidebar grupları/sırası/permission'ları (NavGroup/NavItem)
-├── models/                        # crud_module.dart (CrudModule/FieldConfig/RequestMode), login_response.dart
-├── providers/auth_provider.dart   # login (+2FA adımı) / logout / oturum + permission durumu
+├── models/                        # crud_module.dart (CrudModule/FieldConfig/RequestMode), login_response.dart, chat_models.dart (chat + bildirim DTO'ları, savunmacı parse)
+├── providers/
+│   ├── auth_provider.dart         # login (+2FA adımı) / logout / oturum + permission durumu
+│   ├── notifications_provider.dart # okunmamış sayısı, liste, okundu/sil, canlı push, banner akışı
+│   └── chat_provider.dart         # gruplar, mesajlar, okunmamış, typing/read, presence, üyelik/silme olayları
 ├── services/
 │   ├── api_service.dart           # tüm HTTP istekleri, header'lar, 401 → refresh
 │   ├── crud_payload.dart          # saf: getPath/setPath, buildPayload (ilişki semantiği), extractItems, paging, compareByKey
@@ -41,11 +45,16 @@ lib/
 │   ├── safe_html.dart             # saf: güvenilmez HTML → önizleme belgesi (CSP, betik/URL temizliği), gezinme kuralı
 │   ├── user_admin.dart            # saf: rol hiyerarşisi, kullanıcı payload'ları, şifre/e-posta kuralı, hata metni, otpauth/secret
 │   ├── rabbit_admin.dart          # saf: kuyruk path'i, peek sınırı, payload biçimi, republish payload/doğrulama, hata metni
-│   └── text_format.dart           # saf: foldTr (Türkçe arama anahtarı), upperTr, formatBytes, slugify, formatDateTimeTr
+│   ├── realtime_service.dart      # tek STOMP bağlantısı (Bearer CONNECT, backoff, resubscribe, ön/arka plan) + StompLink seam
+│   ├── stomp_destinations.dart    # saf: kullanılan TÜM STOMP destination'ları (StompDest) + isUuid / isSafeTenantId
+│   ├── chat_format.dart           # saf: güvenilmez mesaj metni (entity, kontrol, bidi, kısaltma, link), dosya yolu, bildirim hedefi, davet kuralı, hata metni
+│   └── text_format.dart           # saf: foldTr (Türkçe arama anahtarı), upperTr, formatBytes, slugify, formatDateTimeTr, revealBidi
 ├── screens/
 │   ├── login_screen.dart
 │   ├── dashboard_screen.dart      # admin dashboard özet kartları + son e-postalar/yazılar (permission'a göre)
-│   ├── coming_soon_screen.dart    # mobilde henüz olmayan admin alanları için yer tutucu
+│   ├── coming_soon_screen.dart    # mobilde henüz olmayan admin alanları için yer tutucu (şu an kullanan öğe yok)
+│   ├── notifications_screen.dart  # NotificationBell (AppBar zili), NotificationsScreen, openNotification (bildirim → ekran)
+│   ├── chat/                      # ChatScreen (liste + DM), konuşma, üyeler, yeni grup formu
 │   ├── assets_screen.dart         # Medya: klasör, sunucu araması, çoklu yükleme, toplu silme (generic'e sığmıyor)
 │   ├── forms/                     # form builder alt ekranları: alanlar + alan düzenleme, önizleme, gönderimler (+ detay)
 │   ├── mail/                      # İletişim: mail hesapları (+ form), e-posta şablonları (+ form, önizleme), e-posta logları (+ detay)
@@ -54,7 +63,9 @@ lib/
 │   ├── rabbit/                    # RabbitMQ: özet + kuyruklar, kuyruk detayı (peek), republish formu
 │   └── crud/generic_crud_{list,form}_screen.dart
 └── widgets/                       # ortak bileşenler — yeni ekranlar bunları kullanır
-    ├── app_scaffold.dart          # AppScaffold (cam AppBar + AmbientBackground + opsiyonel drawer + bottomNavigationBar)
+    ├── app_scaffold.dart          # AppScaffold (cam AppBar + AmbientBackground + opsiyonel drawer + bottomNavigationBar; drawer'lı ekranda bildirim zili)
+    ├── chat_message_text.dart     # ChatMessageText: güvenilmez mesaj → düz metin, "Tümünü göster", onaylı http(s) link
+    ├── connection_banner.dart     # ConnectionBanner: canlı bağlantı yokken şerit
     ├── app_snack_bar.dart         # showAppSnackBar (tek SnackBar yolu) · reportInvalidFields (kaydır + "N alan hatalı: Etiket")
     ├── reorder_controls.dart      # ReorderableRow (ekran okuyucu "Yukarı/Aşağı taşı") · ReorderControls (Taşı menüsü + tutamaç)
     ├── app_drawer.dart            # AppDrawer(currentId) + openNavItem + isNavItemVisible + avatarInitials
@@ -71,7 +82,7 @@ lib/
     ├── relation_multi_select.dart # FormField<List<Object>>: ilişki id listesi seçici (componentIds, …)
     ├── rich_text_field.dart       # HTML gövde editörü (Quill; desteklenmeyen HTML → ham HTML modu)
     └── asset_picker.dart          # showAssetPicker (görsel assetten mutlak URL), AssetThumbnail, isImageAsset
-test/                              # unit/widget testleri (helpers/fake_backend.dart) + opt-in canlı sözleşme testi
+test/                              # unit/widget testleri (helpers/fake_backend.dart, helpers/fake_realtime.dart) + opt-in canlı sözleşme testi
 └── fixtures/                      # admin TS kaynağından üretilen beklenen sonuçlar (gen_form_fixtures.ts, bun) + admin form JSON'u
 integration_test/                  # cihaz/simülatörde uçtan uca test
 ```
@@ -289,6 +300,68 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
     gövde (güzelleştirme yalnız görüntüde); JSON ya da **boş** content type'ta geçersiz JSON reddedilir; gönderimden
     önce onay (tüketici yeniden işler; kaynak mesaj silinmez, kopyalanır); başarıdan sonra eski peek listesi
     temizlenir; `base64` mesaj metin olarak republish edilemez.
+- **Gerçek zamanlı (`RealtimeService`, STOMP):** uygulamada **tek** bağlantı; ekranlar/provider'lar yalnız
+  `subscribe(destination, handler)` → `RealtimeSubscription.cancel()` ve `send(destination)` kullanır (`StompClient`'a
+  doğrudan dokunma). URL `${API origin}/ws` (`/api/v1` dışında; backend `/ws/**` permitAll), `stomp_dart_client`
+  **SockJS websocket transport**'u (`/ws/{server}/{session}/websocket`, admin sockjs-client ile aynı yol): sunucunun
+  25 sn SockJS heartbeat'i ingress boşta kapatmasını önler (simple broker STOMP heartbeat göndermiyor), soket ping'i
+  (20 sn) ölü ağı yakalar. CONNECT header'ı `Authorization: Bearer <secure storage accessToken>`; her bağlanma
+  denemesi token'ı yeniden okur. Kütüphane kendi yeniden bağlanmaz (`reconnectDelay: 0`); servis kopuşta **üstel geri
+  çekilme** (1·2·4·8·16·30 sn, ±%20) ile yeniden bağlanır ve **tüm abonelikleri yeniden kurar**; her CONNECTED'de
+  `connectionSeq` artar → dinleyiciler kaçırdıklarını REST'ten yeniden çeker (backend kaçan push'ları tekrar etmez).
+  CONNECTED'den **önce** STOMP ERROR (süresi dolmuş/iptal token) → `checkSession` (`GET /notifications/unread-count`,
+  ApiService'in 401 → refresh akışı; refresh olmazsa normal `onSessionExpired` → logout) → yenilenmiş token'la hemen
+  yeniden dene; aynı seride ikinci ret normal backoff. Yaşam döngüsü `AuthWrapper`'da: giriş → `start` + bildirimler;
+  çıkış → `ChatProvider.reset` + `NotificationsProvider.reset` + `stop` (abonelikler unutulur); `hidden/paused` →
+  soket kapanır (presence offline), `resumed` → hemen yeniden bağlanır (`inactive` dokunmaz). `AuthWrapper` ve
+  `NotificationBell` provider'ları **nullable** okur (yalnız `AuthProvider` veren eski test düzenekleri çalışır).
+  Destination'lar yalnız `stomp_destinations.dart`'ta (`StompDest`); grup id'si UUID, tenant `^[A-Za-z0-9_-]{1,64}$`
+  olmadan destination kurulmaz. **Faz 6 (WebRTC):** `/topic/user/{id}/rtc` ve `/app/rtc/*` aynı dosyaya + aynı
+  `subscribe/send` yolu (yeni bağlantı açma). Testlerde `StompLink` seam'i: `test/helpers/fake_realtime.dart`
+  (`FakeRealtime.providers`, `push(destination, body)`, `link.drop()/stompError()`), zamanlama `fake_async`.
+- **Bildirimler** (herkes; admin `useNotifications` + `NotificationBell`): zil `AppScaffold`'da yalnız drawer'lı
+  ekranlarda (`navId` varken), rozet `GET /notifications/unread-count` + `/user/queue/notifications/unread-count`
+  push'u (sunucu sayısı esas). Liste `GET /notifications?page&size=20` (createdAt DESC, kaydırınca sonraki sayfa,
+  çek-yenile), `POST /{id}/read`, `POST /read-all`, `DELETE /{id}`. Yeni push (`/user/queue/notifications`) listeye
+  eklenir, sayacı artırır ve **in-app SnackBar** ("Aç") gösterir — liste açıkken ya da açık konuşmanın chat mesajıysa
+  göstermez. Push bildirim (FCM/APNs) yok (plan dışı). Dokununca `openNotification`: yalnız bilinen admin yolları
+  (`notificationTarget`): `/chat` (+ `metadata.groupId` → o konuşma; yığın `[dashboard, chat, konuşma]`),
+  `/forms/{id}/submissions` (`forms:read`; form detayı çekilir), drawer bölümü (`/email-logs`, `/users`… izin
+  yoksa açılmaz, SnackBar). Harici URL **asla** açılmaz. Başlık/mesaj kullanıcı verisi içerir → `safeChatText`.
+- **Chat** (`chat:read`; admin `chat/page.tsx` + `_components/chat/*`, AC=TC: tüm gruplar oturum tenant'ında). REST
+  `/chat/tenant/{tid}/…` (`chatBase`; backend tenant'ı JWT'den alır, path admin ile aynı şema). `ChatProvider`
+  ekran açılınca başlar (`open`, eşzamanlı çağrılar aynı isteği paylaşır), çıkışta `reset`. Abonelik kovaları admin gibi:
+  **global** (`/topic/presence`, `/topic/groups/new`, `/topic/groups/deleted`, `/user/queue/chat-errors`,
+  `/topic/user/{myId}/membership`), **tüm gruplar** (her grup için `/topic/tenant/{tid}/group/{gid}` → canlı okunmamış
+  + son mesaj; yalnız oturum tenant'ı ve UUID id), **açık grup** (`…/typing`, `…/read`, `…/bans`). Okunmamış sayısı
+  backend'de yok → yalnız oturum boyunca canlı gelenler (admin ile aynı). `/topic/groups/new` herkese yayınlanır →
+  başka tenant'ın grubu alınmaz; kendi seviyesinin üstündeki yeni grup listeyi yeniden çeker.
+  - **Liste** (`ChatScreen`): son aktiviteye göre sıralı, görünürlük rozeti (`chatVisibilityLabel`), ziyaretçiye açık
+    işareti, okunmamış rozeti (semantik "N okunmamış mesaj"), son mesaj önizlemesi. "Yeni grup" herkese (backend
+    `createGroup` `chat:read` ister; Tenant Chat seçeneği yalnız ADMIN+ — backend kuralı). DM: kullanıcı ID → `POST
+    /chat/dm/{id}` (tenant alias'ı yok). Backend'de grup güncelleme endpoint'i yok → düzenleme ekranı yok.
+  - **Konuşma** (`ChatConversationScreen(groupId)`): önce `GET /access` (okuyamazsa hata; yazamazsa composer kapalı +
+    `denialMessage` bandı), geçmiş `GET /messages?limit=50` (ters liste, en yeni altta), yukarı kaydırınca
+    `?before=<en eski id>`; yeniden senkronda en yeni sayfa önbellekle hiç çakışmıyorsa önbellek değiştirilir (boşluk
+    kalmasın). Gönder `POST /messages {content, contentType: TEXT}` (≤4000), yanıt hemen eklenir, WS echo id ile
+    tekilleşir; 403 → bant + erişim yeniden okunur. Dosya: `POST /files` (multipart `file`, ≤10 MB) → dönen yol FILE
+    mesajı (admin). Typing `/app/tenant-chat/{tid}/{gid}/typing` en çok 2 sn'de bir; okundu `/read` açılışta ve açık
+    grupta mesaj gelince (2 sn kısıtlı). Başkalarının typing'i 3 sn sonra / mesajlarıyla düşer. "Görüldü: …" son kendi
+    mesajından sonra gelen read olaylarından (backend'de okundu listesi endpoint'i yok). Uzun bas → kopyala, kendi
+    mesajını sil (`DELETE /messages/{id}`, onaylı), `chat:manage` ile misafir/ziyaretçi **yazma yasağı** (`/bans`,
+    onaylı; "Yasaklı" rozeti, `/bans` topic'i canlı). Mesaj düzenleme yok (admin UI'da yok). Grubu sil: `chat:manage`
+    **ve** (sahip ya da SUPER_ADMIN) **ve** `identityKnown` (fail-closed). Silinen grup / gruptan çıkarılma canlı:
+    konuşma kapanır ya da bant gösterilir (`ChatNotice`).
+  - **Üyeler**: `GET /members` (Sahip rozeti, presence olayı gelmişse "Çevrimiçi" — backend anlık presence listesi
+    vermez). `chat:manage`: davet (tek alan: ID ya da e-posta → `/members/{id}` ya da `/members/by-email`), hiyerarşi
+    notu (`inviteHint`: kendi seviyesi ve altı; SUPER_ADMIN herkes — hedefin seviyesi istemcide bilinmez, ret backend'den
+    Türkçe `chatErrorText`), çıkar (sahip ve kendisi hariç, onaylı).
+  - **Güvenilmez içerik:** mesaj, gönderen adı, grup adı/açıklaması, typing adı, bildirim metni → `safeChatText`:
+    backend `Jsoup.clean` entity'leri çözülür (HTML **asla** render edilmez), C0/C1 kontrol karakterleri atılır, bidi
+    kontrolleri `⟨U+202E⟩` görünür; `ChatMessageText` 1000 karakter / 20 satırda keser ("Tümünü göster", sürrogat
+    bölmez); link yalnız ASCII `http(s)://` (look-alike IDN host link olmaz), dokununca tam URL'li onay → harici
+    tarayıcı (`launcher` seam'i). Dosya yalnız backend upload deseni `^assets/[\w\-./]+$` (`..` yok) ise dosya/görsel
+    (API origin'inde; SVG görsel sayılmaz), değilse düz metin.
 - **Navigasyon:** dashboard kök ekrandır; `AppDrawer` admin `Sidebar.tsx` gruplarını aynı sırayla gösterir
   (Gösterge Paneli · İçerik Yönetimi · Bileşenler · Medya · Etkileşim · İletişim · Sistem) + profil başlığı
   (Türkçe baş harfler + rol etiketi) + çıkış. Her bölüm ekranında drawer vardır (`AppScaffold(navId:)`,
@@ -297,7 +370,7 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
   birebir kalır. Yeni alan = `nav_config.dart`'ta `NavItem` (CRUD ise `NavItem.crud(key)`); generic'e sığmayan
   ekran `app_drawer.dart` → `navScreen(item)` eşlemesine eklenir (assets, mail-accounts, email-templates,
   email-logs, users, rabbitmq, settings, profile). `navScreen` null dönen öğe "Yakında" etiketi taşır ve yer tutucu
-  ekranı açar (şu an yalnız chat — Faz 5). Drawer başlığı "Ad Soyad" + iki kelimenin baş harfleri (admin sidebar).
+  ekranı açar (şu an böyle öğe yok; chat Faz 5'te bağlandı). Drawer başlığı "Ad Soyad" + iki kelimenin baş harfleri (admin sidebar).
 - **Yerelleştirme:** `MaterialApp(locale: tr, supportedLocales: [tr], localizationsDelegates: appLocalizationsDelegates)`
   — Quill + `flutter_localizations` Global Material/Widgets/Cupertino, her biri bir kez. Cihaz dili ne olursa olsun
   sistem metinleri (tarih seçici, ReorderableListView "Yukarı/Aşağı/Başa/Sona taşı" aksiyonları) Türkçe; iOS
@@ -336,6 +409,8 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
   `paged: true` kaynakta tüm sayfalar baştan çekilir (seçili id'lerin etiketi her zaman çözülür; ~5000 kayda
   kadar uygun). İlk `maxChips` chip + "+K daha".
 - **StatusBadge** renksiz (muted) metni `onSurface` α0.75 (AA).
+- Beyaz gövde metinli dolu yüzeyler (kendi mesaj balonu, okunmamış rozeti) `AppColors.primaryStrong` (indigo-600,
+  6.3:1); `primary` küçük beyaz metinde AA altında.
 - **Roller:** `AuthProvider.roles` / `roleLabel` gösterim içindir; yetki her zaman permission'dan gelir
   (istemcide SUPER_ADMIN bypass'ı yok — backend süper admine tüm izinleri zaten verir). İki istisna, backend'in
   kendisi rol baktığı için: kullanıcı yönetiminde rol hiyerarşisi (`roleLevel`) ve `ROLE_SUPER_ADMIN` endpoint'leri
@@ -382,8 +457,8 @@ flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080/api/v1
 flutter analyze --no-fatal-infos  # statik analiz (error/warning 0 olmalı; info'lar exit'i bozmaz)
 flutter test                      # unit + widget testleri (canlı test atlanır)
 
-# Canlı sözleşme testi — gerçek backend'e yazar ve siler, opt-in (sistem & hesap grubu salt okunur:
-# kullanıcı oluşturmaz, 2FA kurulumu/purge/peek yapmaz):
+# Canlı sözleşme testi — gerçek backend'e yazar ve siler, opt-in (sistem & hesap ve gerçek zamanlı grupları salt
+# okunur: kullanıcı oluşturmaz, 2FA kurulumu/purge/peek yapmaz; chat'te mesaj/grup/davet/okundu yok, yalnız STOMP CONNECT):
 LIVE_API=1 ELLY_USER=... ELLY_PASS=... [ELLY_TENANT=tenant1] flutter test test/crud_live_contract_test.dart
 
 # Uçtan uca (cihaz/simülatör):
