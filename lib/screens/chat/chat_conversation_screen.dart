@@ -10,12 +10,14 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../config/app_theme.dart';
 import '../../models/chat_models.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/call_provider.dart';
 import '../../providers/chat_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/chat_format.dart';
 import '../../services/text_format.dart';
 import '../../widgets/app_scaffold.dart';
 import '../../widgets/app_snack_bar.dart';
+import '../../widgets/call_menu_button.dart';
 import '../../widgets/chat_message_text.dart';
 import '../../widgets/confirm_dialog.dart';
 import '../../widgets/connection_banner.dart';
@@ -125,6 +127,24 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
     _chat.enterGroup(group);
     setState(() => _group = group);
     await _load(group);
+  }
+
+  /// DM: calls the other member (the members list is the only place that says who it is).
+  Future<void> _callDm(ChatGroup group, bool video) async {
+    final me = context.read<AuthProvider>().userId;
+    final call = context.read<CallProvider>();
+    try {
+      final peer = (await _chat.members(group)).where((m) => m.userId != me).firstOrNull;
+      if (!mounted) return;
+      if (peer == null) {
+        showAppSnackBar(context, 'Bu sohbette aranacak başka üye yok.', error: true);
+        return;
+      }
+      final name = safeChatText(peer.displayName);
+      await call.call(peer.userId, name.isEmpty ? '#${peer.userId}' : name, groupId: group.id, video: video);
+    } catch (e) {
+      if (mounted) showAppSnackBar(context, chatErrorText(e), error: true);
+    }
   }
 
   Future<void> _load(ChatGroup group) async {
@@ -431,9 +451,16 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
         auth.has('chat:manage') &&
         auth.identityKnown &&
         (auth.roleLevel >= 4 || group.createdBy == auth.userId);
+    final canCall = group != null && group.isDm && auth.userId != null && context.read<CallProvider?>() != null;
     return AppScaffold(
       title: title,
       actions: [
+        if (canCall)
+          CallMenuButton(
+            key: const ValueKey('chat_dm_call'),
+            tooltip: 'Ara: $title',
+            onCall: (video) => _callDm(group, video),
+          ),
         if (group != null)
           IconButton(
             key: const ValueKey('chat_members_button'),

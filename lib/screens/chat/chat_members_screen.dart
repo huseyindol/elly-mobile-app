@@ -4,10 +4,12 @@ import 'package:provider/provider.dart';
 import '../../config/app_theme.dart';
 import '../../models/chat_models.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/call_provider.dart';
 import '../../providers/chat_provider.dart';
 import '../../services/chat_format.dart';
 import '../../widgets/app_scaffold.dart';
 import '../../widgets/app_snack_bar.dart';
+import '../../widgets/call_menu_button.dart';
 import '../../widgets/confirm_dialog.dart';
 import '../../widgets/info_note.dart';
 import '../../widgets/state_views.dart';
@@ -105,6 +107,7 @@ class _ChatMembersScreenState extends State<ChatMembersScreen> {
     final auth = context.watch<AuthProvider>();
     final chat = context.watch<ChatProvider>();
     final canManage = auth.has('chat:manage');
+    final call = context.read<CallProvider?>();
     final members = _members;
     return AppScaffold(
       title: 'Üyeler${members == null ? '' : ' (${members.length})'}',
@@ -124,7 +127,7 @@ class _ChatMembersScreenState extends State<ChatMembersScreen> {
                       physics: const AlwaysScrollableScrollPhysics(), // pull-to-refresh also with few members
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       itemCount: members.length,
-                      itemBuilder: (_, i) => _tile(members[i], chat, auth, canManage),
+                      itemBuilder: (_, i) => _tile(members[i], chat, auth, canManage, call),
                     ),
                   ),
           ),
@@ -134,12 +137,15 @@ class _ChatMembersScreenState extends State<ChatMembersScreen> {
     );
   }
 
-  Widget _tile(ChatMember m, ChatProvider chat, AuthProvider auth, bool canManage) {
+  Widget _tile(ChatMember m, ChatProvider chat, AuthProvider auth, bool canManage, CallProvider? call) {
     final scheme = Theme.of(context).colorScheme;
     final online = chat.isOnline(m.userId) == true;
     final name = safeChatText(m.displayName);
     // Own row: no remove (leaving would lock the user out of the group); unknown own id → nobody removable.
     final removable = canManage && !m.isOwner && auth.identityKnown && m.userId != auth.userId;
+    // Admin: everyone but yourself (same group → the backend skips the role hierarchy; offline → "müsait değil").
+    final callable = call != null && auth.userId != null && m.userId != auth.userId;
+    final label = name.isEmpty ? '#${m.userId}' : name;
     return ListTile(
       key: ValueKey('chat_member_${m.userId}'),
       leading: Badge(
@@ -167,19 +173,31 @@ class _ChatMembersScreenState extends State<ChatMembersScreen> {
           if (online) const StatusBadge(label: 'Çevrimiçi', color: AppColors.success),
         ],
       ),
-      trailing: removable
-          ? IconButton(
-              key: ValueKey('chat_remove_${m.userId}'),
-              tooltip: 'Gruptan çıkar: $name',
-              icon: _removing.contains(m.userId)
-                  ? const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, semanticsLabel: 'Çıkarılıyor'),
-                    )
-                  : Icon(Icons.person_remove_outlined, color: scheme.onErrorContainer),
-              onPressed: _removing.contains(m.userId) ? null : () => _remove(m),
-            )
-          : null,
+      trailing: !removable && !callable
+          ? null
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (callable)
+                  CallMenuButton(
+                    key: ValueKey('chat_call_${m.userId}'),
+                    tooltip: 'Ara: $label',
+                    onCall: (video) => call.call(m.userId, label, groupId: widget.group.id, video: video),
+                  ),
+                if (removable)
+                  IconButton(
+                    key: ValueKey('chat_remove_${m.userId}'),
+                    tooltip: 'Gruptan çıkar: $name',
+                    icon: _removing.contains(m.userId)
+                        ? const SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, semanticsLabel: 'Çıkarılıyor'),
+                          )
+                        : Icon(Icons.person_remove_outlined, color: scheme.onErrorContainer),
+                    onPressed: _removing.contains(m.userId) ? null : () => _remove(m),
+                  ),
+              ],
+            ),
     );
   }
 
