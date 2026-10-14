@@ -4,17 +4,22 @@
 //   LIVE_API=1 flutter test test/crud_live_contract_test.dart
 //
 // Credentials (required with LIVE_API=1): ELLY_USER / ELLY_PASS, optional ELLY_TENANT (default tenant1).
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:elly_mobile_app/config/modules_config.dart';
+import 'package:elly_mobile_app/models/chat_models.dart';
 import 'package:elly_mobile_app/models/crud_module.dart';
 import 'package:elly_mobile_app/services/api_service.dart';
+import 'package:elly_mobile_app/services/chat_format.dart';
 import 'package:elly_mobile_app/screens/forms/form_submissions_screen.dart' show submissionPayload;
 import 'package:elly_mobile_app/services/crud_payload.dart';
 import 'package:elly_mobile_app/services/form_schema.dart';
 import 'package:elly_mobile_app/services/mail_payload.dart';
 import 'package:elly_mobile_app/services/rabbit_admin.dart';
+import 'package:elly_mobile_app/services/realtime_service.dart';
+import 'package:elly_mobile_app/services/stomp_destinations.dart';
 import 'package:elly_mobile_app/services/user_admin.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -526,6 +531,54 @@ void main() {
       final tenant = _env['ELLY_TENANT'] ?? 'tenant1';
       final quota = await api.get('/storage/tenant/$tenant/quota') as Map;
       expect(quota['limitBytes'], isA<num>());
+    });
+  });
+
+  // Read-only on purpose: never sends a chat message, creates/deletes a group, invites, bans or marks anything read.
+  group('live realtime contract (read-only)', skip: !_live ? 'set LIVE_API=1' : null, () {
+    test('notifications: unread count + newest page parse', () async {
+      expect((await api.get('/notifications/unread-count') as Map)['count'], isA<num>());
+      final page = await api.get('/notifications?page=0&size=5');
+      final items = extractItems(page);
+      expect(items.map(AppNotification.fromJson).every((n) => n != null), isTrue);
+    });
+
+    test('chat (chat:read): groups of the session tenant, then access / members / history / bans of one', () async {
+      final perms = {for (final p in (await api.get('/users/me/permissions') as Map)['permissions'] as List) '$p'};
+      if (!perms.contains('chat:read')) return markTestSkipped('no chat:read');
+      final tenant = _env['ELLY_TENANT'] ?? 'tenant1';
+      final groups = [for (final g in await api.get('${chatBase(tenant)}/groups') as List) ChatGroup.fromJson(g)!];
+      expect(groups.every((g) => g.tenantId == tenant && isUuid(g.id)), isTrue, reason: 'AC=TC: session tenant');
+      if (groups.isEmpty) return;
+      final g = groups.first;
+      final access = ChatGroupAccess.fromJson(await api.get('${chatBase(tenant)}/groups/${g.id}/access'));
+      if (!access.canRead) return;
+      final members = await api.get('${chatBase(tenant)}/groups/${g.id}/members') as List;
+      expect(members.map(ChatMember.fromJson).every((m) => m != null), isTrue);
+      final history = await api.get('${chatBase(tenant)}/groups/${g.id}/messages?limit=5') as List;
+      final messages = history.map(ChatMessage.fromJson).toList();
+      expect(messages.every((m) => m != null && m.groupId == g.id), isTrue);
+      expect(await api.get('${chatBase(tenant)}/groups/${g.id}/bans'), isA<List>());
+    });
+
+    test('STOMP over SockJS: CONNECT with the Bearer token is accepted, user queue subscribable', () async {
+      final token = await const FlutterSecureStorage().read(key: 'accessToken');
+      final connected = Completer<void>();
+      final link = stompClientConnector(
+        url: RealtimeService.url,
+        headers: {'Authorization': 'Bearer $token'},
+        onConnected: () => connected.complete(),
+        onError: (m) => connected.completeError(StateError('STOMP ERROR: $m')),
+        onClosed: () {
+          if (!connected.isCompleted) connected.completeError(StateError('closed before CONNECTED'));
+        },
+      );
+      try {
+        await connected.future.timeout(const Duration(seconds: 20));
+        link.subscribe(StompDest.notificationsUnreadCount, (_) {})();
+      } finally {
+        link.close();
+      }
     });
   });
 }
