@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -52,13 +54,25 @@ class _MfaSetupScreenState extends State<MfaSetupScreen> {
   String? _verifyError;
   bool _revealed = false;
   bool _verifying = false;
+  bool _launching = false;
+  Timer? _remask;
+  Timer? _launchLock;
+
+  /// A revealed secret masks itself again after this.
+  static const revealDuration = Duration(seconds: 30);
+
+  void _setRevealed(bool revealed) {
+    _remask?.cancel();
+    if (revealed) _remask = Timer(revealDuration, () => _setRevealed(false));
+    if (mounted && revealed != _revealed) setState(() => _revealed = revealed);
+  }
 
   @override
   void initState() {
     super.initState();
     _lifecycle = AppLifecycleListener(
       onStateChange: (state) {
-        if (state != AppLifecycleState.resumed && _revealed && mounted) setState(() => _revealed = false);
+        if (state != AppLifecycleState.resumed && _revealed) _setRevealed(false);
       },
     );
     _load();
@@ -67,6 +81,8 @@ class _MfaSetupScreenState extends State<MfaSetupScreen> {
   @override
   void dispose() {
     _lifecycle.dispose();
+    _remask?.cancel();
+    _launchLock?.cancel();
     _code.dispose();
     _secret = null;
     super.dispose();
@@ -94,7 +110,12 @@ class _MfaSetupScreenState extends State<MfaSetupScreen> {
     }
   }
 
+  /// Repeated taps would add the same key several times in some authenticators → short lock.
   Future<void> _openAuthenticator() async {
+    setState(() => _launching = true);
+    _launchLock = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _launching = false);
+    });
     final ok = await (widget.launcher ?? _launchExternal)(Uri.parse(_uri!));
     if (!ok && mounted) {
       showAppSnackBar(
@@ -117,7 +138,7 @@ class _MfaSetupScreenState extends State<MfaSetupScreen> {
     try {
       await _api.post('/auth/mfa/setup/verify', {'code': _code.text});
       if (!mounted) return;
-      _secret = null;
+      // _secret is dropped in dispose (after the pop animation) — clearing it here would flash the loader.
       ScaffoldMessenger.of(context).clearSnackBars();
       showAppSnackBar(context, '2FA başarıyla etkinleştirildi');
       Navigator.of(context).pop(true);
@@ -160,6 +181,7 @@ class _MfaSetupScreenState extends State<MfaSetupScreen> {
         children: [
           Expanded(
             child: Semantics(
+              liveRegion: true, // shown / hidden is announced
               label: _revealed ? null : 'Gizli anahtar gizlendi',
               excludeSemantics: !_revealed,
               child: Text(
@@ -173,7 +195,7 @@ class _MfaSetupScreenState extends State<MfaSetupScreen> {
             key: const ValueKey('mfa_secret_toggle'),
             tooltip: _revealed ? 'Anahtarı gizle' : 'Anahtarı göster',
             icon: Icon(_revealed ? Icons.visibility_off_rounded : Icons.visibility_rounded),
-            onPressed: () => setState(() => _revealed = !_revealed),
+            onPressed: () => _setRevealed(!_revealed),
           ),
           IconButton(
             key: const ValueKey('mfa_secret_copy'),
@@ -199,12 +221,18 @@ class _MfaSetupScreenState extends State<MfaSetupScreen> {
             'kullanımlık kod, girişte şifrenize ek olarak sorulur.',
           ),
           _step('1. Hesabı authenticator uygulamasına ekleyin'),
+          const InfoNote(
+            'Eklenince bu uygulamaya dönün ve 2. adımdaki kodu girin. Android uygulamayı arka planda kapatırsa '
+            'kurulum yarıda kalır: kurulumu baştan başlatın ve Authenticator\'daki eski "Elly CMS" kaydını silin '
+            '(her kurulum yeni bir anahtar üretir).',
+            warning: true,
+          ),
           if (canOpen) ...[
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
                 key: const ValueKey('mfa_open_authenticator'),
-                onPressed: _openAuthenticator,
+                onPressed: _launching ? null : _openAuthenticator,
                 icon: const Icon(Icons.open_in_new_rounded),
                 label: const Text('Authenticator\'da aç'),
               ),
@@ -273,7 +301,6 @@ class _MfaSetupScreenState extends State<MfaSetupScreen> {
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop || _verifying) return;
         if (await _confirmLeave() && context.mounted) {
-          _secret = null; // Navigator.pop does not consult PopScope
           Navigator.of(context).pop();
         }
       },

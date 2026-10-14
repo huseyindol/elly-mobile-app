@@ -491,15 +491,16 @@ void main() {
     );
 
     testWidgets(
-      'rol seçmeyen ADMIN: roleIds anahtarı hiç yok (backend ADMIN atar)',
+      // Karar (faz 4 düzeltme): boş rol listesi backend'de sessizce ADMIN atar → mobil en az bir rol ister.
+      'rol seçmeyen ADMIN de kaydedemez: örtük ADMIN ataması yok (en az bir rol zorunlu)',
       (tester) async {
         await openForm(tester, caller: const ['ADMIN']);
         await type(tester, 'username', 'yeni');
         await type(tester, 'email', 'yeni@x.com');
         await type(tester, 'password', 'Gizli123');
         await save(tester);
-        final body = jsonDecode(sent('POST', '/users').single.body) as Map;
-        expect(body.containsKey('roleIds'), isFalse);
+        expect(sent('POST', '/users'), isEmpty);
+        expect(find.textContaining('En az bir rol seçin'), findsWidgets);
       },
     );
 

@@ -414,12 +414,6 @@ void main() {
         expect(find.byKey(const ValueKey('status_1')), findsNothing);
         expect(auth.userId, isNull);
       },
-      skip: true,
     );
-    // SKIP - BULGU (orta, lib/screens/users/users_screen.dart `_isSelf` + user_form_screen.dart `_isSelfFor`):
-    // uygulama token ile açılıp GET /users/me başarısız olursa AuthProvider.userId null ve currentUser null kalır;
-    // `_isSelf` hiçbir satırı "ben" saymaz -> kendi satırında Sil / Pasifleştir sunulur, kendi formunda rol
-    // düzenlenebilir ve şifre sıfırlama açılır (kendini demote etme / kilitleme riski; backend yalnız bazılarını
-    // reddeder). Öneri: kimlik bilinmiyorsa yıkıcı aksiyonları gizle ya da ekranı hata/yeniden dene durumuna al.
   });
 }

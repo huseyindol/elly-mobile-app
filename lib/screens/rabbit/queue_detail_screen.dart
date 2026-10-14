@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -9,6 +10,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/rabbit_admin.dart';
 import '../../widgets/app_scaffold.dart';
+import '../../widgets/app_snack_bar.dart';
 import '../../widgets/info_note.dart';
 import '../../widgets/status_badge.dart';
 import 'rabbit_screen.dart' show QueueStateBadge, purgeQueue;
@@ -36,6 +38,7 @@ class _QueueDetailScreenState extends State<QueueDetailScreen> {
   List<Map<String, dynamic>>? _messages;
   String? _messagesError;
   bool _peeking = false;
+  bool _purging = false;
 
   String get _name => '${widget.queue['name']}';
 
@@ -90,11 +93,26 @@ class _QueueDetailScreenState extends State<QueueDetailScreen> {
         builder: (_) => RepublishScreen(sourceQueue: _name, message: message, apiService: _api),
       ),
     );
-    if (sent == true && mounted) _loadDetail();
+    if (sent == true && mounted) {
+      // The peeked list no longer matches the queue (the source message stays, the target got a copy).
+      setState(() {
+        _messages = null;
+        _messagesError = null;
+      });
+      _loadDetail();
+    }
   }
 
   Future<void> _purge() async {
-    if (await purgeQueue(context, _api, _queue) && mounted) {
+    final purged = await purgeQueue(
+      context,
+      _api,
+      _queue,
+      onBusy: (busy) {
+        if (mounted) setState(() => _purging = busy);
+      },
+    );
+    if (purged && mounted) {
       setState(() => _messages = null);
       _loadDetail();
     }
@@ -124,18 +142,13 @@ class _QueueDetailScreenState extends State<QueueDetailScreen> {
 
   static String _yesNo(Object? v) => v == null ? '—' : (v == true ? 'evet' : 'hayır');
 
-  Widget _code(String text, {Key? key}) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: scheme.surface.withValues(alpha: 0.9), borderRadius: BorderRadius.circular(12)),
-      child: SelectableText(
-        text,
-        key: key,
-        style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-      ),
-    );
+  Widget _code(String text) => CodeBlock(text: text);
+
+  /// Expansion state follows the message (`message_id`), not its position in a refreshed list.
+  static Key _tileKey(int index, Map<String, dynamic> m) {
+    final props = m['properties'];
+    final id = props is Map ? props['message_id'] : null;
+    return ValueKey<String>('message_tile_${id ?? '$index:${'${m['payload']}'.hashCode}'}');
   }
 
   Widget _message(int index, Map<String, dynamic> m, bool canManage) {
@@ -146,6 +159,7 @@ class _QueueDetailScreenState extends State<QueueDetailScreen> {
       margin: const EdgeInsets.only(bottom: 8),
       color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.7),
       child: ExpansionTile(
+        key: _tileKey(index, m),
         shape: const Border(),
         title: Text(
           '#${index + 1} · ${'${m['routingKey'] ?? ''}'.isEmpty ? '—' : m['routingKey']}',
@@ -163,11 +177,11 @@ class _QueueDetailScreenState extends State<QueueDetailScreen> {
         children: [
           Text('Payload', style: Theme.of(context).textTheme.labelMedium),
           const SizedBox(height: 4),
-          _code(clipText(prettyPayload(payload)), key: ValueKey('message_payload_$index')),
+          PayloadView(raw: payload, textKey: ValueKey('message_payload_$index')),
           const SizedBox(height: 8),
           Text('Properties', style: Theme.of(context).textTheme.labelMedium),
           const SizedBox(height: 4),
-          _code(const JsonEncoder.withIndent('  ').convert(m['properties'] ?? const {})),
+          _code(revealBidi(const JsonEncoder.withIndent('  ').convert(m['properties'] ?? const {}))),
           if (canManage)
             Align(
               alignment: Alignment.centerRight,
@@ -297,8 +311,17 @@ class _QueueDetailScreenState extends State<QueueDetailScreen> {
                   ElevatedButton.icon(
                     key: const ValueKey('detail_purge'),
                     style: ElevatedButton.styleFrom(backgroundColor: scheme.error, foregroundColor: scheme.onError),
-                    onPressed: total == 0 ? null : _purge,
-                    icon: const Icon(Icons.delete_sweep_outlined),
+                    onPressed: total == 0 || _purging ? null : _purge,
+                    icon: _purging
+                        ? SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: scheme.onError,
+                              semanticsLabel: 'Temizleniyor',
+                            ),
+                          )
+                        : const Icon(Icons.delete_sweep_outlined),
                     label: Text(total == 0 ? 'Kuyruk boş' : 'Purge ($total)'),
                   ),
                 ],
@@ -328,6 +351,98 @@ class _ErrorBanner extends StatelessWidget {
           child: Text(message, style: TextStyle(color: scheme.onErrorContainer)),
         ),
         TextButton(onPressed: onRetry, child: const Text('Tekrar Dene')),
+      ],
+    );
+  }
+}
+
+/// Monospace, selectable, horizontally scrollable block for untrusted text (no wrapping, never rendered).
+class CodeBlock extends StatelessWidget {
+  final String text;
+  final Key? textKey;
+  const CodeBlock({super.key, required this.text, this.textKey});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(color: scheme.surface.withValues(alpha: 0.9), borderRadius: BorderRadius.circular(12)),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.all(12),
+        child: SelectableText(
+          text,
+          key: textKey,
+          style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+        ),
+      ),
+    );
+  }
+}
+
+/// A peeked payload: [payloadPreview] (clipped at 10.000 units before indenting, bidi controls visible),
+/// "Tümünü göster" builds the whole indented text in a background isolate, "Kopyala" copies the raw payload.
+class PayloadView extends StatefulWidget {
+  final String raw;
+  final Key textKey;
+  const PayloadView({super.key, required this.raw, required this.textKey});
+
+  @override
+  State<PayloadView> createState() => _PayloadViewState();
+}
+
+class _PayloadViewState extends State<PayloadView> {
+  late final String _preview = payloadPreview(widget.raw);
+  String? _full;
+  bool _expanding = false;
+
+  bool get _clipped => widget.raw.length > 10000;
+
+  Future<void> _showAll() async {
+    setState(() => _expanding = true);
+    final full = await compute(payloadFull, widget.raw);
+    if (mounted) {
+      setState(() {
+        _full = full;
+        _expanding = false;
+      });
+    }
+  }
+
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: widget.raw));
+    if (mounted) showAppSnackBar(context, 'Payload kopyalandı');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CodeBlock(text: _full ?? _preview, textKey: widget.textKey),
+        Wrap(
+          children: [
+            TextButton.icon(
+              key: ValueKey('${(widget.textKey as ValueKey).value}_copy'),
+              onPressed: _copy,
+              icon: const Icon(Icons.copy_rounded),
+              label: const Text('Kopyala'),
+            ),
+            if (_clipped && _full == null)
+              TextButton.icon(
+                key: ValueKey('${(widget.textKey as ValueKey).value}_all'),
+                onPressed: _expanding ? null : _showAll,
+                icon: _expanding
+                    ? const SizedBox.square(
+                        dimension: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, semanticsLabel: 'Hazırlanıyor'),
+                      )
+                    : const Icon(Icons.unfold_more_rounded),
+                label: const Text('Tümünü göster'),
+              ),
+          ],
+        ),
       ],
     );
   }

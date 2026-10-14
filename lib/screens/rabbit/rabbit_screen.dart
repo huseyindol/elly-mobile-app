@@ -26,6 +26,7 @@ class RabbitScreen extends StatefulWidget {
 class _RabbitScreenState extends State<RabbitScreen> {
   late final ApiService _api = widget.apiService ?? ApiService();
   final _listKey = GlobalKey<SearchablePagedListState>();
+  final Set<String> _purging = {};
   late Future<dynamic> _overview = _getOverview();
 
   /// The card (list header) is not built while the queue list is loading → no FutureBuilder listens yet; the
@@ -170,12 +171,25 @@ class _RabbitScreenState extends State<RabbitScreen> {
                   child: TextButton.icon(
                     key: ValueKey('purge_$name'),
                     style: TextButton.styleFrom(foregroundColor: scheme.onErrorContainer),
-                    onPressed: total == 0
+                    onPressed: total == 0 || _purging.contains(name)
                         ? null
                         : () async {
-                            if (await purgeQueue(context, _api, queue) && mounted) _reloadAll();
+                            final purged = await purgeQueue(
+                              context,
+                              _api,
+                              queue,
+                              onBusy: (busy) {
+                                if (mounted) setState(() => busy ? _purging.add(name) : _purging.remove(name));
+                              },
+                            );
+                            if (purged && mounted) _reloadAll();
                           },
-                    icon: const Icon(Icons.delete_sweep_outlined),
+                    icon: _purging.contains(name)
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2, semanticsLabel: 'Temizleniyor'),
+                          )
+                        : const Icon(Icons.delete_sweep_outlined),
                     label: Text(total == 0 ? 'Kuyruk boş' : 'Purge', semanticsLabel: 'Purge: $name'),
                   ),
                 ),
@@ -226,19 +240,27 @@ class QueueStateBadge extends StatelessWidget {
 
 /// `POST /admin/rabbit/queues/{name}/purge` (204) after the user typed the queue name (admin
 /// `DestructiveConfirmDialog`). Pass the screen's context. true = purged.
-Future<bool> purgeQueue(BuildContext context, ApiService api, Map<String, dynamic> queue) async {
+/// [onBusy] brackets the request (callers lock the button and show progress).
+Future<bool> purgeQueue(
+  BuildContext context,
+  ApiService api,
+  Map<String, dynamic> queue, {
+  ValueChanged<bool>? onBusy,
+}) async {
   final name = '${queue['name']}';
   final ok = await showConfirmDialog(
     context,
     title: 'Queue Purge',
     message:
-        '"$name" kuyruğundaki ${countOf(queue['messages'])} mesaj kalıcı olarak silinecek. Bu işlem geri alınamaz.',
+        '"$name" kuyruğundaki ${countOf(queue['messages'])} mesaj (yaklaşık — o an kuyrukta ne varsa) kalıcı olarak '
+        'silinecek. Bu işlem geri alınamaz.',
     confirmLabel: 'Kuyruğu Temizle',
     destructive: true,
     requiredText: name,
     confirmKey: const ValueKey('confirm_purge_button'),
   );
   if (!ok || !context.mounted) return false;
+  onBusy?.call(true);
   try {
     await api.post(queuePath(name, '/purge'), const {});
     if (context.mounted) showAppSnackBar(context, 'Queue "$name" temizlendi');
@@ -246,5 +268,7 @@ Future<bool> purgeQueue(BuildContext context, ApiService api, Map<String, dynami
   } catch (e) {
     if (context.mounted) showAppSnackBar(context, rabbitErrorText(e), error: true);
     return false;
+  } finally {
+    onBusy?.call(false);
   }
 }

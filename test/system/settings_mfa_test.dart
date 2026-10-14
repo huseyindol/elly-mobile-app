@@ -147,6 +147,8 @@ void main() {
       await tester.pump();
       expect(launched.single.toString(), _uri);
 
+      expect(tester.widget<ElevatedButton>(key('mfa_open_authenticator')).onPressed, isNull, reason: 'short lock');
+      await tester.pump(const Duration(seconds: 3));
       launchResult = false;
       await tester.tap(key('mfa_open_authenticator'));
       await tester.pump();
@@ -315,6 +317,65 @@ void main() {
       expect(backend.requestsTo('/auth/mfa/setup/verify'), hasLength(2));
       expect(backend.requestsTo('/auth/mfa/setup/verify').last.headers['Authorization'], 'Bearer yeni');
       expect(expired, isFalse);
+    });
+  });
+
+  group('fix round', () {
+    testWidgets('"Etkinleştir" re-reads the status: already enabled → no setup (GET /setup never called)', (
+      tester,
+    ) async {
+      await pumpSettings(tester);
+      mfaEnabled = true; // enabled elsewhere meanwhile; the card still says "Kapalı"
+      await tester.tap(key('mfa_enable'));
+      await settle(tester);
+      expect(find.byType(MfaSetupScreen), findsNothing);
+      expect(backend.requestsTo('/auth/mfa/setup'), isEmpty);
+      expect(find.text('2FA bu hesapta zaten etkin.'), findsOneWidget);
+      expect(find.descendant(of: key('mfa_status'), matching: find.text('Aktif')), findsOneWidget);
+    });
+
+    testWidgets('status check failure does not open the setup', (tester) async {
+      await pumpSettings(tester);
+      backend.routes['/auth/mfa/status'] = (_) => jsonResponse({'message': 'x'}, 500);
+      await tester.tap(key('mfa_enable'));
+      await settle(tester);
+      expect(find.byType(MfaSetupScreen), findsNothing);
+      expect(backend.requestsTo('/auth/mfa/setup'), isEmpty);
+    });
+
+    testWidgets('setup tells to come back / restart and delete the stale entry; the card warns too', (tester) async {
+      await pumpSettings(tester);
+      expect(key('mfa_stale_note'), findsOneWidget);
+      await tester.tap(key('mfa_enable'));
+      await settle(tester);
+      expect(find.textContaining('Authenticator\'daki eski "Elly CMS" kaydını silin'), findsOneWidget);
+    });
+
+    testWidgets('a revealed secret masks itself after 30 s', (tester) async {
+      await pumpSettings(tester);
+      await tester.tap(key('mfa_enable'));
+      await settle(tester);
+      await tester.tap(key('mfa_secret_toggle'));
+      await tester.pump();
+      expect(tester.widget<Text>(key('mfa_secret_text')).data, 'JBSW Y3DP EHPK 3PXP');
+      await tester.pump(const Duration(seconds: 31));
+      expect(tester.widget<Text>(key('mfa_secret_text')).data, '•••• •••• •••• ••••');
+    });
+
+    testWidgets('lowering the storage limit asks first; "Vazgeç" sends nothing; limit shown with decimals', (
+      tester,
+    ) async {
+      backend.routes['/storage/tenant/t1/quota'] = (_) =>
+          okData({'tenantId': 't1', 'usedBytes': 1, 'limitBytes': 2684354560, 'usedPercent': 0.0});
+      await pumpSettings(tester, roles: ['SUPER_ADMIN']);
+      expect(tester.widget<TextField>(key('storage_limit_field')).controller!.text, '2,5');
+      await tester.enterText(key('storage_limit_field'), '1');
+      await tester.tap(key('storage_limit_save'));
+      await tester.pumpAndSettle();
+      expect(find.text('Limiti düşür'), findsOneWidget);
+      await tester.tap(find.text('Vazgeç'));
+      await settle(tester);
+      expect(backend.requestsTo('/quota/limit'), isEmpty);
     });
   });
 }

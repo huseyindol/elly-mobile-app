@@ -17,7 +17,8 @@ class StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = color ?? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6);
+    // Muted text α0.75 on the 15% tint keeps ≥4.5:1 (AA) on the dark surfaces.
+    final c = color ?? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.75);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(color: c.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),

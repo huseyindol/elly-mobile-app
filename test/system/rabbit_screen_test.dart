@@ -6,6 +6,7 @@ import 'package:elly_mobile_app/screens/rabbit/queue_detail_screen.dart';
 import 'package:elly_mobile_app/screens/rabbit/rabbit_screen.dart';
 import 'package:elly_mobile_app/screens/rabbit/republish_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -216,6 +217,90 @@ void main() {
       await tester.tap(key('confirm_purge_button'));
       await settle(tester);
       expect(backend.requestsTo('/email-queue.dlq/purge'), hasLength(1));
+    });
+  });
+
+  group('fix round', () {
+    testWidgets('republish from a peeked message: raw body (numbers intact), copy note, peek list cleared', (
+      tester,
+    ) async {
+      backend.ok('/admin/rabbit/queues/email-queue.dlq/messages', [
+        {
+          'payload': '{"id":12345678901234567890,"amount":1.10}',
+          'payloadEncoding': 'string',
+          'properties': {'message_id': 'm-1'},
+          'routingKey': 'email-queue',
+        },
+      ]);
+      await openDetail(tester, ['rabbit:read', 'rabbit:manage']);
+      await tester.tap(key('peek_button'));
+      await settle(tester);
+      await tester.tap(find.text('#1 · email-queue'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('republish_message_0'));
+      await settle(tester);
+      expect(
+        tester.widget<TextFormField>(key('republish_payload')).controller!.text,
+        '{"id":12345678901234567890,"amount":1.10}',
+      );
+      await tester.tap(key('republish_send'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Kaynak kuyruktaki mesaj silinmez (kopyalanır)'), findsOneWidget);
+      await tester.tap(key('confirm_republish_button'));
+      await settle(tester);
+      expect(
+        (jsonDecode(backend.requestsTo('/republish').single.body) as Map)['payload'],
+        '{"id":12345678901234567890,"amount":1.10}',
+      );
+      expect(key('message_0'), findsNothing, reason: 'stale peek list cleared');
+      expect(find.text('Mesajları Göster'), findsOneWidget);
+    });
+
+    testWidgets('manual republish from a non-DLQ queue has no default target', (tester) async {
+      backend.ok('/admin/rabbit/queues/email-queue', _queue('email-queue', 0));
+      await pumpRabbit(tester, ['rabbit:read', 'rabbit:manage']);
+      await tester.tap(find.text('email-queue'));
+      await settle(tester);
+      await tester.tap(key('manual_republish'));
+      await settle(tester);
+      expect(tester.widget<TextFormField>(key('republish_target')).controller!.text, isEmpty);
+      expect(find.textContaining('Kaynak bir DLQ değil'), findsOneWidget);
+    });
+
+    testWidgets('long payload: "Tümünü göster" (background isolate) and "Kopyala" (raw)', (tester) async {
+      final raw = '{"a":"${'x' * 10010}"}';
+      backend.ok('/admin/rabbit/queues/email-queue.dlq/messages', [
+        {'payload': raw, 'payloadEncoding': 'string', 'properties': {}, 'routingKey': 'rk'},
+      ]);
+      String? copied;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') copied = (call.arguments as Map)['text'] as String?;
+        return null;
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+      await openDetail(tester, ['rabbit:read']);
+      await tester.tap(key('peek_button'));
+      await settle(tester);
+      await tester.tap(find.text('#1 · rk'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<SelectableText>(key('message_payload_0')).data, endsWith('karakter daha)'));
+
+      await tester.tap(key('message_payload_0_copy'));
+      await tester.pump();
+      expect(copied, raw);
+
+      await tester.tap(key('message_payload_0_all'));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 500)));
+      await tester.pumpAndSettle();
+      expect(tester.widget<SelectableText>(key('message_payload_0')).data, startsWith('{\n  "a": "xxx'));
+      expect(key('message_payload_0_all'), findsNothing);
+    });
+
+    testWidgets('purge dialog says the count is approximate', (tester) async {
+      await pumpRabbit(tester, ['rabbit:read', 'rabbit:manage']);
+      await tester.tap(key('purge_email-queue.dlq'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('7 mesaj (yaklaşık'), findsOneWidget);
     });
   });
 }

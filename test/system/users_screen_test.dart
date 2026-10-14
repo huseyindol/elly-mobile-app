@@ -217,7 +217,7 @@ void main() {
       }
       expect(key('role_SUPER_ADMIN'), findsNothing);
       expect(key('role_TENANT'), findsNothing);
-      expect(find.textContaining('Rol seçilmezse ADMIN'), findsOneWidget);
+      expect(find.textContaining('backend boş listede kullanıcıya ADMIN rolü atar'), findsOneWidget);
 
       await fill(tester, {'username': 'yeni', 'email': 'yeni@x.com', 'password': 'Gizli123', 'firstName': 'Yeni'});
       await tester.ensureVisible(key('role_EDITOR'));
@@ -356,6 +356,78 @@ void main() {
       await save(tester);
       expect(find.textContaining('"ADMIN" rolünü atayamazsınız'), findsOneWidget);
       expect(key('crud_save_button'), findsOneWidget, reason: 'form stays open');
+    });
+  });
+
+  group('fix round', () {
+    testWidgets('unknown identity (no /users/me, no login id): banner, no actions, no FAB; "Yenile" recovers', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      backend.routes['/users/me'] = (_) => jsonResponse({'message': 'x'}, 500);
+      await tester.runAsync(() => backend.signIn(auth, ['users:manage'], roles: ['ADMIN']));
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AuthProvider>.value(
+          value: auth,
+          child: MaterialApp(
+            theme: appTheme,
+            home: UsersScreen(apiService: backend.api),
+          ),
+        ),
+      );
+      await settle(tester);
+      expect(key('users_identity_unknown'), findsOneWidget);
+      for (final k in ['edit_3', 'delete_3', 'status_3', 'delete_1', 'user_locked_2']) {
+        expect(key(k), findsNothing, reason: k);
+      }
+      expect(find.byType(FloatingActionButton), findsNothing);
+
+      backend.ok('/users/me', _user(1, 'ben', ['ADMIN']));
+      await tester.tap(find.text('Yenile'));
+      await settle(tester);
+      expect(key('users_identity_unknown'), findsNothing);
+      expect(key('delete_3'), findsOneWidget);
+      expect(key('delete_1'), findsNothing);
+    });
+
+    testWidgets('no roles known (permissions without roles): same fail-closed banner, not "üst seviye"', (
+      tester,
+    ) async {
+      await pumpUsers(tester, roles: const []);
+      expect(key('users_identity_unknown'), findsOneWidget);
+      expect(key('user_locked_3'), findsNothing);
+      expect(key('edit_3'), findsNothing);
+    });
+
+    testWidgets('tenant tab names the session tenant', (tester) async {
+      await pumpUsers(tester);
+      await tester.tap(key('audience_tenant'));
+      await settle(tester);
+      expect(find.text('Tenant: t1'), findsOneWidget);
+    });
+
+    testWidgets('fields saved but role PUT failed → message says exactly that (password reset noted)', (tester) async {
+      backend.routes['/roles/users/3/roles'] = (_) => jsonResponse({'message': 'boom'}, 500);
+      await pumpUsers(tester);
+      await tester.tap(key('edit_3'));
+      await settle(tester);
+      await tester.enterText(key('user_field_password'), 'Sifirla99');
+      await tester.ensureVisible(key('role_VIEWER'));
+      await tester.tap(key('role_VIEWER'));
+      await tester.pump();
+      await tester.tap(key('crud_save_button'));
+      await settle(tester);
+      expect(find.text('Alanlar kaydedildi (şifre sıfırlandı), roller kaydedilemedi: boom'), findsOneWidget);
+      expect(key('crud_save_button'), findsOneWidget, reason: 'form stays open');
+    });
+
+    testWidgets('roles the caller cannot assign are listed in a fixed note (create)', (tester) async {
+      await pumpUsers(tester);
+      await tester.tap(find.byType(FloatingActionButton));
+      await settle(tester);
+      expect(find.textContaining('Atayamadığınız roller (listelenmez): SUPER_ADMIN, TENANT'), findsOneWidget);
     });
   });
 }

@@ -5,6 +5,7 @@ import '../config/app_theme.dart';
 import '../services/api_service.dart';
 import '../services/text_format.dart';
 import 'app_snack_bar.dart';
+import 'confirm_dialog.dart';
 import 'state_views.dart';
 
 /// Storage usage color, same thresholds as the admin StorageUsageWidget: <70 ok, 70–90 warning, ≥90 critical.
@@ -13,10 +14,22 @@ Color quotaColor(double percent, ColorScheme scheme) =>
 
 const _gib = 1024 * 1024 * 1024;
 
-/// "2,5" / "2.5" GB → bytes (admin `gbToBytes`); null unless > 0.
+/// "2,5" / "2.5" GB → bytes (admin `gbToBytes`); null unless the byte count is finite, fits an int64 and is > 0
+/// (a tiny value rounding to 0 B would block every upload).
 int? gbToBytes(String text) {
   final gb = double.tryParse(text.trim().replaceAll(',', '.'));
-  return gb == null || !gb.isFinite || gb <= 0 ? null : (gb * _gib).round();
+  if (gb == null || !gb.isFinite || gb <= 0) return null;
+  final bytes = gb * _gib;
+  if (!bytes.isFinite || bytes >= 9.2e18) return null;
+  final rounded = bytes.round();
+  return rounded > 0 ? rounded : null;
+}
+
+/// Limit field text: GB with up to 2 decimals ("1", "2,5"), not rounded to whole GB.
+String gbText(Object? bytes) {
+  if (bytes is! num) return '';
+  final text = (bytes / _gib).toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '');
+  return text.replaceAll('.', ',');
 }
 
 /// Storage quota of the session tenant — admin `StorageUsageWidget` (dashboard) and `StorageQuotaCard` (settings).
@@ -48,6 +61,7 @@ class StorageQuotaCard extends StatefulWidget {
 class StorageQuotaCardState extends State<StorageQuotaCard> {
   Future<dynamic>? _quota;
   final _limit = TextEditingController();
+  num? _currentLimit;
   bool _busy = false;
 
   Future<String> _base() async {
@@ -60,11 +74,12 @@ class StorageQuotaCardState extends State<StorageQuotaCard> {
 
   Future<dynamic> _future() => _quota ??= () async {
     final quota = await widget.api.get(await _base());
-    if (quota is Map && mounted) _limit.text = _gbText(quota['limitBytes']);
+    if (quota is Map && mounted) {
+      _limit.text = gbText(quota['limitBytes']);
+      _currentLimit = quota['limitBytes'] as num?;
+    }
     return quota;
   }();
-
-  static String _gbText(Object? bytes) => bytes is num ? (bytes / _gib).toStringAsFixed(0) : '';
 
   /// Reloads the quota; completes when it is on screen (dashboard pull-to-refresh awaits it).
   Future<void> reload() {
@@ -83,7 +98,10 @@ class StorageQuotaCardState extends State<StorageQuotaCard> {
     try {
       final quota = await request(await _base());
       if (!mounted) return;
-      if (quota is Map) _limit.text = _gbText(quota['limitBytes']);
+      if (quota is Map) {
+        _limit.text = gbText(quota['limitBytes']);
+        _currentLimit = quota['limitBytes'] as num?;
+      }
       setState(() {
         _quota = Future.value(quota);
       });
@@ -95,13 +113,27 @@ class StorageQuotaCardState extends State<StorageQuotaCard> {
     }
   }
 
-  void _setLimit() {
+  Future<void> _setLimit() async {
     final bytes = gbToBytes(_limit.text);
     if (bytes == null) {
       showAppSnackBar(context, 'Geçerli bir limit (GB) girin', error: true);
       return;
     }
     FocusScope.of(context).unfocus();
+    final current = _currentLimit;
+    if (current != null && bytes < current) {
+      final ok = await showConfirmDialog(
+        context,
+        title: 'Limiti düşür',
+        message:
+            'Limit ${formatBytes(current)} → ${formatBytes(bytes)} olacak. Kullanım yeni limiti aşarsa yeni yüklemeler '
+            'reddedilir.',
+        confirmLabel: 'Düşür',
+        destructive: true,
+        confirmKey: const ValueKey('storage_limit_confirm'),
+      );
+      if (!ok || !mounted) return;
+    }
     _mutate((base) => widget.api.put('$base/limit', {'limitBytes': bytes}), 'Limit güncellendi');
   }
 

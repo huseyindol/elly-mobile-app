@@ -9,6 +9,7 @@ import '../../services/user_admin.dart';
 import '../../widgets/app_scaffold.dart';
 import '../../widgets/app_snack_bar.dart';
 import '../../widgets/confirm_dialog.dart';
+import '../../widgets/info_note.dart';
 import '../../widgets/searchable_paged_list.dart';
 import '../../widgets/status_badge.dart';
 import 'user_form_screen.dart';
@@ -30,6 +31,8 @@ class _UsersScreenState extends State<UsersScreen> {
   final _listKeys = {'panel': GlobalKey<SearchablePagedListState>(), 'tenant': GlobalKey<SearchablePagedListState>()};
   String _audience = 'panel';
   final Set<Object?> _busy = {};
+  String? _tenantId;
+  bool _reloadingIdentity = false;
 
   @override
   void initState() {
@@ -37,13 +40,20 @@ class _UsersScreenState extends State<UsersScreen> {
     // Self guards need the signed-in user's id; the startup profile load may have failed.
     final auth = context.read<AuthProvider>();
     if (auth.profile == null) auth.loadProfile();
+    _api.secureStorage.read(key: 'tenantId').then((t) {
+      if (mounted) setState(() => _tenantId = t);
+    });
+  }
+
+  Future<void> _reloadIdentity(AuthProvider auth) async {
+    setState(() => _reloadingIdentity = true);
+    await Future.wait([auth.loadPermissions(), auth.loadProfile()]);
+    if (mounted) setState(() => _reloadingIdentity = false);
   }
 
   Future<void> _reload() async => _listKeys[_audience]!.currentState?.reload();
 
-  bool _isSelf(AuthProvider auth, Map<String, dynamic> user) =>
-      (auth.userId != null && user['id'] == auth.userId) ||
-      (auth.profile == null && user['username'] == auth.currentUser?.username);
+  bool _isSelf(AuthProvider auth, Map<String, dynamic> user) => auth.userId != null && user['id'] == auth.userId;
 
   Future<void> _openForm([Map<String, dynamic>? user]) async {
     final saved = await Navigator.of(context).push<bool>(
@@ -117,7 +127,9 @@ class _UsersScreenState extends State<UsersScreen> {
     final roles = rolesOf(user);
     final active = user['isActive'] != false;
     final self = _isSelf(auth, user);
-    final manageable = canManageUser(auth.roleLevel, roles);
+    // Fail-closed: without the own id and roles, "is this me / above me" cannot be answered → no actions.
+    final known = auth.identityKnown;
+    final manageable = known && canManageUser(auth.roleLevel, roles);
     final busy = _busy.contains(id);
     final created = formatDateTimeTr(user['createdAt']).split(' ').first;
     Text label(String action) => Text(action, semanticsLabel: '$action: @$username');
@@ -154,7 +166,7 @@ class _UsersScreenState extends State<UsersScreen> {
             const SizedBox(height: 6),
             Text('Kayıt: $created', style: muted.copyWith(fontSize: 12)),
           ],
-          if (!manageable) ...[
+          if (known && !manageable) ...[
             const SizedBox(height: 6),
             Text(
               'Üst seviye kullanıcı — rolünüz bu kullanıcıyı yönetmeye yetmez.',
@@ -218,9 +230,26 @@ class _UsersScreenState extends State<UsersScreen> {
     );
   }
 
+  Widget _identityBanner(AuthProvider auth) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+    child: Column(
+      key: const ValueKey('users_identity_unknown'),
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        const InfoNote(unknownIdentityText, warning: true),
+        TextButton.icon(
+          onPressed: _reloadingIdentity ? null : () => _reloadIdentity(auth),
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('Yenile'),
+        ),
+      ],
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final known = auth.identityKnown;
     final panel = _audience == 'panel';
     return AppScaffold(
       title: 'Kullanıcılar',
@@ -229,6 +258,19 @@ class _UsersScreenState extends State<UsersScreen> {
       body: Column(
         children: [
           _tabs(),
+          if (!panel && _tenantId != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Tenant: $_tenantId',
+                  key: const ValueKey('users_tenant_name'),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.75)),
+                ),
+              ),
+            ),
+          if (!known) _identityBanner(auth),
           Expanded(
             child: SearchablePagedList(
               key: _listKeys[_audience],
@@ -242,11 +284,13 @@ class _UsersScreenState extends State<UsersScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        tooltip: panel ? 'Yeni Panel Kullanıcısı' : 'Yeni Tenant Kullanıcısı',
-        onPressed: () => _openForm(),
-        child: const Icon(Icons.person_add_alt_1_rounded),
-      ),
+      floatingActionButton: known
+          ? FloatingActionButton(
+              tooltip: panel ? 'Yeni Panel Kullanıcısı' : 'Yeni Tenant Kullanıcısı',
+              onPressed: () => _openForm(),
+              child: const Icon(Icons.person_add_alt_1_rounded),
+            )
+          : null,
     );
   }
 }

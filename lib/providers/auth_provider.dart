@@ -51,6 +51,10 @@ class AuthProvider with ChangeNotifier {
 
   Map<String, dynamic>? get profile => _profile;
 
+  /// Own id and roles are known. User-management self guards and the role hierarchy fail closed without them
+  /// (an unknown id cannot tell the own row; no roles = level 1).
+  bool get identityKnown => userId != null && _roles.isNotEmpty;
+
   /// Signed-in user's id (self-action guards); from the profile, else the login response.
   int? get userId => (_profile?['id'] as num?)?.toInt() ?? int.tryParse(_currentUser?.userId ?? '');
 

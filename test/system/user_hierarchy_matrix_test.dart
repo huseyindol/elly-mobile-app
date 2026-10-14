@@ -172,9 +172,6 @@ void main() {
           isEmpty,
         );
       },
-      skip:
-          'BULGU (düşük): rolesOf `as List?` cast eder; backend roles alanını liste dışı dönerse TypeError ile '
-          'kullanıcı listesi satırı/formu çöker. Öneri: `r is List ? r : const []`.',
     );
 
     test('liste metne çevrilir; sıra korunur', () {

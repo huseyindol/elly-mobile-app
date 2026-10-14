@@ -20,6 +20,11 @@ import '../../widgets/status_badge.dart';
 /// ends the user's sessions) → roles changed: `PUT /roles/users/{id}/roles {roleIds}` (replaces all roles).
 /// Roles offered: [canAssignRole] for the caller's level. Own account: no role change, no password reset here
 /// (Profil → Şifre Değiştir asks for the current password).
+/// Shown wherever self-protection depends on knowing who is signed in.
+const unknownIdentityText =
+    'Profil/yetkiler yüklenemedi: kendi hesabınız ayırt edilemediği için rol değiştirme, şifre sıfırlama, silme ve '
+    'pasifleştirme kapalı. Yenileyin.';
+
 class UserFormScreen extends StatefulWidget {
   /// `panel` | `tenant`.
   final String audience;
@@ -75,10 +80,25 @@ class _UserFormScreenState extends State<UserFormScreen> {
     super.dispose();
   }
 
-  /// Own account (pass the auth from `watch` in build, `read` elsewhere).
-  bool _isSelfFor(AuthProvider auth) {
+  /// Own account — or an unknown identity, which is treated like the own account (no role change, no password
+  /// reset): the user might be editing themselves. Pass the auth from `watch` in build, `read` elsewhere.
+  bool _lockedFor(AuthProvider auth) {
+    if (!_isEditing) return false;
+    if (!auth.identityKnown) return true;
     final id = (_record ?? widget.user)?['id'];
-    return _isEditing && id != null && id == auth.userId;
+    return id != null && id == auth.userId;
+  }
+
+  Set<int> _assignableIds(int myLevel) => {
+    for (final r in _roles)
+      if (canAssignRole(myLevel, '${r['name']}')) (r['id'] as num).toInt(),
+  };
+
+  /// Sent role ids: the visible (assignable) choices + every existing role the caller cannot assign (kept: an
+  /// ADMIN editing a SUPER_ADMIN must never drop SUPER_ADMIN).
+  Set<int> _payloadRoles(int myLevel) {
+    final assignable = _assignableIds(myLevel);
+    return {..._selectedRoles.where(assignable.contains), ..._savedRoles.where((id) => !assignable.contains(id))};
   }
 
   Future<void> _load() async {
@@ -128,8 +148,11 @@ class _UserFormScreenState extends State<UserFormScreen> {
     }
     final c = _controllers;
     final auth = context.read<AuthProvider>();
-    final self = _isSelfFor(auth);
-    final rolesChanged = _selectedRoles.length != _savedRoles.length || !_selectedRoles.containsAll(_savedRoles);
+    final self = _lockedFor(auth);
+    final roles = _payloadRoles(auth.roleLevel);
+    final rolesChanged = roles.length != _savedRoles.length || !roles.containsAll(_savedRoles);
+    var fieldsSaved = false;
+    var passwordReset = false;
     setState(() => _saving = true);
     try {
       if (!_isEditing) {
@@ -142,7 +165,7 @@ class _UserFormScreenState extends State<UserFormScreen> {
             password: _password.text,
             firstName: c['firstName']!.text,
             lastName: c['lastName']!.text,
-            roleIds: _selectedRoles.toList()..sort(),
+            roleIds: roles.toList()..sort(),
           ),
         );
       } else {
@@ -160,11 +183,13 @@ class _UserFormScreenState extends State<UserFormScreen> {
           );
           // A role failure below must not resend the (already saved) fields and password on retry.
           if (updated is Map) _record = Map<String, dynamic>.from(updated);
+          fieldsSaved = true;
+          passwordReset = !self && _password.text.isNotEmpty;
           _password.clear();
         }
         if (_panel && !self && rolesChanged) {
-          await _api.put('/roles/users/$id/roles', {'roleIds': _selectedRoles.toList()..sort()});
-          _savedRoles = {..._selectedRoles};
+          await _api.put('/roles/users/$id/roles', {'roleIds': roles.toList()..sort()});
+          _savedRoles = roles;
         }
       }
       if (!mounted) return;
@@ -177,7 +202,14 @@ class _UserFormScreenState extends State<UserFormScreen> {
       _dirty = false;
       Navigator.of(context).pop(true);
     } catch (e) {
-      if (mounted) showAppSnackBar(context, userErrorText(e), error: true);
+      if (mounted) {
+        // Fields (and a password reset) went through, the role PUT did not: say exactly that.
+        final text = fieldsSaved
+            ? 'Alanlar kaydedildi${passwordReset ? ' (şifre sıfırlandı)' : ''}, roller kaydedilemedi: ${userErrorText(e)}'
+            : userErrorText(e);
+        if (fieldsSaved) _dirty = rolesChanged; // only the roles are still unsaved
+        showAppSnackBar(context, text, error: true);
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -208,8 +240,16 @@ class _UserFormScreenState extends State<UserFormScreen> {
     ),
   );
 
-  Widget _rolesField(int myLevel, bool self) {
+  Widget _rolesField(int myLevel, bool self, bool known) {
     final scheme = Theme.of(context).colorScheme;
+    final blocked = [
+      for (final r in _roles)
+        if (!canAssignRole(myLevel, '${r['name']}')) '${r['name']}',
+    ];
+    final keptNames = [
+      for (final r in _roles)
+        if (!canAssignRole(myLevel, '${r['name']}') && _savedRoles.contains((r['id'] as num).toInt())) '${r['name']}',
+    ];
     if (self) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -220,18 +260,18 @@ class _UserFormScreenState extends State<UserFormScreen> {
             children: [for (final r in rolesOf(_record!)) StatusBadge(label: r, color: AppColors.primaryLight)],
           ),
           const SizedBox(height: 8),
-          const InfoNote('Kendi rollerinizi değiştiremezsiniz (yetkinizi kaybedebilirsiniz).'),
+          InfoNote(
+            known ? 'Kendi rollerinizi değiştiremezsiniz (yetkinizi kaybedebilirsiniz).' : unknownIdentityText,
+            warning: !known,
+          ),
         ],
       );
     }
     final assignable = _roles.where((r) => canAssignRole(myLevel, '${r['name']}')).toList();
-    final defaultAdmin = !_isEditing && canUseDefaultAdminRole(myLevel);
+    // Always ≥1 role: an empty list would make the backend assign ADMIN silently (create) or fail (@NotEmpty).
     return FormField<Set<int>>(
       key: const ValueKey('user_field_roles'),
-      validator: (_) {
-        if (_selectedRoles.isNotEmpty || defaultAdmin) return null;
-        return _isEditing ? 'En az bir rol seçin' : 'En az bir rol seçin (varsayılan ADMIN rolünü atayamazsınız)';
-      },
+      validator: (_) => _payloadRoles(myLevel).isEmpty ? 'En az bir rol seçin' : null,
       builder: (field) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -260,13 +300,17 @@ class _UserFormScreenState extends State<UserFormScreen> {
               child: Text(field.errorText!, style: TextStyle(color: scheme.onErrorContainer, fontSize: 12)),
             ),
           const SizedBox(height: 8),
+          if (blocked.isNotEmpty)
+            InfoNote(
+              'Atayamadığınız roller (listelenmez): ${blocked.join(', ')} — kendi seviyenizin üstü ya da TENANT '
+              '(tenant kullanıcıları ayrı sekmede).'
+              '${keptNames.isEmpty ? '' : ' Bu kullanıcının bu rolleri korunur: ${keptNames.join(', ')}.'}',
+            ),
           InfoNote(
             _isEditing
                 ? 'Kaydedildiğinde kullanıcının tüm rolleri bu seçimle değiştirilir.'
-                : defaultAdmin
-                ? 'Rol seçilmezse ADMIN rolü atanır.'
-                : 'Kendi rol seviyenizin üstündeki roller listelenmez.',
-            warning: _isEditing,
+                : 'En az bir rol seçin. Rol listesi boş gönderilmez: backend boş listede kullanıcıya ADMIN rolü atar.',
+            warning: true,
           ),
         ],
       ),
@@ -276,7 +320,8 @@ class _UserFormScreenState extends State<UserFormScreen> {
   Widget _form() {
     final auth = context.watch<AuthProvider>();
     final myLevel = auth.roleLevel;
-    final self = _isSelfFor(auth);
+    final self = _lockedFor(auth);
+    final known = auth.identityKnown;
     return Form(
       key: _formKey,
       child: ListView(
@@ -301,8 +346,7 @@ class _UserFormScreenState extends State<UserFormScreen> {
               controller: _password,
               newPassword: true,
               label: _isEditing ? 'Yeni Şifre' : 'Şifre *',
-              hint: passwordRuleHint,
-              helper: _isEditing ? 'Boş bırakılırsa değişmez' : null,
+              helper: _isEditing ? 'Boş bırakılırsa değişmez · $passwordRuleHint' : passwordRuleHint,
               validator: (v) => _isEditing && (v ?? '').isEmpty ? null : passwordError(v ?? ''),
               onChanged: (_) => _markDirty(),
             ),
@@ -312,11 +356,16 @@ class _UserFormScreenState extends State<UserFormScreen> {
                 'Şifre sıfırlanırsa kullanıcının açık oturumları sonlanır ve yeni şifreyle giriş yapması gerekir.',
               ),
           ] else
-            const InfoNote('Kendi şifrenizi Profil → Şifre Değiştir ekranından değiştirin (mevcut şifre sorulur).'),
+            InfoNote(
+              known
+                  ? 'Kendi şifrenizi Profil → Şifre Değiştir ekranından değiştirin (mevcut şifre sorulur).'
+                  : unknownIdentityText,
+              warning: !known,
+            ),
           if (_panel) ...[
             Semantics(header: true, child: Text(_labels['roles']!, style: Theme.of(context).textTheme.titleSmall)),
             const SizedBox(height: 8),
-            _rolesField(myLevel, self),
+            _rolesField(myLevel, self, known),
           ],
           if (!_isEditing)
             InfoNote(

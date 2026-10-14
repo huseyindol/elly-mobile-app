@@ -139,10 +139,6 @@ void main() {
           reason: 'yinelenen secret: URI doğrulayıcı ve authenticator farklı anahtar görebilir',
         );
       },
-      skip:
-          'BULGU (orta, lib/services/user_admin.dart isValidOtpauthUri): `secret=BASKA&secret=<gerçek>` kabul ediliyor '
-          '(Dart queryParameters son değeri alır, authenticator ilkini okuyabilir -> kullanıcı yanlış anahtarla kurar). '
-          'Öneri: Uri.queryParametersAll[\'secret\'] tek elemanlı ve eşit olmalı.',
     );
 
     test(
@@ -161,11 +157,6 @@ void main() {
           expect(isValidOtpauthUri(bad, _secret), isFalse, reason: bad);
         }
       },
-      skip:
-          'BULGU (orta, lib/services/user_admin.dart isValidOtpauthUri): yalnız şema+host+secret denetleniyor; '
-          'bilinmeyen parametre (image, callback), port, userinfo, fragment ve digits/period/algorithm sapmaları '
-          'kabul ediliyor, link yine açılıyor. Öneri: izinli parametre kümesi {secret, issuer, algorithm=SHA1, '
-          'digits=6, period=30} dışını, port/userInfo/fragment varsa reddet.',
     );
 
     test(
@@ -187,9 +178,6 @@ void main() {
           );
         }
       },
-      skip:
-          'BULGU (düşük, lib/services/user_admin.dart isValidOtpauthUri): secret\'ın RFC 4648 base32 (A-Z2-7) olduğu '
-          'doğrulanmıyor; backend bozuk/yanlış alfabede secret üretirse bağlantı yine "geçerli" sayılır.',
     );
   });
 

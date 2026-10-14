@@ -72,10 +72,6 @@ void main() {
           );
         }
       },
-      skip:
-          'BULGU (düşük, lib/services/rabbit_admin.dart queuePath): Uri.encodeComponent("..") değişmez -> '
-          '"/admin/rabbit/queues/../purge" proxy/sunucuda normalize edilip başka bir uca düşebilir. RabbitMQ '
-          'kuyruk adı ".." olabilir. Öneri: "." ve ".." için %2E kodla.',
     );
 
     test('clampPeekCount: sınırlar ve negatif', () {
@@ -211,11 +207,6 @@ void main() {
             );
           }
         },
-        skip:
-            'BULGU (orta, lib/services/rabbit_admin.dart republishPayloadError + republish_screen.dart): Content Type '
-            'alanı boşaltılırsa doğrulama JSON kontrolünü atlar ama republishPayload() "application/json" gönderir -> '
-            'geçersiz JSON onay dialogundan sonra yayınlanır, tüketici dead-letter eder. Öneri: doğrulamada da boşsa '
-            '"application/json" varsay (ya da boş content type\'ı reddet).',
       );
     });
 
@@ -289,11 +280,6 @@ void main() {
           );
           expect(() => Characters(cut).length, returnsNormally);
         },
-        skip:
-            'BULGU (yüksek, lib/services/rabbit_admin.dart clipText): substring(0, max) emoji/sürrogat çiftini '
-            'ortadan bölebilir; geçersiz UTF-16, SelectableText\'te "string is not well-formed UTF-16" '
-            'ArgumentError fırlatır (queue_detail_screen testinde doğrulandı). Öneri: kesim yüksek sürrogatın '
-            'üstüne düşüyorsa 1 geri çek.',
       );
 
       test(
@@ -307,11 +293,6 @@ void main() {
           expect(out, contains('1.10'));
           expect(out, contains('1e3'));
         },
-        skip:
-            'BULGU (orta-düşük, lib/services/rabbit_admin.dart prettyPayload): jsonDecode/jsonEncode gidiş-dönüşü '
-            'sayıları değiştirir (12345678901234567890 -> 12345678901234567000.0, 1.10 -> 1.1, 1e3 -> 1000.0). '
-            'Peek\'ten doldurulan republish gövdesi özgün mesajdan farklı olur (ID/tutar). Öneri: yalnız görüntüleme '
-            'için güzelleştir; republish\'te ham metni kullan ya da sayıyı koruyan biçimleyici.',
       );
     });
   });
@@ -575,11 +556,11 @@ void main() {
       );
 
       testWidgets(
-        'kontrol karakterleri (NUL, ESC, CR, RLO) ekranı çökertmez ve metin korunur',
+        'kontrol karakterleri (NUL, ESC, CR) korunur; bidi kontrolü (RLO) görünür işarete döner',
         (tester) async {
           const raw = 'a\u0000b\u001b[31mc\r\nd\u{202E}e';
           final text = await payloadOf(tester, raw);
-          expect(text.data, raw);
+          expect(text.data, 'a\u0000b\u001b[31mc\r\nd⟨U+202E⟩e');
         },
       );
 
@@ -598,11 +579,6 @@ void main() {
           final text = await payloadOf(tester, '${'a' * 9999}😀${'b' * 10}');
           expect(text.data, endsWith('karakter daha)'));
         },
-        // SKIP - BULGU (yüksek, lib/services/rabbit_admin.dart clipText -> queue_detail_screen.dart): 10.000.
-        // UTF-16 biriminde emoji/sürrogat çifti bölününce SelectableText "Invalid argument(s): string is not
-        // well-formed UTF-16" fırlatıyor (doğrulandı); release'te mesaj kartı kırmızı hata widget'ına döner.
-        // Öneri: kesim yüksek sürrogatın üstüne düşüyorsa 1 geri çek.
-        skip: true,
       );
 
       testWidgets(

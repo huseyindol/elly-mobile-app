@@ -29,7 +29,11 @@ bool canManageUser(int myLevel, Iterable<String> targetRoles) => maxRoleLevel(ta
 /// Panel create without roles gets ADMIN (backend default) — only offered to callers who could assign ADMIN.
 bool canUseDefaultAdminRole(int myLevel) => myLevel >= roleLevel('ADMIN');
 
-List<String> rolesOf(Map<String, dynamic> user) => [for (final r in (user['roles'] as List? ?? const [])) '$r'];
+/// Role names of a user row; a non-list `roles` value counts as none (never throws).
+List<String> rolesOf(Map<String, dynamic> user) {
+  final roles = user['roles'];
+  return roles is List ? [for (final r in roles) '$r'] : const [];
+}
 
 /// "Ad Soyad", or the username when both are empty (admin `useMyFullName`).
 String displayNameOf(Map<String, dynamic>? user) {
@@ -133,23 +137,36 @@ String userErrorText(Object error) {
 
 // ── 2FA setup ──────────────────────────────────────────────────────────────────────────────────────
 
-/// The backend's `qrUri` (TotpService.buildQrUri) is only opened when it is a TOTP URI for this very [secret]:
-/// a server value must not launch an arbitrary scheme or a different key.
+/// RFC 4648 base32 alphabet (TotpService secrets).
+final _base32 = RegExp(r'^[A-Z2-7]+=*$');
+
+/// The backend's `qrUri` (TotpService.buildQrUri: `otpauth://totp/<label>?secret&issuer&algorithm=SHA1&digits=6
+/// &period=30`) is only opened when it is exactly that for this very [secret]: no port / user info / fragment,
+/// only those parameters, each once, with the backend's fixed values — a server value must not launch another
+/// scheme, a different key (`secret=X&secret=Y`: apps may read the first) or unexpected options (`image=`).
 bool isValidOtpauthUri(String uri, String secret) {
   final parsed = Uri.tryParse(uri);
   if (parsed == null || parsed.scheme != 'otpauth' || parsed.host != 'totp') return false;
-  if (secret.isEmpty || parsed.pathSegments.isEmpty) return false;
-  return parsed.queryParameters['secret'] == secret;
+  if (parsed.hasPort || parsed.userInfo.isNotEmpty || parsed.hasFragment) return false;
+  if (!_base32.hasMatch(secret) || parsed.pathSegments.isEmpty) return false;
+  const fixed = {'algorithm': 'SHA1', 'digits': '6', 'period': '30'};
+  final params = parsed.queryParametersAll;
+  for (final e in params.entries) {
+    // A repeated `secret` is only accepted when every copy is this secret (apps differ in which one they read).
+    if (e.key == 'secret') {
+      if (e.value.any((v) => v != secret)) return false;
+      continue;
+    }
+    if (e.value.length != 1) return false;
+    if (e.key != 'issuer' && fixed[e.key] != e.value.single) return false; // unknown key → null → rejected
+  }
+  return params.containsKey('secret');
 }
 
 /// Base32 secret in groups of four ("ABCD EFGH …") for reading/typing; masked: same length, all "•".
 String formatSecret(String secret, {bool masked = false}) {
-  final chars = masked ? '•' * secret.length : secret;
-  final groups = <String>[];
-  for (var i = 0; i < chars.length; i += 4) {
-    groups.add(chars.substring(i, i + 4 > chars.length ? chars.length : i + 4));
-  }
-  return groups.join(' ');
+  final runes = masked ? List.filled(secret.runes.length, 0x2022) : secret.runes.toList(); // by code point
+  return [for (var i = 0; i < runes.length; i += 4) String.fromCharCodes(runes.skip(i).take(4))].join(' ');
 }
 
 /// Profile "İzinler": `posts:read` keys grouped by module, both sorted (admin `groupPermissionsByModule`).

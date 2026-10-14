@@ -46,7 +46,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ]);
   }
 
+  bool _checking = false;
+
+  /// GET /auth/mfa/setup turns an enabled 2FA off (backend `initMfaSetup` is unconditional) → the status is
+  /// re-read first; a stale "Kapalı" card must never start a setup that disables 2FA.
   Future<void> _enable() async {
+    setState(() => _checking = true);
+    bool enabledNow;
+    try {
+      enabledNow = await _loadMfa();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _checking = false);
+        showAppSnackBar(context, '2FA durumu doğrulanamadı: $e', error: true);
+      }
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _checking = false);
+    if (enabledNow) {
+      setState(() {
+        _mfa = Future.value(true);
+      });
+      showAppSnackBar(context, '2FA bu hesapta zaten etkin.');
+      return;
+    }
     final enabled = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => MfaSetupScreen(apiService: _api, launcher: widget.launcher),
@@ -129,6 +153,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'Authenticator uygulamasıyla üretilen tek kullanımlık kod ile hesabınıza ekstra güvenlik katmanı ekleyin.',
                 style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.7)),
               ),
+              if (!loading && !snapshot.hasError && !enabled) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Kurulum yarım kaldıysa Authenticator\'daki eski "Elly CMS" kaydını silin; her kurulum yeni anahtar '
+                  'üretir.',
+                  key: const ValueKey('mfa_stale_note'),
+                  style: TextStyle(fontSize: 12, color: scheme.onSurface.withValues(alpha: 0.75)),
+                ),
+              ],
               const SizedBox(height: 12),
               if (loading)
                 const SizedBox.square(
@@ -155,8 +188,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               else
                 ElevatedButton.icon(
                   key: const ValueKey('mfa_enable'),
-                  onPressed: _enable,
-                  icon: const Icon(Icons.add_moderator_rounded),
+                  onPressed: _checking ? null : _enable,
+                  icon: _checking
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, semanticsLabel: 'Kontrol ediliyor'),
+                        )
+                      : const Icon(Icons.add_moderator_rounded),
                   label: const Text('Etkinleştir'),
                 ),
             ],

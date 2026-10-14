@@ -48,4 +48,26 @@ void main() {
     expect(rabbitErrorText(ApiException('x', statusCode: 409)), 'Queue şu an kullanımda');
     expect(rabbitErrorText(ApiException('başka', statusCode: 400)), 'başka');
   });
+
+  test('republish target: DLQ → main queue, anything else → none (chosen on purpose)', () {
+    expect(republishTargetFor('email-queue.dlq'), 'email-queue');
+    expect(republishTargetFor('orders-dlq'), 'orders');
+    expect(republishTargetFor('a_DLQ'), 'a');
+    expect(republishTargetFor('email-queue'), '');
+    expect(republishTargetFor('.dlq'), '');
+  });
+
+  test('blank content type is validated as JSON (it is sent as application/json)', () {
+    expect(republishPayloadError('{bad', ''), isNotNull);
+    expect(republishPayloadError('{bad', '  '), isNotNull);
+  });
+
+  test('preview: clipped before indenting; bidi controls visible; full view indents everything', () {
+    final big = '{"a":"${'x' * 10010}"}';
+    expect(payloadPreview(big), startsWith('{"a":"x'), reason: 'clipped JSON is not re-indented');
+    expect(payloadPreview(big), endsWith('karakter daha)'));
+    expect(payloadFull(big), startsWith('{\n  "a": "x'));
+    expect(revealBidi('a\u202Eb\u2066c'), 'a⟨U+202E⟩b⟨U+2066⟩c');
+    expect(prettyPayload('{"a":{},"b":[ ],"c":"x,y:{"}'), '{\n  "a": {},\n  "b": [],\n  "c": "x,y:{"\n}');
+  });
 }

@@ -7,6 +7,7 @@ import '../../services/text_format.dart';
 import '../../services/user_admin.dart';
 import '../../widgets/app_drawer.dart' show avatarInitials;
 import '../../widgets/app_scaffold.dart';
+import '../../widgets/app_snack_bar.dart';
 import '../../widgets/state_views.dart';
 import '../../widgets/status_badge.dart';
 import 'change_password_screen.dart';
@@ -34,10 +35,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// Always refetched on open (the drawer's copy may be stale); a cached profile stays visible meanwhile.
   Future<void> _load() async {
     setState(() => _error = null);
+    final auth = context.read<AuthProvider>();
     try {
-      await context.read<AuthProvider>().fetchProfile();
+      await auth.fetchProfile();
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (!mounted) return;
+      // A cached profile stays on screen: say the refresh failed instead of silently showing stale data.
+      if (auth.profile != null) {
+        showAppSnackBar(context, 'Profil yenilenemedi: $e', error: true);
+      } else {
+        setState(() => _error = e.toString());
+      }
     }
   }
 

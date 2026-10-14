@@ -237,6 +237,12 @@ void main() {
         await pumpCard(tester, settings: true, canEditLimit: true);
         await tester.enterText(key('storage_limit_field'), input);
         await tester.tap(key('storage_limit_save'));
+        await tester.pumpAndSettle();
+        if (bytes < _gib) {
+          // Limiti düşürmek önce onay ister.
+          expect(backend.requestsTo('/quota/limit'), isEmpty);
+          await tester.tap(key('storage_limit_confirm'));
+        }
         await settle(tester);
         expect(jsonDecode(backend.requestsTo('/quota/limit').single.body), {
           'limitBytes': bytes,
@@ -336,10 +342,6 @@ void main() {
       () {
         expect(gbToBytes('0.0000000001'), isNull);
       },
-      skip:
-          'BULGU (düşük, lib/widgets/storage_quota_card.dart gbToBytes): "0.0000000001" GB > 0 geçiyor ama '
-          'yuvarlanınca 0 bayt oluyor -> PUT limitBytes=0 (tüm yüklemeler reddedilir). Öneri: sonucu `bytes > 0` ile '
-          'doğrula (null döndür).',
     );
 
     test(
@@ -347,10 +349,6 @@ void main() {
       () {
         expect(() => gbToBytes('9' * 300), returnsNormally);
       },
-      skip:
-          'BULGU (düşük, lib/widgets/storage_quota_card.dart gbToBytes): 300 haneli giriş gb sonlu ama gb*1024³ '
-          'Infinity -> round() "Unsupported operation: Infinity or NaN toInt" fırlatır; _setLimit yakalamaz '
-          '(işlenmeyen istisna). Öneri: çarpım sonucunun isFinite kontrolü.',
     );
   });
 

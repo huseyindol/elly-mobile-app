@@ -204,4 +204,9 @@ void main() {
       'posts': ['read', 'update'],
     });
   });
+
+  test('formatSecret groups by code point (no split surrogate)', () {
+    expect(formatSecret('ABC😀DEF'), 'ABC😀 DEF');
+    expect(formatSecret('ABC😀DEF', masked: true), '•••• •••');
+  });
 }

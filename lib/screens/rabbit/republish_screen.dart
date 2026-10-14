@@ -30,7 +30,8 @@ class _RepublishScreenState extends State<RepublishScreen> {
 
   late final ApiService _api = widget.apiService ?? ApiService();
   final _formKey = GlobalKey<FormState>();
-  final _target = TextEditingController(text: defaultRepublishTarget);
+  // DLQ source → its main queue; otherwise empty: the target is chosen on purpose (no silent email-queue).
+  late final _target = TextEditingController(text: republishTargetFor(widget.sourceQueue));
   final _contentType = TextEditingController(text: 'application/json');
   final _payload = TextEditingController();
   bool _sending = false;
@@ -41,7 +42,8 @@ class _RepublishScreenState extends State<RepublishScreen> {
     super.initState();
     final m = widget.message;
     if (m != null) {
-      _payload.text = prettyPayload('${m['payload'] ?? ''}');
+      // Raw text: re-indenting would re-encode numbers / whitespace and publish a different message.
+      _payload.text = '${m['payload'] ?? ''}';
       final ct = (m['properties'] is Map) ? (m['properties'] as Map)['content_type'] : null;
       if (ct is String && ct.isNotEmpty) _contentType.text = ct;
     }
@@ -67,7 +69,7 @@ class _RepublishScreenState extends State<RepublishScreen> {
       title: 'Mesajı Publish Et',
       message:
           'Mesaj "$target" kuyruğuna publish edilecek ve tüketiciler tarafından yeniden işlenecek (ör. e-posta '
-          'tekrar gönderilebilir).',
+          'tekrar gönderilebilir). Kaynak kuyruktaki mesaj silinmez (kopyalanır).',
       confirmLabel: 'Publish Et',
       confirmKey: const ValueKey('confirm_republish_button'),
     );
@@ -128,7 +130,14 @@ class _RepublishScreenState extends State<RepublishScreen> {
                 autocorrect: false,
                 enableSuggestions: false,
                 style: const TextStyle(fontFamily: 'monospace'),
-                decoration: fieldDecoration(scheme, label: '${_labels['target']} *', hint: defaultRepublishTarget),
+                decoration: fieldDecoration(
+                  scheme,
+                  label: '${_labels['target']} *',
+                  hint: 'email-queue',
+                  helper: republishTargetFor(widget.sourceQueue).isEmpty
+                      ? 'Kaynak bir DLQ değil: mesajın gideceği kuyruğu bilinçli seçin.'
+                      : null,
+                ),
                 validator: (v) => (v ?? '').trim().isEmpty ? 'Hedef queue zorunludur' : null,
                 onChanged: _markDirty,
               ),
