@@ -6,6 +6,7 @@ import '../providers/auth_provider.dart';
 import '../screens/account/profile_screen.dart';
 import '../screens/account/settings_screen.dart';
 import '../screens/assets_screen.dart';
+import '../screens/chat/chat_screen.dart';
 import '../screens/coming_soon_screen.dart';
 import '../screens/crud/generic_crud_list_screen.dart';
 import '../screens/mail/email_logs_screen.dart';
@@ -20,6 +21,7 @@ bool isNavItemVisible(AuthProvider auth, NavItem item) => item.permission == nul
 /// Mobile screen of [item]; null = not on mobile yet ("yakında" placeholder).
 Widget? navScreen(NavItem item) => switch (item.id) {
   'assets' => const AssetsScreen(),
+  'chat' => const ChatScreen(),
   'mail-accounts' => const MailAccountsScreen(),
   'email-templates' => const EmailTemplatesScreen(),
   'email-logs' => const EmailLogsScreen(),

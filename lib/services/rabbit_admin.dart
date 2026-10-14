@@ -4,6 +4,9 @@ library;
 import 'dart:convert';
 
 import 'api_service.dart';
+import 'text_format.dart';
+
+export 'text_format.dart' show revealBidi;
 
 const rabbitBase = '/admin/rabbit';
 
@@ -100,13 +103,6 @@ String clipText(String text, {int max = 10000}) {
   if (unit >= 0xD800 && unit <= 0xDBFF) end--; // high surrogate: keep the pair together
   return '${text.substring(0, end)}\n… (${text.length - end} karakter daha)';
 }
-
-/// Bidi controls (U+202A–202E, U+2066–2069) in an untrusted payload could reorder what the admin reads
-/// ("Trojan Source"); they are shown as visible `⟨U+202E⟩` markers instead.
-String revealBidi(String text) => text.replaceAllMapped(
-  RegExp('[\u202A-\u202E\u2066-\u2069]'),
-  (m) => '⟨U+${m[0]!.codeUnitAt(0).toRadixString(16).toUpperCase()}⟩',
-);
 
 /// What the message card shows: clipped first (a huge payload is never re-indented on the UI thread), then
 /// indented (valid JSON only), bidi controls visible.

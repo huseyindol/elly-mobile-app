@@ -1,5 +1,6 @@
 import 'package:elly_mobile_app/config/nav_config.dart';
 import 'package:elly_mobile_app/providers/auth_provider.dart';
+import 'package:elly_mobile_app/screens/chat/chat_screen.dart';
 import 'package:elly_mobile_app/screens/coming_soon_screen.dart';
 import 'package:elly_mobile_app/screens/dashboard_screen.dart';
 import 'package:elly_mobile_app/screens/mail/email_logs_screen.dart';
@@ -52,7 +53,7 @@ void main() {
     await settle(tester);
   }
 
-  test('İletişim items have real screens; only chat is still a placeholder', () {
+  test('İletişim items all have real screens (chat included)', () {
     final group = NavConfig.groups.firstWhere((g) => g.title == 'İletişim');
     expect(
       {for (final i in group.items) i.id: navScreen(i)?.runtimeType},
@@ -60,7 +61,7 @@ void main() {
         'mail-accounts': MailAccountsScreen,
         'email-templates': EmailTemplatesScreen,
         'email-logs': EmailLogsScreen,
-        'chat': null,
+        'chat': ChatScreen,
       },
     );
   });

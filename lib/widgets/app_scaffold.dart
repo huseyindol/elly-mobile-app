@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../screens/notifications_screen.dart';
 import 'app_drawer.dart';
 import 'save_bar.dart';
 
@@ -36,7 +37,8 @@ class AmbientBackground extends StatelessWidget {
   }
 }
 
-/// Standard screen: blurred glass app bar over [AmbientBackground], optional drawer.
+/// Standard screen: blurred glass app bar over [AmbientBackground], optional drawer; drawer screens also get the
+/// notification bell.
 class AppScaffold extends StatelessWidget {
   final String title;
   final Widget body;
@@ -87,6 +89,7 @@ class AppScaffold extends StatelessWidget {
               title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
               actions: [
                 ...?actions,
+                if (navId != null) const NotificationBell(), // section screens (sub-screens keep their actions)
                 if (saveInAppBar)
                   saveBar.loading
                       ? const Padding(

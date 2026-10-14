@@ -1,6 +1,7 @@
 import 'package:elly_mobile_app/config/app_theme.dart';
 import 'package:elly_mobile_app/providers/auth_provider.dart';
 import 'package:elly_mobile_app/screens/account/settings_screen.dart';
+import 'package:elly_mobile_app/screens/chat/chat_screen.dart';
 import 'package:elly_mobile_app/screens/coming_soon_screen.dart';
 import 'package:elly_mobile_app/screens/dashboard_screen.dart';
 import 'package:elly_mobile_app/screens/users/users_screen.dart';
@@ -11,6 +12,7 @@ import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 
 import 'helpers/fake_backend.dart';
+import 'helpers/fake_realtime.dart';
 
 const _allCardPermissions = [
   'posts:read',
@@ -212,13 +214,34 @@ void main() {
     expect(inCard('mail-accounts', '1'), findsOneWidget);
   });
 
-  testWidgets('tapping a card of an area not on mobile yet opens the "yakında" screen', (tester) async {
-    await pumpDashboard(tester, ['chat:read']);
+  testWidgets('"Chat Grupları" card opens the chat screen', (tester) async {
+    final live = FakeRealtime(backend);
+    addTearDown(live.dispose);
+    backend.ok('/chat/tenant/t1/groups', []);
+    tester.view.physicalSize = const Size(800, 3000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.runAsync(() => backend.signIn(auth, ['chat:read']));
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthProvider>.value(value: auth),
+          ...live.providers,
+        ],
+        child: MaterialApp(
+          theme: appTheme,
+          home: DashboardScreen(apiService: backend.api),
+        ),
+      ),
+    );
+    await settle(tester);
 
     await tester.tap(card('chat'));
+    await settle(tester);
     await tester.pumpAndSettle();
 
-    expect(find.byType(ComingSoonScreen), findsOneWidget);
+    expect(find.byType(ChatScreen), findsOneWidget);
+    expect(find.byType(ComingSoonScreen), findsNothing);
     expect(find.descendant(of: find.byType(AppBar), matching: find.text('Chat')), findsOneWidget);
   });
 

@@ -130,7 +130,7 @@ packages:
     source: hosted
     version: "0.4.1"
   fake_async:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: fake_async
       sha256: "5368f224a74523e8d2e7399ea1638b37aecfca824a3cc4dfdf77bf1fa905ac44"
@@ -817,6 +817,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.12.2"
+  stomp_dart_client:
+    dependency: "direct main"
+    description:
+      name: stomp_dart_client
+      sha256: "54a73fd73f160a2956036fa39539e283f58535c3e84bff3a40e16003dd320123"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.0.1"
   stream_channel:
     dependency: transitive
     description:
@@ -953,6 +961,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.1"
+  web_socket:
+    dependency: transitive
+    description:
+      name: web_socket
+      sha256: "34d64019aa8e36bf9842ac014bb5d2f5586ca73df5e4d9bf5c936975cae6982c"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.1"
   webdriver:
     dependency: transitive
     description:

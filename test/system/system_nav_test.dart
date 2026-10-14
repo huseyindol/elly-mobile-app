@@ -22,7 +22,7 @@ void main() {
     auth = backend.newAuth();
   });
 
-  test('Sistem items and the profile have real screens; only chat is still "yakında"', () {
+  test('Sistem items and the profile have real screens; no drawer item is "yakında" any more', () {
     final system = NavConfig.groups.firstWhere((g) => g.title == 'Sistem');
     expect(
       {for (final i in system.items) i.id: navScreen(i).runtimeType},
@@ -34,7 +34,7 @@ void main() {
         for (final i in g.items)
           if (i.id != NavConfig.dashboard.id && navScreen(i) == null) i.id,
     ];
-    expect(placeholders, ['chat']);
+    expect(placeholders, isEmpty);
   });
 
   for (final (id, type, permission) in [

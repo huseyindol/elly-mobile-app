@@ -20,6 +20,10 @@ abstract final class AppColors {
   /// SnackBar background (white text ≈ 14:1); error SnackBars use [error] (white text 5.0:1).
   static const snackBar = Color(0xFF2E2E38);
 
+  /// Filled surfaces with white body text (indigo-600, 6.3:1 AA): own chat bubble, unread badge. [primary] itself is
+  /// below AA for small white text.
+  static const primaryStrong = Color(0xFF4F46E5);
+
   static const success = Color(0xFF34D399);
   static const warning = Color(0xFFFBBF24);
 }

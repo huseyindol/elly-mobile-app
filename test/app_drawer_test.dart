@@ -1,5 +1,6 @@
 import 'package:elly_mobile_app/config/nav_config.dart';
 import 'package:elly_mobile_app/providers/auth_provider.dart';
+import 'package:elly_mobile_app/screens/chat/chat_screen.dart';
 import 'package:elly_mobile_app/screens/coming_soon_screen.dart';
 import 'package:elly_mobile_app/screens/dashboard_screen.dart';
 import 'package:elly_mobile_app/widgets/app_drawer.dart';
@@ -8,15 +9,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'helpers/fake_backend.dart';
+import 'helpers/fake_realtime.dart';
 
 void main() {
   late FakeBackend backend;
   late AuthProvider auth;
+  late FakeRealtime live;
 
   setUp(() {
-    backend = FakeBackend();
+    backend = FakeBackend()..ok('/chat/tenant/t1/groups', []);
     auth = backend.newAuth();
+    live = FakeRealtime(backend);
   });
+
+  tearDown(() => live.dispose());
 
   List<NavItem> allItems() => [for (final g in NavConfig.groups) ...g.items];
 
@@ -27,8 +33,11 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.runAsync(() => backend.signIn(auth, permissions));
     await tester.pumpWidget(
-      ChangeNotifierProvider<AuthProvider>.value(
-        value: auth,
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthProvider>.value(value: auth),
+          ...live.providers,
+        ],
         child: MaterialApp(home: DashboardScreen(apiService: backend.api)),
       ),
     );
@@ -79,16 +88,17 @@ void main() {
     expect(ys, orderedEquals([...ys]..sort()), reason: 'drawer order = admin sidebar order');
   });
 
-  testWidgets('admin areas not on mobile yet open the "yakında" placeholder', (tester) async {
+  testWidgets('chat is no longer "yakında": it opens the chat screen', (tester) async {
     await openDrawer(tester, ['chat:read']);
-    expect(find.descendant(of: nav('chat'), matching: find.text('Yakında')), findsOneWidget);
+    expect(find.descendant(of: nav('chat'), matching: find.text('Yakında')), findsNothing);
 
     await tester.tap(nav('chat'));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
     await tester.pumpAndSettle();
 
-    expect(find.byType(ComingSoonScreen), findsOneWidget);
+    expect(find.byType(ChatScreen), findsOneWidget);
+    expect(find.byType(ComingSoonScreen), findsNothing);
     expect(find.descendant(of: find.byType(AppBar), matching: find.text('Chat')), findsOneWidget);
-    expect(find.textContaining('yakında'), findsOneWidget);
   });
 
   testWidgets('profile header opens the profile placeholder', (tester) async {
@@ -130,13 +140,14 @@ void main() {
     expect(tile(tester, 'dashboard').selected, isFalse);
 
     await tester.tap(nav('chat'));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
     await tester.pumpAndSettle();
     expect(find.descendant(of: find.byType(AppBar), matching: find.text('Chat')), findsOneWidget);
 
     // Stack is [dashboard, chat]: one back press returns to the dashboard.
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(find.byType(ComingSoonScreen), findsNothing);
+    expect(find.byType(ChatScreen), findsNothing);
     expect(find.descendant(of: find.byType(AppBar), matching: find.text('Gösterge Paneli')), findsOneWidget);
   });
 

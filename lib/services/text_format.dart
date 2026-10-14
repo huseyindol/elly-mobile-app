@@ -67,3 +67,10 @@ String formatDateTimeTr(Object? value) {
   final d = date.toLocal();
   return '${two(d.day)}.${two(d.month)}.${d.year} ${two(d.hour)}:${two(d.minute)}';
 }
+
+/// Bidi controls (U+202A–202E, U+2066–2069) in untrusted text (RabbitMQ payloads, chat messages) could reorder what
+/// the admin reads ("Trojan Source"); they are shown as visible `⟨U+202E⟩` markers instead.
+String revealBidi(String text) => text.replaceAllMapped(
+  RegExp('[\u202A-\u202E\u2066-\u2069]'),
+  (m) => '⟨U+${m[0]!.codeUnitAt(0).toRadixString(16).toUpperCase()}⟩',
+);
