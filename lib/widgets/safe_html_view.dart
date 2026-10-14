@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -7,7 +6,7 @@ import 'state_views.dart';
 
 /// Renders untrusted HTML (e-mail preview) like the admin's `<iframe sandbox="">`: JavaScript off, every
 /// navigation after the initial load blocked, and [safePreviewDocument] (CSP: no network request at all), which
-/// runs in a background isolate (parsing hostile markup can be slow). Key it by [html] to render new content.
+/// runs in a background isolate killed after 5 s (parsing hostile markup can be slow). Key it by [html] to render new content.
 class SafeHtmlView extends StatefulWidget {
   final String html;
   final String semanticsLabel;
@@ -21,6 +20,7 @@ class SafeHtmlView extends StatefulWidget {
 class _SafeHtmlViewState extends State<SafeHtmlView> {
   WebViewController? _controller;
   bool _loaded = false;
+  bool _timedOut = false;
 
   @override
   void initState() {
@@ -29,8 +29,9 @@ class _SafeHtmlViewState extends State<SafeHtmlView> {
   }
 
   Future<void> _prepare() async {
-    final document = await compute(safePreviewDocument, widget.html);
+    final document = await sanitizePreviewInBackground(widget.html);
     if (!mounted) return;
+    if (document == null) return setState(() => _timedOut = true);
     setState(
       () => _controller = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.disabled)
@@ -50,6 +51,12 @@ class _SafeHtmlViewState extends State<SafeHtmlView> {
   @override
   Widget build(BuildContext context) {
     final controller = _controller;
+    if (_timedOut) {
+      return const EmptyView(
+        icon: Icons.warning_amber_rounded,
+        message: 'Önizleme için çok karmaşık (hazırlama süresi aşıldı).',
+      );
+    }
     if (controller == null) return const LoadingView(label: 'Önizleme hazırlanıyor');
     return Semantics(
       label: widget.semanticsLabel,

@@ -99,7 +99,9 @@ void main() {
     });
 
     test('implied end tags (p, li, td, tr…), void and self-closed elements do not count as nesting', () {
-      final rows = '<table>${'<tr><td><p>x<br><img src=x><span/>' * (maxPreviewDepth * 2)}</table>';
+      // 1600 rows × 6 tags stays under the tag cap; a naive counter would see > 4000 levels.
+      final rows = '<table>${'<tr><td><p>x<br><img src=x><span/>' * 1600}</table>';
+      expect(estimatedNestingDepth(rows), lessThan(10));
       expect(previewLimitError(rows), isNull);
       expect(previewLimitError('${'<div>' * 100}${'</div>' * 100}' * 50), isNull, reason: 'siblings, not depth');
     });

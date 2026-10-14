@@ -167,7 +167,7 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
   - **Önizleme:** `POST /email-templates/{key}/preview {data}` **kayıtlı** sürümü backend'de render eder (açılışta
     admin varsayılan verisiyle; "Test verisi" JSON nesnesi). Dönen HTML **güvenilmez** → yalnız `SafeHtmlView`:
     JavaScript kapalı, ilk `about:blank` yüklemesinden sonra her gezinme engelli (`isPreviewNavigationAllowed`),
-    `safePreviewDocument` (**`compute` ile arka plan isolate'ında**) → `<head>` başına CSP `default-src 'none'` (yalnız
+    `safePreviewDocument` (**arka plan isolate'ında, 5 sn'de öldürülür**) → `<head>` başına CSP `default-src 'none'` (yalnız
     inline stil + `data:` görsel/font) + kendi viewport'umuz; script/noscript/iframe/frame/object/embed/applet/portal/
     link/base/`meta[http-equiv]`/şablonun viewport'u ile **svg, math** (html paketi foreign content `<style>`'ını
     tarayıcıdan farklı ayrıştırıyor → mXSS) ve SVG animasyon öğeleri (`animate`, `set`, `animateTransform`,
@@ -175,8 +175,15 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
     CSS (`style` özniteliği + `<style>`): `cleanCss` önce CSS kaçışlarını çözer/yorumları siler, sonra `@import`
     kuralını düşürür, `data:image/` dışı `url()` → `none`, `expression(`/`behavior:`/`-moz-binding:` etkisiz. Çıktı
     yeniden parse + sanitize edilir, **sabit nokta** olana kadar (en çok 3 tur; olmazsa güvenli hata belgesi).
-    **Sınırlar** (parse'tan önce, `previewLimitError`): >1 MB "çok büyük", iç içelik >2000 (`p/li/td/tr…` ve void
-    öğeler sayılmaz) "çok karmaşık" → ekranda mesaj, WebView açılmaz. Uzak görseller bilerek görünmez; ekrandaki
+    **Sınırlar** (parse'tan önce, `previewLimitError`): >1 MB "çok büyük"; >10.000 `<harf` açılış etiketi ya da
+    tahmini iç içelik >2000 "çok karmaşık" → ekranda mesaj, WebView açılmaz. `estimatedNestingDepth` WHATWG
+    tokenizer'ı gibi tarar (yorum/`<!-->`/bogus yorum/CDATA, yalnız `=`'ten sonra tırnaklı öznitelik, raw text kendi
+    kapanışına kadar, HTML öğesinde `/>` yok sayılır, SVG/MathML breakout) ve açık öğe yığını tutar: kapanış etiketi
+    yalnız eşleşen açık öğeye kadar pop eder, "special" öğede durur — eşsiz kapanış derinliği düşürmez; tahmin
+    parser'ın derinliğinin altına inmemeli (`safe_html_limits_test`: özellik testi + saldırı vektörleri). Tahminci
+    en iyi çaba (egzotik yanlış iç içelikte — li/template/tablo karışımı — sapabilir); kesin üst sınır etiket sayısı
+    tavanı + `sanitizePreviewInBackground`: sanitize öldürülebilir bir isolate'ta, 5 sn'de bitmezse öldürülür ve
+    "hazırlama süresi aşıldı" gösterilir. Uzak görseller bilerek görünmez; ekrandaki
     daraltılabilir not "yerleşim bozuk görünebilir" der. Widget testlerinde WebView yerine `htmlViewBuilder` /
     `previewViewBuilder` seam'i.
   - **E-posta logları** (`emails:read`): `GET /emails?status=&sort=id,desc` + page/size; durum çipi sunucu filtresi
