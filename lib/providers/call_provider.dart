@@ -239,15 +239,20 @@ class CallProvider extends ChangeNotifier {
           if (message != null) _notify(CallNotice(message));
         case CallRemoteSdp(:final type, :final sdp):
           final callId = _machine.callId!;
+          final generation = _machine.generation;
           _enqueue((m) async {
             final answer = await m.setRemote(type, sdp);
+            if (generation != _machine.generation || _media != m) return;
             _remoteSet = true;
             final pending = List.of(_pendingIce);
             _pendingIce.clear();
             for (final c in pending) {
+              if (generation != _machine.generation || _media != m) return;
               await m.addIce(c.candidate, c.sdpMid, c.sdpMLineIndex).catchError((_) {});
             }
-            if (answer != null) _send(StompDest.rtcSdp(callId), {'sdpType': 'answer', 'sdp': answer});
+            if (answer != null && generation == _machine.generation && _media == m) {
+              _send(StompDest.rtcSdp(callId), {'sdpType': 'answer', 'sdp': answer});
+            }
           });
         case CallRemoteIce():
           _enqueue((m) async {
@@ -297,8 +302,10 @@ class CallProvider extends ChangeNotifier {
           _arm(connectGuard, 'Bağlantı kurulamadı. Ağınız doğrudan bağlantıya izin vermiyor olabilir.');
           if (_machine.isCaller) {
             final callId = _machine.callId!;
+            final generation = _machine.generation;
             _enqueue((m) async {
               final offer = await m.createOffer();
+              if (generation != _machine.generation || _media != m) return;
               _send(StompDest.rtcSdp(callId), {'sdpType': 'offer', 'sdp': offer});
             });
           }

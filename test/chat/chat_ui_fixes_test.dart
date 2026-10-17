@@ -173,7 +173,7 @@ void main() {
     history = [msg('m1', content: 'selam https://elly.dev'), msg('m2', sender: me, content: 'benimki', minute: 1)];
     await pump(tester, conversation());
     final other = tester.getSemantics(find.byKey(const ValueKey('chat_msg_m1')));
-    expect(other.label, matches(RegExp(r'^user5, \d\d:\d\d, Admin: selam https://elly\.dev$')));
+    expect(other.label, matches(RegExp(r'^user5, (?:\d\d\.\d\d )?\d\d:\d\d, Admin: selam https://elly\.dev$')));
     final actions = other
         .getSemanticsData()
         .customSemanticsActionIds!
@@ -183,7 +183,7 @@ void main() {
     expect(actions, isNot(contains('Mesajı sil')));
 
     final own = tester.getSemantics(find.byKey(const ValueKey('chat_msg_m2')));
-    expect(own.label, matches(RegExp(r'^Siz, \d\d:\d\d: benimki$')));
+    expect(own.label, matches(RegExp(r'^Siz, (?:\d\d\.\d\d )?\d\d:\d\d: benimki$')));
     final ownActions = own
         .getSemanticsData()
         .customSemanticsActionIds!

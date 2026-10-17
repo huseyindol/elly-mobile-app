@@ -74,6 +74,7 @@ class _CallScreenState extends State<CallScreen> {
         : (call.peerUserId != null ? 'Kullanıcı #${call.peerUserId}' : 'Bilinmeyen arayan');
     final status = _status(call);
     final since = call.connectedAt;
+    final elapsed = since == null ? null : _clock(DateTime.now().difference(since));
 
     final info = Column(
       mainAxisSize: MainAxisSize.min,
@@ -113,13 +114,13 @@ class _CallScreenState extends State<CallScreen> {
             'ID ${call.peerUserId}',
             style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.7), fontFamily: 'monospace'),
           ),
-        if (since != null) ...[
+        if (elapsed != null) ...[
           const SizedBox(height: 8),
           Semantics(
-            label: 'Görüşme süresi ${_clock(DateTime.now().difference(since))}',
+            label: 'Görüşme süresi $elapsed',
             excludeSemantics: true,
             child: Text(
-              _clock(DateTime.now().difference(since)),
+              elapsed,
               key: const ValueKey('call_duration'),
               style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()], fontSize: 18),
             ),
@@ -169,7 +170,16 @@ class _CallScreenState extends State<CallScreen> {
                             ],
                             const Spacer(),
                             const SizedBox(height: 24),
-                            _controls(call, scheme),
+                            DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: showRemote ? scheme.surface.withValues(alpha: 0.75) : null,
+                                borderRadius: BorderRadius.circular(24),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                child: _controls(call, scheme),
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -309,21 +319,21 @@ class _CallButton extends StatelessWidget {
             width: 92,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Opacity(
-                    opacity: enabled ? 1 : 0.45,
-                    child: Container(
+              child: Opacity(
+                opacity: enabled ? 1 : 0.45,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
                       width: 64,
                       height: 64,
                       decoration: BoxDecoration(color: background, shape: BoxShape.circle),
                       child: Icon(icon, color: foreground, size: 30),
                     ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(label, textAlign: TextAlign.center, maxLines: 2, style: const TextStyle(fontSize: 13)),
-                ],
+                    const SizedBox(height: 6),
+                    Text(label, textAlign: TextAlign.center, maxLines: 2, style: const TextStyle(fontSize: 13)),
+                  ],
+                ),
               ),
             ),
           ),

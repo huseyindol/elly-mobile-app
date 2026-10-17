@@ -278,7 +278,7 @@ void main() {
         'remote:offer',
         'ice:new-early',
       ], reason: 'WebRTC rejects a candidate added before the remote description: it would be lost');
-    }, skip: _staleRemoteFlagFinding);
+    });
 
     test('no answer SDP is sent for the call that was hung up', () async {
       final (gate, sentBefore) = await staleSetRemote();
@@ -289,14 +289,6 @@ void main() {
         isEmpty,
         reason: 'a frame for a finished call id',
       );
-    }, skip: _staleAnswerFrameFinding);
+    });
   });
 }
-
-const _staleRemoteFlagFinding =
-    'BULGU (orta): CallProvider._apply(CallRemoteSdp) — await m.setRemote sonrası generation kontrolü yok; biten '
-    'çağrının yavaş setRemote\'u sonraki çağrıda _remoteSet=true yapar, o çağrının erken ICE adayı remote description\'dan '
-    'önce addCandidate\'e gider (WebRTC reddeder, aday kaybolur)';
-const _staleAnswerFrameFinding =
-    'BULGU (düşük): aynı yerde — biten çağrının setRemote\'u dönünce _send(rtcSdp(c1), answer) çağrısı sonlanmış '
-    'çağrı id\'sine /sdp answer çerçevesi gönderir (backend yok sayar, ama bitmiş çağrıya sinyal sızar)';

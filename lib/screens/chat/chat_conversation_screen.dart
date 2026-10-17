@@ -88,6 +88,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   String? _uploadingName;
   bool _loadingOlder = false;
   bool _deletingGroup = false;
+  bool _callingDm = false;
 
   /// Newest message shown while the user reads older ones (null = follow new messages).
   String? _frozenAt;
@@ -131,6 +132,8 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
 
   /// DM: calls the other member (the members list is the only place that says who it is).
   Future<void> _callDm(ChatGroup group, bool video) async {
+    if (_callingDm) return;
+    _callingDm = true;
     final me = context.read<AuthProvider>().userId;
     final call = context.read<CallProvider>();
     try {
@@ -144,6 +147,8 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
       await call.call(peer.userId, name.isEmpty ? '#${peer.userId}' : name, groupId: group.id, video: video);
     } catch (e) {
       if (mounted) showAppSnackBar(context, chatErrorText(e), error: true);
+    } finally {
+      _callingDm = false;
     }
   }
 

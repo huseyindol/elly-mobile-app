@@ -96,7 +96,7 @@ class CallSignal {
     return CallSignal(
       type,
       callId: callId as String?,
-      peerUserId: peer is int ? peer : null,
+      peerUserId: peer is int && peer > 0 ? peer : null,
       peerName: displayPeerName(str('peerDisplayName', 500) ?? ''),
       ringAll: json['ringAll'] == true,
       sdpType: sdpType == 'offer' || sdpType == 'answer' ? sdpType : null,

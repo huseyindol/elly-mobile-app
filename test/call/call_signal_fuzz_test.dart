@@ -369,17 +369,11 @@ void main() {
       }
     });
 
-    test(
-      'peerUserId: negative / zero ids are rejected',
-      () {
-        for (final v in [-1, 0, -9223372036854775808]) {
-          expect(parseMap({'type': 'RINGING', 'peerUserId': v})!.peerUserId, isNull, reason: '$v');
-        }
-      },
-      skip: _negativePeerAccepted()
-          ? 'FINDING (düşük): CallSignal.parse peerUserId için negatif/0 değeri kabul ediyor (is int); ekranda "ID -5" görünür'
-          : false,
-    );
+    test('peerUserId: negative / zero ids are rejected', () {
+      for (final v in [-1, 0, -9223372036854775808]) {
+        expect(parseMap({'type': 'RINGING', 'peerUserId': v})!.peerUserId, isNull, reason: '$v');
+      }
+    });
 
     test('numbers outside the JSON int range or in exponent form are not integers', () {
       for (final raw in ['99999999999999999999', '1e2', '1E2', '5.0', '0.5', '-0.0', '1e-5']) {
@@ -460,16 +454,14 @@ void main() {
       expect(s.peerName.length, lessThanOrEqualTo(81));
     });
 
-    test(
-      'implicit directional marks (LRM / RLM / ALM)',
-      () {
-        for (final u in [0x200E, 0x200F, 0x061C]) {
-          final c = String.fromCharCode(u);
-          expect(name('a${c}b'), isNot(contains(c)), reason: 'U+${u.toRadixString(16)} stays raw');
-        }
-      },
-      skip: 'FINDING (düşük): revealBidi U+200E/U+200F/U+061C (LRM/RLM/ALM) işaretlerini görünür yapmıyor; yalnız 202A–202E ve 2066–2069 kapsanıyor',
-    );
+    test('implicit directional marks (LRM / RLM / ALM)', () {
+      for (final u in [0x200E, 0x200F, 0x061C]) {
+        final c = String.fromCharCode(u);
+        final hex = u.toRadixString(16).toUpperCase().padLeft(4, '0');
+        expect(name('a${c}b'), isNot(contains(c)), reason: 'U+$hex stays raw');
+        expect(name('a${c}b'), 'a⟨U+$hex⟩b');
+      }
+    });
   });
 
   group('random fuzz (seeded)', () {
@@ -724,5 +716,3 @@ Object? _plausible(Random rnd, String key) => switch (key) {
   'sdpMLineIndex' => [-1, 0, 1, 63, 64][rnd.nextInt(5)],
   _ => 'r' * [0, 1, 500, 501][rnd.nextInt(4)],
 };
-
-bool _negativePeerAccepted() => CallSignal.parse('{"type":"RINGING","peerUserId":-5}')?.peerUserId == -5;

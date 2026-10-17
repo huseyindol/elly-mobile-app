@@ -420,15 +420,18 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
     (RINGING → `cancel`, BUSY/UNAVAILABLE/ERROR → yut) sırayla eşlenir (`_abandonedDials`; yeniden bağlanınca sıfırlanır)
     — aranan 30 sn boş çalmaz. Bitmiş çağrıya geç gelen ANSWERED → `hangup` (cancel ↔ answer yarışı). Çalarken
     ANSWERED (kendi cevabı yokken) = aynı hesap başka cihazda cevapladı → sessizce biter. `CallSignal.parse`: bilinmeyen
-    tip / UUID olmayan callId → null; SDP ≤64 KB, aday ≤2 KB, `sdpType` yalnız offer/answer; `peerDisplayName` (backend
-    oturumundaki kullanıcı adı — arayanın yazdığı metin değil) ve `reason` `safeChatText` + kısaltma; ekranda ayrıca "ID n".
+    tip / UUID olmayan callId → null; `peerUserId` yalnız pozitif tam sayı (`> 0`); SDP ≤64 KB, aday ≤2 KB, `sdpType`
+    yalnız offer/answer; `peerDisplayName` (backend oturumundaki kullanıcı adı — arayanın yazdığı metin değil) ve `reason`
+    `safeChatText` (`revealBidi`: U+061C, U+200E–200F, U+202A–202E, U+2066–2069 dahil) + kısaltma; ekranda ayrıca "ID n".
   - **Medya yalnız kullanıcının eylemiyle ve sinyalden ÖNCE:** arama → önce mikrofon/kamera (OS izni burada istenir)
     sonra dial; cevap → önce medya sonra `answer`. İzin reddi: arama hiç gönderilmez; gelen çağrı `reject` edilir
     (ring-all'da diğerleri çalmaya devam eder) + "Ayarlar" aksiyonlu SnackBar (`openAppSettings`). Görüntülü istekte kamera
     açılmazsa admin gibi sesliye düşer (bildirimle). Çalarken medya açılmaz. Medya `CallMedia` seam'i
     (`WebrtcCallMedia`: getUserMedia → RTCPeerConnection unified-plan; testte `FakeCallMedia`). Teklifi (**offer**) arayan
     ANSWERED'den sonra üretir; aranan offer'a answer döner. Uzak SDP/ICE tek seri kuyrukta (`_enqueue`, çağrı bitince
-    düşer); remote description'dan önce gelen ICE tamponlanır (≤100). Görüntülü çağrı hoparlörde, sesli ahizede başlar.
+    düşer; `await createOffer`/`setRemote`/`addIce` sonrası da generation/medya kimliği doğrulanır — biten çağrının geç
+    tamamlanan `setRemote`'u yeni çağrının `_remoteSet`/`_pendingIce` durumunu bozmaz ve eski `callId`'ye SDP sızdırmaz);
+    remote description'dan önce gelen ICE tamponlanır (≤100). Görüntülü çağrı hoparlörde, sesli ahizede başlar.
     Görüşme içinde sesliden görüntülüye geçiş yok (yeniden müzakere yok; admin'de de yok).
   - **Sonlandırma = medya bırakılır** (gizlilik): bitiş, karşı taraf kapatma, CALL_TAKEN/CANCELLED/TIMEOUT, oturum
     kapanışı (`reset`: kapatma çerçevesi, bildirim yok), uygulama arka plana (`hidden/paused` → `endForBackground`:
@@ -445,12 +448,14 @@ integration_test/                  # cihaz/simülatörde uçtan uca test
     üstüne ekran açardı). Geri tuşu çağrıdan çıkarmaz (`PopScope(canPop: false)`). Gelen: "Gelen çağrı" / "Gelen destek
     çağrısı" (+ ring-all açıklaması), Reddet · Sesli cevapla · Görüntülü cevapla (backend çağrı türü taşımaz; kamera
     yalnız istenirse); kabul edilince cevap düğmeleri kilitli. Giden: Aranıyor… → Çalıyor…, İptal. Görüşme: uzak video
-    (varsa; yoksa baş harfler), sağ üstte kendi önizleme (kamera açıkken), mikrofon, kamera aç/kapat + çevir (yalnız
+    (varsa; yoksa baş harfler; uzak video açıkken hem üst bilgi kartı hem alt kontrol çubuğu yarı saydam yüzey üzerinde),
+    sağ üstte kendi önizleme (kamera açıkken), mikrofon, kamera aç/kapat + çevir (yalnız
     kamera varsa), hoparlör, Kapat, süre. a11y: durum metni `liveRegion` (süre değil — her saniye duyurulmaz), route adı
-    "durum: ad"; düğmeler 64 dp + görünür etiket, tek semantik düğüm (etiket = görünür metin), devre dışıyken soluk; gelen
-    çağrıda titreşim; küçük ekran/büyük yazıda kaydırılabilir. Arama başlatma (admin `ChatMemberList` "Görüntülü ara"):
-    üye listesinde kendisi hariç herkese `CallMenuButton` (Sesli/Görüntülü; `groupId` ile) ve DM konuşmasının AppBar'ında
-    (karşı üye `/members`'tan); kendi id'si bilinmiyorsa düğme yok. Çevrimdışı/yetkisiz/meşgul hedefi backend söyler.
+    "durum: ad"; düğmeler 64 dp + görünür etiket, tek semantik düğüm (etiket = görünür metin), devre dışıyken hem ikon
+    hem etiket soluk; gelen çağrıda titreşim; küçük ekran/büyük yazıda kaydırılabilir. Arama başlatma (admin `ChatMemberList`
+    "Görüntülü ara"): üye listesinde kendisi hariç herkese `CallMenuButton` (Sesli/Görüntülü; `groupId` ile) ve DM
+    konuşmasının AppBar'ında (karşı üye `/members`'tan, uçuşta çift istek kilidi); kendi id'si bilinmiyorsa düğme yok.
+    Çevrimdışı/yetkisiz/meşgul hedefi backend söyler.
   - **Native:** iOS `NSMicrophoneUsageDescription` + `NSCameraUsageDescription` (Türkçe, amaç + "yalnız siz
     başlattığınızda/cevapladığınızda"); `UIBackgroundModes` yok. Android `RECORD_AUDIO`, `CAMERA` (çalışma zamanı izni
     flutter_webrtc getUserMedia'da ister), `MODIFY_AUDIO_SETTINGS` (çağrı ses modu/hoparlör), `ACCESS_NETWORK_STATE`
