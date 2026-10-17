@@ -5,6 +5,7 @@ import '../config/nav_config.dart';
 import '../providers/auth_provider.dart';
 import '../screens/account/profile_screen.dart';
 import '../screens/account/settings_screen.dart';
+import '../screens/ai/ai_logs_screen.dart';
 import '../screens/assets_screen.dart';
 import '../screens/chat/chat_screen.dart';
 import '../screens/coming_soon_screen.dart';
@@ -27,6 +28,7 @@ Widget? navScreen(NavItem item) => switch (item.id) {
   'email-logs' => const EmailLogsScreen(),
   'users' => const UsersScreen(),
   'rabbitmq' => const RabbitScreen(),
+  'ai-logs' => const AiLogsScreen(),
   'settings' => const SettingsScreen(),
   'profile' => const ProfileScreen(),
   _ => item.module == null ? null : GenericCrudListScreen(module: item.module!),

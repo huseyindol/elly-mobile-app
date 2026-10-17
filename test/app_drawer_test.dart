@@ -60,10 +60,10 @@ void main() {
       'users:read',
     ]);
 
-    for (final visible in ['dashboard', 'posts', 'pages', 'settings']) {
+    for (final visible in ['dashboard', 'posts', 'pages', 'ai-logs', 'settings']) {
       expect(nav(visible), findsOneWidget, reason: '$visible must be visible');
     }
-    for (final item in allItems().where((i) => !['dashboard', 'posts', 'pages', 'settings'].contains(i.id))) {
+    for (final item in allItems().where((i) => !['dashboard', 'posts', 'pages', 'ai-logs', 'settings'].contains(i.id))) {
       expect(nav(item.id), findsNothing, reason: '${item.id} must be hidden without ${item.permission}');
     }
     // Groups without a visible item are hidden entirely, like the admin sidebar.

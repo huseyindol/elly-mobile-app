@@ -2,6 +2,7 @@ import 'package:elly_mobile_app/config/nav_config.dart';
 import 'package:elly_mobile_app/providers/auth_provider.dart';
 import 'package:elly_mobile_app/screens/account/profile_screen.dart';
 import 'package:elly_mobile_app/screens/account/settings_screen.dart';
+import 'package:elly_mobile_app/screens/ai/ai_logs_screen.dart';
 import 'package:elly_mobile_app/screens/coming_soon_screen.dart';
 import 'package:elly_mobile_app/screens/dashboard_screen.dart';
 import 'package:elly_mobile_app/screens/rabbit/rabbit_screen.dart';
@@ -26,7 +27,7 @@ void main() {
     final system = NavConfig.groups.firstWhere((g) => g.title == 'Sistem');
     expect(
       {for (final i in system.items) i.id: navScreen(i).runtimeType},
-      {'users': UsersScreen, 'rabbitmq': RabbitScreen, 'settings': SettingsScreen},
+      {'users': UsersScreen, 'rabbitmq': RabbitScreen, 'ai-logs': AiLogsScreen, 'settings': SettingsScreen},
     );
     expect(navScreen(NavConfig.profile), isA<ProfileScreen>());
     final placeholders = [
@@ -40,6 +41,7 @@ void main() {
   for (final (id, type, permission) in [
     ('users', UsersScreen, 'users:manage'),
     ('rabbitmq', RabbitScreen, 'rabbit:read'),
+    ('ai-logs', AiLogsScreen, null),
     ('settings', SettingsScreen, null),
   ]) {
     testWidgets('drawer "$id": no "Yakında", opens $type with the drawer selected', (tester) async {

@@ -61,6 +61,7 @@ class NavConfig {
     const NavGroup('Sistem', [
       NavItem(id: 'users', label: 'Kullanıcılar', icon: Icons.people_rounded, permission: 'users:manage'),
       NavItem(id: 'rabbitmq', label: 'RabbitMQ', icon: Icons.monitor_heart_rounded, permission: 'rabbit:read'),
+      NavItem(id: 'ai-logs', label: 'AI Logları', icon: Icons.auto_awesome_rounded),
       NavItem(id: 'settings', label: 'Ayarlar', icon: Icons.settings_rounded),
     ]),
   ];

@@ -31,6 +31,7 @@ const _adminSidebar = <String, List<(String, String, String?)>>{
   'Sistem': [
     ('users', 'Kullanıcılar', 'users:manage'),
     ('rabbitmq', 'RabbitMQ', 'rabbit:read'),
+    ('ai-logs', 'AI Logları', null),
     ('settings', 'Ayarlar', null),
   ],
 };
@@ -135,28 +136,28 @@ void main() {
 
     test('no permissions: only items without a permission remain, so only "Sistem" keeps its header', () async {
       final v = await visibleFor([]);
-      expect(v.ids, ['dashboard', 'settings']);
+      expect(v.ids, ['dashboard', 'ai-logs', 'settings']);
       expect(v.groupTitles, ['Sistem']);
     });
 
     test('a group whose items are all hidden disappears, including its header', () async {
       final v = await visibleFor(['mail:read']);
-      expect(v.ids, ['dashboard', 'mail-accounts', 'settings']);
+      expect(v.ids, ['dashboard', 'mail-accounts', 'ai-logs', 'settings']);
       expect(v.groupTitles, ['İletişim', 'Sistem']);
     });
 
     test('a single visible item is enough to keep the group', () async {
       final v = await visibleFor(['forms:read', 'rabbit:read']);
       expect(v.groupTitles, ['Etkileşim', 'Sistem']);
-      expect(v.ids, ['dashboard', 'forms', 'rabbitmq', 'settings']);
+      expect(v.ids, ['dashboard', 'forms', 'rabbitmq', 'ai-logs', 'settings']);
     });
 
     test('create/update/delete and users:read do not reveal items; users:manage does', () async {
       final hidden = await visibleFor(['posts:create', 'posts:update', 'posts:delete', 'users:read']);
-      expect(hidden.ids, ['dashboard', 'settings']);
+      expect(hidden.ids, ['dashboard', 'ai-logs', 'settings']);
 
       final shown = await visibleFor(['users:manage']);
-      expect(shown.ids, ['dashboard', 'users', 'settings']);
+      expect(shown.ids, ['dashboard', 'users', 'ai-logs', 'settings']);
     });
 
     test('all permissions: every item and every titled group is visible', () async {
