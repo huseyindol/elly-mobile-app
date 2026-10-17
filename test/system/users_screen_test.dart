@@ -219,7 +219,7 @@ void main() {
       expect(key('role_TENANT'), findsNothing);
       expect(find.textContaining('backend boş listede kullanıcıya ADMIN rolü atar'), findsOneWidget);
 
-      await fill(tester, {'username': 'yeni', 'email': 'yeni@x.com', 'password': 'Gizli123', 'firstName': 'Yeni'});
+      await fill(tester, {'username': 'yeni', 'email': 'yeni@x.com', 'password': 'Aa1aaaaa', 'firstName': 'Yeni'}); // ggignore
       await tester.ensureVisible(key('role_EDITOR'));
       await tester.tap(key('role_EDITOR'));
       await tester.pump();
@@ -229,7 +229,7 @@ void main() {
       expect(body, {
         'username': 'yeni',
         'email': 'yeni@x.com',
-        'password': 'Gizli123',
+        'password': 'Aa1aaaaa', // ggignore
         'firstName': 'Yeni',
         'lastName': '',
         'roleIds': [3],
@@ -242,7 +242,7 @@ void main() {
       await pumpUsers(tester);
       await tester.tap(find.byType(FloatingActionButton));
       await settle(tester);
-      await fill(tester, {'username': 'ab', 'email': 'yeni@x.com', 'password': 'gizli123'});
+      await fill(tester, {'username': 'ab', 'email': 'yeni@x.com', 'password': 'aa1aaaaa'}); // ggignore
       await save(tester);
       expect(sent('POST', '/users'), isEmpty);
       expect(find.text('Kullanıcı adı 3-50 karakter olmalıdır'), findsOneWidget);
@@ -259,7 +259,7 @@ void main() {
       expect(key('role_EDITOR'), findsOneWidget);
       expect(key('role_VIEWER'), findsOneWidget);
 
-      await fill(tester, {'username': 'yeni', 'email': 'yeni@x.com', 'password': 'Gizli123'});
+      await fill(tester, {'username': 'yeni', 'email': 'yeni@x.com', 'password': 'Aa1aaaaa'}); // ggignore
       await save(tester);
       expect(sent('POST', '/users'), isEmpty);
       expect(find.textContaining('En az bir rol seçin'), findsWidgets);
@@ -273,7 +273,7 @@ void main() {
       await settle(tester);
       expect(key('user_field_roles'), findsNothing);
       expect(sent('GET', '/roles'), isEmpty);
-      await fill(tester, {'username': 'musteri2', 'email': 'm@x.com', 'password': 'Gizli123'});
+      await fill(tester, {'username': 'musteri2', 'email': 'm@x.com', 'password': 'Aa1aaaaa'}); // ggignore
       await save(tester);
       final body = jsonDecode(sent('POST', '/users').single.body) as Map;
       expect(body['audience'], 'tenant');
@@ -324,9 +324,9 @@ void main() {
       await pumpUsers(tester);
       await tester.tap(key('edit_3'));
       await settle(tester);
-      await fill(tester, {'password': 'Sifirla99'});
+      await fill(tester, {'password': 'Bb2bbbbb'}); // ggignore
       await save(tester);
-      expect((jsonDecode(sent('PUT', '/users/3').single.body) as Map)['newPassword'], 'Sifirla99');
+      expect((jsonDecode(sent('PUT', '/users/3').single.body) as Map)['newPassword'], 'Bb2bbbbb'); // ggignore
     });
 
     testWidgets('own account: no password reset, roles read-only (cannot demote yourself)', (tester) async {
@@ -413,7 +413,7 @@ void main() {
       await pumpUsers(tester);
       await tester.tap(key('edit_3'));
       await settle(tester);
-      await tester.enterText(key('user_field_password'), 'Sifirla99');
+      await tester.enterText(key('user_field_password'), 'Bb2bbbbb'); // ggignore
       await tester.ensureVisible(key('role_VIEWER'));
       await tester.tap(key('role_VIEWER'));
       await tester.pump();

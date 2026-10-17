@@ -4,10 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   const values = {
     'name': ' Satış ',
-    'fromAddress': 'sales@firma.com ',
-    'smtpHost': 'smtp.gmail.com',
+    'fromAddress': 'sales@example.invalid ',
+    'smtpHost': 'mail.example.invalid',
     'smtpPort': '587',
-    'smtpUsername': 'sales@firma.com',
+    'smtpUsername': 'sales@example.invalid',
     'tenantId': ' ',
     'isPrimary': true,
     'active': false,
@@ -22,17 +22,17 @@ void main() {
     });
 
     test('a typed password is sent exactly as typed (spaces are part of it)', () {
-      expect(mailAccountPayload(values, password: ' p@ss word ')['smtpPassword'], ' p@ss word ');
+      expect(mailAccountPayload(values, password: ' <app-password> ')['smtpPassword'], ' <app-password> '); // ggignore
     });
 
     test('DTO fields: trimmed text, int port, flags, empty tenant → null', () {
       expect(mailAccountPayload(values, password: 'x'), {
         'name': 'Satış',
-        'fromAddress': 'sales@firma.com',
-        'smtpHost': 'smtp.gmail.com',
+        'fromAddress': 'sales@example.invalid',
+        'smtpHost': 'mail.example.invalid',
         'smtpPort': 587,
-        'smtpUsername': 'sales@firma.com',
-        'smtpPassword': 'x',
+        'smtpUsername': 'sales@example.invalid',
+        'smtpPassword': 'x', // ggignore
         'isPrimary': true,
         'active': false,
         'tenantId': null,

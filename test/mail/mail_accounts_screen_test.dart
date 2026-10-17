@@ -14,7 +14,7 @@ Map<String, dynamic> _account(int id, {String? tenant, bool primary = false, boo
   'id': id,
   'name': 'Hesap $id',
   'fromAddress': 'h$id@firma.com',
-  'smtpHost': 'smtp.firma.com',
+  'smtpHost': 'mail.example.invalid',
   'smtpPort': 587,
   'smtpUsername': 'user$id',
   'active': active,
@@ -75,7 +75,7 @@ void main() {
 
       expect(inCard(1, find.text('Hesap 1')), findsOneWidget);
       expect(inCard(1, find.text('h1@firma.com')), findsOneWidget);
-      expect(inCard(1, find.text('smtp.firma.com:587')), findsOneWidget);
+      expect(inCard(1, find.text('mail.example.invalid:587')), findsOneWidget);
       expect(inCard(1, find.text('user1')), findsOneWidget);
       expect(inCard(1, find.text('Ana Hesap')), findsOneWidget);
       expect(inCard(1, find.text('tenant1')), findsOneWidget);
@@ -216,24 +216,24 @@ void main() {
 
       await fill(tester, {
         'name': 'Satış',
-        'fromAddress': 'sales@firma.com',
-        'smtpHost': 'smtp.gmail.com',
-        'smtpUsername': 'sales@firma.com',
+        'fromAddress': 'sales@example.invalid',
+        'smtpHost': 'mail.example.invalid',
+        'smtpUsername': 'sales@example.invalid',
       });
       await save(tester);
       expect(bodyRequests('POST', '/mail-accounts'), isEmpty);
       expect(find.text('Şifre zorunludur'), findsOneWidget);
       expect(find.textContaining('1 alan hatalı'), findsOneWidget);
 
-      await fill(tester, {'smtpPassword': 'app pass 16'});
+      await fill(tester, {'smtpPassword': '<app-password>'}); // ggignore
       await save(tester);
       expect(lastBody('POST', '/mail-accounts'), {
         'name': 'Satış',
-        'fromAddress': 'sales@firma.com',
-        'smtpHost': 'smtp.gmail.com',
+        'fromAddress': 'sales@example.invalid',
+        'smtpHost': 'mail.example.invalid',
         'smtpPort': 587,
-        'smtpUsername': 'sales@firma.com',
-        'smtpPassword': 'app pass 16',
+        'smtpUsername': 'sales@example.invalid',
+        'smtpPassword': '<app-password>', // ggignore
         'isPrimary': false,
         'active': true,
         'tenantId': null,
@@ -248,7 +248,7 @@ void main() {
         'smtpHost': 'h',
         'smtpPort': '70000',
         'smtpUsername': 'u',
-        'smtpPassword': 'p',
+        'smtpPassword': 'p', // ggignore
       });
       await save(tester);
       expect(find.text('En fazla 255 karakter'), findsOneWidget);
@@ -293,7 +293,7 @@ void main() {
         find.descendant(of: find.byKey(const ValueKey('mail_field_smtpPassword')), matching: find.byType(EditableText)),
       );
 
-      await fill(tester, {'smtpPassword': 'yeni-sifre'});
+      await fill(tester, {'smtpPassword': '<new-password>'}); // ggignore
       await tester.tap(find.byKey(const ValueKey('mail_password_toggle')));
       await tester.pump();
       expect(password().obscureText, isFalse);
@@ -303,7 +303,7 @@ void main() {
       expect(password().obscureText, isTrue);
 
       await save(tester);
-      expect(lastBody('PUT', '/mail-accounts/1')['smtpPassword'], 'yeni-sifre');
+      expect(lastBody('PUT', '/mail-accounts/1')['smtpPassword'], '<new-password>'); // ggignore
     });
 
     testWidgets('primary switch shows the demotion note; verify uses the saved account', (tester) async {
@@ -350,7 +350,7 @@ void main() {
       );
       await tester.tap(find.text('aç'));
       await settle(tester);
-      await fill(tester, {'smtpHost': 'smtp.yeni.com'});
+      await fill(tester, {'smtpHost': 'mail2.example.invalid'});
       await tester.pump();
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();

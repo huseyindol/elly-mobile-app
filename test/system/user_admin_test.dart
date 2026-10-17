@@ -51,7 +51,7 @@ void main() {
           audience: 'panel',
           username: ' ali ',
           email: ' a@b.com ',
-          password: ' Pass1234',
+          password: ' Aa1aaaaa', // ggignore
           firstName: ' Ali ',
           lastName: 'Veli',
           roleIds: [2, 3],
@@ -59,7 +59,7 @@ void main() {
         {
           'username': 'ali',
           'email': 'a@b.com',
-          'password': ' Pass1234',
+          'password': ' Aa1aaaaa', // ggignore
           'firstName': 'Ali',
           'lastName': 'Veli',
           'roleIds': [2, 3],
@@ -97,8 +97,8 @@ void main() {
         'lastName': 'Dol',
       });
       expect(
-        updateUserPayload(username: 'ali', email: 'a@b.com', firstName: 'A', lastName: 'B', newPassword: 'Yeni1234'),
-        {'username': 'ali', 'email': 'a@b.com', 'firstName': 'A', 'lastName': 'B', 'newPassword': 'Yeni1234'},
+        updateUserPayload(username: 'ali', email: 'a@b.com', firstName: 'A', lastName: 'B', newPassword: 'Aa1aaaaa'), // ggignore
+        {'username': 'ali', 'email': 'a@b.com', 'firstName': 'A', 'lastName': 'B', 'newPassword': 'Aa1aaaaa'}, // ggignore
       );
     });
   });
@@ -161,8 +161,8 @@ void main() {
   });
 
   group('2FA setup', () {
-    const secret = 'JBSWY3DPEHPK3PXP';
-    const uri = 'otpauth://totp/Elly+CMS%3Aali?secret=$secret&issuer=Elly+CMS&algorithm=SHA1&digits=6&period=30';
+    const secret = 'AAAABBBBCCCCDDDD'; // ggignore
+    const uri = 'otpauth://totp/Elly+CMS%3Aali?secret=$secret&issuer=Elly+CMS&algorithm=SHA1&digits=6&period=30'; // ggignore
 
     test('backend TotpService URI for the same secret is valid', () {
       expect(isValidOtpauthUri(uri, secret), isTrue);
@@ -184,7 +184,7 @@ void main() {
     });
 
     test('secret grouped by four; masked keeps the length, shows no character', () {
-      expect(formatSecret(secret), 'JBSW Y3DP EHPK 3PXP');
+      expect(formatSecret(secret), 'AAAA BBBB CCCC DDDD');
       expect(formatSecret('ABCDEF'), 'ABCD EF');
       final masked = formatSecret(secret, masked: true);
       expect(masked, '•••• •••• •••• ••••');

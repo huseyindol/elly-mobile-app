@@ -176,11 +176,11 @@ void main() {
 
     testWidgets('rules checked before sending: strength, same as current, mismatch', (tester) async {
       await pump(tester, ChangePasswordScreen(apiService: backend.api));
-      await fill(tester, 'Eski1234', 'zayif', 'zayif');
+      await fill(tester, 'Aa1aaaaa', 'zayif', 'zayif'); // ggignore
       expect(find.textContaining('büyük/küçük harf + rakam olmalıdır'), findsOneWidget);
-      await fill(tester, 'Eski1234', 'Eski1234', 'Eski1234');
+      await fill(tester, 'Aa1aaaaa', 'Aa1aaaaa', 'Aa1aaaaa'); // ggignore
       expect(find.text('Yeni şifre mevcut şifreden farklı olmalı'), findsOneWidget);
-      await fill(tester, 'Eski1234', 'Yeni1234', 'Yeni12345');
+      await fill(tester, 'Aa1aaaaa', 'Bb2bbbbb', 'Bb2bbbbbb'); // ggignore
       expect(find.text('Şifreler eşleşmiyor'), findsOneWidget);
       expect(puts(), isEmpty);
     });
@@ -188,7 +188,7 @@ void main() {
     testWidgets('wrong current password (400) → "Mevcut şifre hatalı."; stays on the screen', (tester) async {
       backend.routes['/users/me/password'] = (_) => jsonResponse({'message': 'Current password is incorrect'}, 400);
       await pump(tester, ChangePasswordScreen(apiService: backend.api));
-      await fill(tester, 'Yanlis123', 'Yeni1234', 'Yeni1234');
+      await fill(tester, 'Cc3ccccc', 'Bb2bbbbb', 'Bb2bbbbb'); // ggignore
       expect(find.text('Mevcut şifre hatalı.'), findsOneWidget);
       expect(find.byType(ChangePasswordScreen), findsOneWidget);
       expect(auth.isAuthenticated, isTrue);
@@ -197,8 +197,8 @@ void main() {
     testWidgets('success sends exactly the two passwords', (tester) async {
       backend.routes['/users/me/password'] = (_) => jsonResponse({'result': true, 'data': null}, 200);
       await pump(tester, ChangePasswordScreen(apiService: backend.api));
-      await fill(tester, 'Eski1234', 'Yeni1234', 'Yeni1234');
-      expect(jsonDecode(puts().single.body), {'currentPassword': 'Eski1234', 'newPassword': 'Yeni1234'});
+      await fill(tester, 'Aa1aaaaa', 'Bb2bbbbb', 'Bb2bbbbb'); // ggignore
+      expect(jsonDecode(puts().single.body), {'currentPassword': 'Aa1aaaaa', 'newPassword': 'Bb2bbbbb'}); // ggignore
     });
   });
 }

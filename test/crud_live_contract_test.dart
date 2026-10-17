@@ -387,7 +387,7 @@ void main() {
       final values = {
         'name': 'mobile-live-$_ts',
         'fromAddress': 'mobile-live-$_ts@example.com',
-        'smtpHost': 'smtp.invalid',
+        'smtpHost': 'mail.example.invalid',
         'smtpPort': '587',
         'smtpUsername': 'mobile-live',
         'tenantId': '',
@@ -395,7 +395,7 @@ void main() {
         'active': false,
       };
       final created = Map<String, dynamic>.from(
-          await api.post('/mail-accounts', mailAccountPayload(values, password: 'live-secret')) as Map);
+          await api.post('/mail-accounts', mailAccountPayload(values, password: '<test-placeholder>')) as Map); // ggignore
       final id = created['id'];
       try {
         final detail = Map<String, dynamic>.from(await api.get('/mail-accounts/$id') as Map);
@@ -493,7 +493,7 @@ void main() {
 
     test('wrong current password → 400 "Current password is incorrect" (mapped), nothing changes', () async {
       await expectLater(
-        api.put('/users/me/password', {'currentPassword': 'yanlis-$_ts', 'newPassword': 'Yeni${_ts}Aa1'}),
+        api.put('/users/me/password', {'currentPassword': 'yanlis-$_ts', 'newPassword': 'Aa1aaaaa$_ts'}), // ggignore
         throwsA(isA<ApiException>().having((e) => userErrorText(e), 'text', 'Mevcut şifre hatalı.')),
       );
     });
@@ -502,7 +502,7 @@ void main() {
       final status = await api.get('/auth/mfa/status') as Map;
       expect(status['mfaEnabled'], isA<bool>());
       // 400 (2FA off) or 401 (wrong password) — either way no state change and still signed in.
-      await expectLater(api.post('/auth/mfa/disable', {'password': 'yanlis-$_ts'}), throwsA(isA<ApiException>()));
+      await expectLater(api.post('/auth/mfa/disable', {'password': 'yanlis-$_ts'}), throwsA(isA<ApiException>())); // ggignore
       expect(await api.get('/auth/mfa/status'), isA<Map>());
     });
 

@@ -36,8 +36,8 @@ Map<String, dynamic> _template(String key, {int lock = 1}) => {
 Map<String, dynamic> _account(int id, {String? tenant}) => {
   'id': id,
   'name': 'Hesap $id',
-  'fromAddress': 'h$id@firma.com',
-  'smtpHost': 'smtp.firma.com',
+  'fromAddress': 'h$id@example.invalid',
+  'smtpHost': 'mail.example.invalid',
   'smtpPort': 587,
   'smtpUsername': 'u$id',
   'active': true,

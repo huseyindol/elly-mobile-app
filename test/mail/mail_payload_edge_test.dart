@@ -7,8 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   const base = <String, Object?>{
     'name': 'Satış',
-    'fromAddress': 'sales@firma.com',
-    'smtpHost': 'smtp.firma.com',
+    'fromAddress': 'sales@example.invalid',
+    'smtpHost': 'mail.example.invalid',
     'smtpPort': '587',
     'smtpUsername': 'sales',
   };
@@ -38,7 +38,7 @@ void main() {
         'sonunda ',
         '  ikisi de  ',
         'tab\there',
-        'p@\$\$ w0rd "q" \'s\' \\ / <b>&amp;',
+        '<placeholder> "q" \'s\' \\ / <b>&amp;',
         'ÜĞİŞÇÖ ığüşçö',
         '🔑 emoji',
         'a' * 500,
@@ -46,22 +46,22 @@ void main() {
         'false',
         'null',
       ]) {
-        expect(mailAccountPayload(base, password: password)['smtpPassword'], password);
+        expect(mailAccountPayload(base, password: password)['smtpPassword'], password); // ggignore
       }
     });
 
     test('the value is always a String (never null), the key present only when something non-blank was typed', () {
-      final withPassword = mailAccountPayload(base, password: 'x');
+      final withPassword = mailAccountPayload(base, password: 'x'); // ggignore
       expect(withPassword['smtpPassword'], isA<String>());
-      expect(mailAccountPayload(base, password: ' x ').containsKey('smtpPassword'), isTrue);
+      expect(mailAccountPayload(base, password: ' x ').containsKey('smtpPassword'), isTrue); // ggignore
     });
 
     test('only the `password` argument decides: a smtpPassword inside the form values is ignored', () {
       expect(
-        mailAccountPayload({...base, 'smtpPassword': 'sizinti'}, password: '').containsKey('smtpPassword'),
+        mailAccountPayload({...base, 'smtpPassword': 'x'}, password: '').containsKey('smtpPassword'), // ggignore
         isFalse,
       );
-      expect(mailAccountPayload({...base, 'smtpPassword': 'sizinti'}, password: 'gercek')['smtpPassword'], 'gercek');
+      expect(mailAccountPayload({...base, 'smtpPassword': 'x'}, password: 'y')['smtpPassword'], 'y'); // ggignore
     });
 
     test('the input map is not modified', () {

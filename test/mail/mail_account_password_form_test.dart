@@ -14,8 +14,8 @@ import '../helpers/fake_backend.dart';
 Map<String, dynamic> _account({Map<String, dynamic> extra = const {}}) => {
   'id': 1,
   'name': 'Hesap 1',
-  'fromAddress': 'h1@firma.com',
-  'smtpHost': 'smtp.firma.com',
+  'fromAddress': 'h1@example.invalid',
+  'smtpHost': 'mail.example.invalid',
   'smtpPort': 587,
   'smtpUsername': 'user1',
   'active': true,
@@ -76,8 +76,8 @@ void main() {
 
   const create = {
     'name': 'Satış',
-    'fromAddress': 'sales@firma.com',
-    'smtpHost': 'smtp.firma.com',
+    'fromAddress': 'sales@example.invalid',
+    'smtpHost': 'mail.example.invalid',
     'smtpUsername': 'sales',
   };
 
@@ -92,9 +92,9 @@ void main() {
 
     testWidgets('the typed password goes out exactly as typed (surrounding spaces kept)', (tester) async {
       await pump(tester);
-      await fill(tester, {...create, 'smtpPassword': '  s3cr3t pass  '});
+      await fill(tester, {...create, 'smtpPassword': '  <app-password>  '}); // ggignore
       await save(tester);
-      expect(body(writes('POST').single)['smtpPassword'], '  s3cr3t pass  ');
+      expect(body(writes('POST').single)['smtpPassword'], '  <app-password>  '); // ggignore
     });
 
     testWidgets('the field is marked required; helper "mevcut şifre korunur" is edit-only', (tester) async {
@@ -128,33 +128,33 @@ void main() {
 
     testWidgets('typing a password and clearing it again sends no password key', (tester) async {
       await pump(tester, account: _account());
-      await fill(tester, {'smtpPassword': 'gecici'});
+      await fill(tester, {'smtpPassword': '<temp>'}); // ggignore
       await fill(tester, {'smtpPassword': ''});
       await save(tester);
       expect(body(writes('PUT').single).containsKey('smtpPassword'), isFalse);
     });
 
     testWidgets('a password leaked in the server detail is neither shown nor sent back', (tester) async {
-      backend.ok('/mail-accounts/1', _account(extra: {'smtpPassword': 'SIZINTI', 'password': 'SIZINTI2'}));
+      backend.ok('/mail-accounts/1', _account(extra: {'smtpPassword': 'LEAK1', 'password': 'LEAK2'})); // ggignore
       await pump(tester, account: _account());
       final field = tester.widget<EditableText>(
         find.descendant(of: find.byKey(const ValueKey('mail_field_smtpPassword')), matching: find.byType(EditableText)),
       );
       expect(field.controller.text, isEmpty);
-      expect(find.textContaining('SIZINTI'), findsNothing);
+      expect(find.textContaining('LEAK'), findsNothing);
 
       await fill(tester, {'name': 'Yeni'});
       await save(tester);
       final sent = writes('PUT').single.body;
-      expect(sent, isNot(contains('SIZINTI')));
+      expect(sent, isNot(contains('LEAK')));
       expect(body(writes('PUT').single).containsKey('smtpPassword'), isFalse);
     });
 
     testWidgets('the password never appears in a URL / query string', (tester) async {
       await pump(tester, account: _account());
-      await fill(tester, {'smtpPassword': 'cok-gizli-123'});
+      await fill(tester, {'smtpPassword': '<app-password>'}); // ggignore
       await save(tester);
-      expect(backend.requests.where((r) => r.url.toString().contains('cok-gizli-123')), isEmpty);
+      expect(backend.requests.where((r) => r.url.toString().contains('<app-password>')), isEmpty);
     });
 
     testWidgets('a failed save keeps what was typed (retry does not lose the password) and shows the backend error', (
@@ -163,13 +163,13 @@ void main() {
       backend.routes['/mail-accounts/1'] = (req) =>
           req.method == 'PUT' ? jsonResponse({'message': 'SMTP host erisilemiyor'}, 400) : okData(_account());
       await pump(tester, account: _account());
-      await fill(tester, {'smtpPassword': 'tekrar-dene'});
+      await fill(tester, {'smtpPassword': '<retry-placeholder>'}); // ggignore
       await save(tester);
       expect(find.text('SMTP host erisilemiyor'), findsOneWidget);
 
       await save(tester);
       expect(writes('PUT'), hasLength(2));
-      expect(body(writes('PUT').last)['smtpPassword'], 'tekrar-dene');
+      expect(body(writes('PUT').last)['smtpPassword'], '<retry-placeholder>'); // ggignore
     });
   });
 }

@@ -13,8 +13,8 @@ import 'package:provider/provider.dart';
 
 import '../helpers/fake_backend.dart';
 
-const _secret = 'JBSWY3DPEHPK3PXP';
-const _uri = 'otpauth://totp/Elly+CMS%3Aben?secret=$_secret&issuer=Elly+CMS&algorithm=SHA1&digits=6&period=30';
+const _secret = 'AAAABBBBCCCCDDDD'; // ggignore
+const _uri = 'otpauth://totp/Elly+CMS%3Aben?secret=$_secret&issuer=Elly+CMS&algorithm=SHA1&digits=6&period=30'; // ggignore
 
 void main() {
   late FakeBackend backend;
@@ -39,7 +39,7 @@ void main() {
       return okData('2FA başarıyla etkinleştirildi.');
     };
     backend.routes['/auth/mfa/disable'] = (req) {
-      if ((jsonDecode(req.body) as Map)['password'] != 'Dogru123') {
+      if ((jsonDecode(req.body) as Map)['password'] != 'Aa1aaaaa') { // ggignore
         return jsonResponse({'message': 'Şifre hatalı.'}, 401);
       }
       mfaEnabled = false;
@@ -120,7 +120,7 @@ void main() {
 
       await tester.tap(key('mfa_secret_toggle'));
       await tester.pump();
-      expect(secretText(tester), 'JBSW Y3DP EHPK 3PXP');
+      expect(secretText(tester), 'AAAA BBBB CCCC DDDD');
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       await tester.pump();
@@ -233,11 +233,11 @@ void main() {
       expect(find.text('Şifre hatalı.'), findsOneWidget);
       expect(auth.isAuthenticated, isTrue);
 
-      await tester.enterText(key('mfa_disable_password'), 'Dogru123');
+      await tester.enterText(key('mfa_disable_password'), 'Aa1aaaaa'); // ggignore
       await tester.tap(key('mfa_disable_confirm'));
       await settle(tester);
       await settle(tester); // status reload
-      expect(jsonDecode(backend.requestsTo('/auth/mfa/disable').last.body), {'password': 'Dogru123'});
+      expect(jsonDecode(backend.requestsTo('/auth/mfa/disable').last.body), {'password': 'Aa1aaaaa'}); // ggignore
       expect(find.text('2FA devre dışı bırakıldı'), findsOneWidget);
       expect(find.descendant(of: key('mfa_status'), matching: find.text('Kapalı')), findsOneWidget);
     });
@@ -357,7 +357,7 @@ void main() {
       await settle(tester);
       await tester.tap(key('mfa_secret_toggle'));
       await tester.pump();
-      expect(tester.widget<Text>(key('mfa_secret_text')).data, 'JBSW Y3DP EHPK 3PXP');
+      expect(tester.widget<Text>(key('mfa_secret_text')).data, 'AAAA BBBB CCCC DDDD');
       await tester.pump(const Duration(seconds: 31));
       expect(tester.widget<Text>(key('mfa_secret_text')).data, '•••• •••• •••• ••••');
     });

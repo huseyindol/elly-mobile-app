@@ -13,8 +13,8 @@ import 'package:provider/provider.dart';
 
 import '../helpers/fake_backend.dart';
 
-const _secret = 'JBSWY3DPEHPK3PXP';
-const _groups = ['JBSW', 'Y3DP', 'EHPK', '3PXP'];
+const _secret = 'AAAABBBBCCCCDDDD'; // ggignore
+const _groups = ['AAAA', 'BBBB', 'CCCC', 'DDDD'];
 const _masked = '•••• •••• •••• ••••';
 
 String _uri({
@@ -22,7 +22,7 @@ String _uri({
   String? secret,
   String extra = '',
 }) =>
-    'otpauth://totp/$label?secret=${secret ?? _secret}&issuer=Elly+CMS&algorithm=SHA1&digits=6&period=30$extra';
+    'otpauth://totp/$label?secret=${secret ?? _secret}&issuer=Elly+CMS&algorithm=SHA1&digits=6&period=30$extra'; // ggignore
 
 void main() {
   group('isValidOtpauthUri (backend TotpService.buildQrUri biçimi)', () {
@@ -63,7 +63,7 @@ void main() {
     test('secret yüzde-kodlu gelse de çözülmüş değeri aynıysa geçerli; harf büyüklüğü farkı geçersiz', () {
       expect(
         isValidOtpauthUri(
-          'otpauth://totp/E:a?secret=JBSWY3DP%45HPK3PXP',
+          'otpauth://totp/E:a?secret=AAAABBBB%43CCCDDDD', // ggignore
           _secret,
         ),
         isTrue,
@@ -164,9 +164,9 @@ void main() {
       () {
         for (final bad in [
           'abc!def',
-          'JBSWY3DP\$HPK3PXP',
-          'JBSWY3DP0189HPK3',
-          'JBSW Y3DP',
+          'AAAABBBB\$CCCDDDD',
+          'AAAABBBB0189DDDD',
+          'AAAA BBBB',
         ]) {
           expect(
             isValidOtpauthUri(
@@ -408,7 +408,7 @@ void main() {
             isFalse,
             reason: 'ekran okuyucu 16 kez "madde" okumasın',
           );
-          expect(node.label.contains('JBSW'), isFalse);
+          expect(node.label.contains('AAAA'), isFalse);
 
           await tester.tap(key('mfa_secret_toggle'));
           await tester.pump();

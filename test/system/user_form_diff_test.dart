@@ -364,14 +364,14 @@ void main() {
           target: const ['EDITOR'],
         );
         await type(tester, 'firstName', 'Yeni');
-        await type(tester, 'password', 'Sifirla99');
+        await type(tester, 'password', 'Bb2bbbbb'); // ggignore
         await toggle(tester, 'VIEWER');
         await save(tester);
         expect(sent('PUT', '/users/20'), hasLength(1));
         expect(
           (jsonDecode(sent('PUT', '/users/20').single.body)
               as Map)['newPassword'],
-          'Sifirla99',
+          'Bb2bbbbb', // ggignore
         );
         expect(sent('PUT', '/roles/users/20/roles'), hasLength(1));
         expect(
@@ -479,7 +479,7 @@ void main() {
         expect(key('role_TENANT'), findsNothing);
         await type(tester, 'username', 'yeni');
         await type(tester, 'email', 'yeni@x.com');
-        await type(tester, 'password', 'Gizli123');
+        await type(tester, 'password', 'Aa1aaaaa'); // ggignore
         await toggle(tester, 'VIEWER');
         await toggle(tester, 'ADMIN');
         await save(tester);
@@ -497,7 +497,7 @@ void main() {
         await openForm(tester, caller: const ['ADMIN']);
         await type(tester, 'username', 'yeni');
         await type(tester, 'email', 'yeni@x.com');
-        await type(tester, 'password', 'Gizli123');
+        await type(tester, 'password', 'Aa1aaaaa'); // ggignore
         await save(tester);
         expect(sent('POST', '/users'), isEmpty);
         expect(find.textContaining('En az bir rol seçin'), findsWidgets);
@@ -512,7 +512,7 @@ void main() {
         expect(key('role_EDITOR'), findsNothing);
         await type(tester, 'username', 'yeni');
         await type(tester, 'email', 'yeni@x.com');
-        await type(tester, 'password', 'Gizli123');
+        await type(tester, 'password', 'Aa1aaaaa'); // ggignore
         await save(tester);
         expect(sent('POST', '/users'), isEmpty);
         expect(find.textContaining('En az bir rol seçin'), findsWidgets);
