@@ -11,6 +11,7 @@ import '../widgets/app_drawer.dart';
 import '../widgets/app_scaffold.dart';
 import '../widgets/state_views.dart';
 import '../widgets/app_snack_bar.dart';
+import '../widgets/ai_quota_card.dart';
 import '../widgets/storage_quota_card.dart';
 
 export '../widgets/storage_quota_card.dart' show quotaColor;
@@ -74,6 +75,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   _Stat _stat(String navId) => _stats.firstWhere((s) => s.navId == navId);
 
   final _quotaKey = GlobalKey<StorageQuotaCardState>();
+  final _aiQuotaKey = GlobalKey<AiQuotaCardState>();
 
   bool _refreshing = false;
 
@@ -101,6 +103,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       await Future.wait([
         ..._futures.values.map((f) => f.then((_) {}, onError: (_) {})),
         if (_quotaKey.currentState != null) _quotaKey.currentState!.reload(),
+        if (_aiQuotaKey.currentState != null) _aiQuotaKey.currentState!.reload(),
       ]);
     } finally {
       if (mounted) setState(() => _refreshing = false);
@@ -170,6 +173,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (stats.isNotEmpty) _statsGrid(stats),
       const SizedBox(height: 24),
       StorageQuotaCard(key: _quotaKey, api: _api, onManage: () => openNavItem(context, NavConfig.byId('settings'))),
+      const SizedBox(height: 16),
+      AiQuotaCard(key: _aiQuotaKey, api: _api, onManage: () => openNavItem(context, NavConfig.byId('ai-logs'))),
       if (canEmails) ...[
         const SizedBox(height: 24),
         _recentSection(

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/crud_payload.dart';
 import '../../services/text_format.dart';
+import '../../widgets/ai_quota_card.dart';
 import '../../widgets/app_scaffold.dart';
 import '../../widgets/searchable_paged_list.dart';
 
@@ -37,6 +40,7 @@ class AiLogsScreen extends StatefulWidget {
 class _AiLogsScreenState extends State<AiLogsScreen> {
   late final ApiService _api = widget.apiService ?? ApiService();
   var _listKey = GlobalKey<SearchablePagedListState>();
+  final _quotaKey = GlobalKey<AiQuotaCardState>();
   String? _action;
   String? _status;
   int? _total;
@@ -58,7 +62,11 @@ class _AiLogsScreenState extends State<AiLogsScreen> {
   }
 
   Future<void> _reload() async {
-    await Future.wait([_loadStats(), _listKey.currentState?.reload() ?? Future.value()]);
+    await Future.wait([
+      _loadStats(),
+      _quotaKey.currentState?.reload() ?? Future.value(),
+      _listKey.currentState?.reload() ?? Future.value(),
+    ]);
   }
 
   void _selectFilter({String? action, bool updateAction = false, String? status, bool updateStatus = false}) {
@@ -249,14 +257,42 @@ class _AiLogsScreenState extends State<AiLogsScreen> {
     );
   }
 
+  void _openQuotaSheet(bool canEditLimit) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(16, 16, 16, 24 + MediaQuery.viewInsetsOf(ctx).bottom),
+        child: SingleChildScrollView(
+          child: AiQuotaCard(
+            key: _quotaKey,
+            api: _api,
+            showManagement: true,
+            canEditLimit: canEditLimit,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final muted = TextStyle(color: scheme.onSurface.withValues(alpha: 0.7), fontSize: 12);
+    final canEditLimit = (context.watch<AuthProvider?>()?.roleLevel ?? 1) >= 4;
     return AppScaffold(
       title: 'AI Logları',
       navId: 'ai-logs',
-      actions: [IconButton(tooltip: 'Yenile', icon: const Icon(Icons.refresh_rounded), onPressed: _reload)],
+      actions: [
+        IconButton(
+          key: const ValueKey('ai_quota_sheet_button'),
+          tooltip: 'AI Kota & Limit',
+          icon: const Icon(Icons.auto_awesome_rounded),
+          onPressed: () => _openQuotaSheet(canEditLimit),
+        ),
+        IconButton(tooltip: 'Yenile', icon: const Icon(Icons.refresh_rounded), onPressed: _reload),
+      ],
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

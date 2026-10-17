@@ -101,4 +101,54 @@ void main() {
     expect(find.textContaining('Merhaba Dünya'), findsWidgets);
     expect(find.textContaining('merhaba-dunya'), findsWidgets);
   });
+
+  testWidgets('AiLogsScreen opens AI quota management sheet from AppBar', (tester) async {
+    backend.ok('/ai/stats', {
+      'totalCalls': 1,
+      'successCalls': 1,
+      'errorCalls': 0,
+      'totalInputTokens': 10,
+      'totalOutputTokens': 10,
+      'totalThoughtTokens': 10,
+      'totalCachedTokens': 0,
+      'totalTokens': 30,
+      'avgDurationMs': 100.0,
+      'byAction': [],
+    });
+    backend.ok('/ai/logs', {'content': [], 'totalElements': 0, 'totalPages': 0});
+    backend.ok('/ai/tenant/t1/quota', {
+      'tenantId': 't1',
+      'monthlyTokenLimit': 1000000,
+      'monthlyTokensUsed': 250000,
+      'monthlyTokensRemaining': 750000,
+      'monthlyTokenUsedPercent': 25.0,
+      'dailyRequestLimit': 250,
+      'dailyRequestsUsed': 10,
+      'dailyRequestsRemaining': 240,
+      'dailyRequestUsedPercent': 4.0,
+      'dailyTokensUsed': 5000,
+      'monthlyInputTokens': 100000,
+      'monthlyOutputTokens': 50000,
+      'monthlyThoughtTokens': 100000,
+      'monthlyCachedTokens': 0,
+      'monthlyEstimatedCostUsd': 0.6375,
+      'totalEstimatedCostUsd': 0.6375,
+    });
+
+    await tester.runAsync(() => backend.signIn(auth, ['posts:read'], roles: const ['SUPER_ADMIN']));
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AuthProvider>.value(
+        value: auth,
+        child: MaterialApp(home: AiLogsScreen(apiService: backend.api)),
+      ),
+    );
+    await settle(tester);
+
+    await tester.tap(find.byKey(const ValueKey('ai_quota_sheet_button')));
+    await settle(tester);
+
+    expect(find.byKey(const ValueKey('ai_quota_card')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai_monthly_limit_field')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai_daily_limit_field')), findsOneWidget);
+  });
 }

@@ -72,6 +72,42 @@ void main() {
         'usedBytes': 805306368, // 768 MB
         'limitBytes': 1073741824, // 1 GB
         'usedPercent': 75.0,
+      })
+      ..ok('/ai/tenant/t1/quota', {
+        'tenantId': 't1',
+        'monthlyTokenLimit': 1000000,
+        'monthlyTokensUsed': 125000,
+        'monthlyTokensRemaining': 875000,
+        'monthlyTokenUsedPercent': 12.5,
+        'dailyRequestLimit': 250,
+        'dailyRequestsUsed': 15,
+        'dailyRequestsRemaining': 235,
+        'dailyRequestUsedPercent': 6.0,
+        'dailyTokensUsed': 8500,
+        'monthlyInputTokens': 45000,
+        'monthlyOutputTokens': 20000,
+        'monthlyThoughtTokens': 60000,
+        'monthlyCachedTokens': 0,
+        'monthlyEstimatedCostUsd': 0.3338,
+        'totalEstimatedCostUsd': 0.85,
+      })
+      ..ok('/ai/quota', {
+        'tenantId': 'default',
+        'monthlyTokenLimit': 1000000,
+        'monthlyTokensUsed': 0,
+        'monthlyTokensRemaining': 1000000,
+        'monthlyTokenUsedPercent': 0.0,
+        'dailyRequestLimit': 250,
+        'dailyRequestsUsed': 0,
+        'dailyRequestsRemaining': 250,
+        'dailyRequestUsedPercent': 0.0,
+        'dailyTokensUsed': 0,
+        'monthlyInputTokens': 0,
+        'monthlyOutputTokens': 0,
+        'monthlyThoughtTokens': 0,
+        'monthlyCachedTokens': 0,
+        'monthlyEstimatedCostUsd': 0.0,
+        'totalEstimatedCostUsd': 0.0,
       });
   });
 
