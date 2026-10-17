@@ -115,6 +115,15 @@ class FieldConfig {
   /// reading the record (banner `_imageMode`).
   final Object? Function(Map<String, dynamic>? record)? initialValueOf;
 
+  /// AI generation action (`slug`, `description`, `altText`) shown on the field.
+  final String? aiAction;
+
+  /// Source field key (`title`, `name`, …) read when triggering [aiAction].
+  final String? aiSourceKey;
+
+  /// Context passed to `/ai/description` (`sayfa`, `component`, `widget`).
+  final String? aiContext;
+
   const FieldConfig({
     required this.key,
     required this.label,
@@ -148,6 +157,9 @@ class FieldConfig {
     this.imageOnly = false,
     this.currentImageKey,
     this.initialValueOf,
+    this.aiAction,
+    this.aiSourceKey,
+    this.aiContext,
   });
 }
 

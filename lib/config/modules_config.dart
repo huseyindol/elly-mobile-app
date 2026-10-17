@@ -76,8 +76,17 @@ class ModulesConfig {
           pattern: _slugPattern,
           patternMessage: _slugMessage,
           slugFrom: 'title',
+          aiAction: 'slug',
+          aiSourceKey: 'title',
         ),
-        FieldConfig(key: 'description', label: 'Açıklama', type: FieldType.longText),
+        FieldConfig(
+          key: 'description',
+          label: 'Açıklama',
+          type: FieldType.longText,
+          aiAction: 'description',
+          aiSourceKey: 'title',
+          aiContext: 'sayfa',
+        ),
         FieldConfig(key: 'template', label: 'Şablon', hint: 'örn: APage', maxLength: 50),
         FieldConfig(key: 'status', label: 'Aktif (Yayında)', type: FieldType.boolean, defaultValue: true),
         ..._seoFields,
@@ -121,7 +130,14 @@ class ModulesConfig {
       ],
       fields: [
         FieldConfig(key: 'name', label: 'Bileşen Adı', isRequired: true, maxLength: 100),
-        FieldConfig(key: 'description', label: 'Açıklama', type: FieldType.longText),
+        FieldConfig(
+          key: 'description',
+          label: 'Açıklama',
+          type: FieldType.longText,
+          aiAction: 'description',
+          aiSourceKey: 'name',
+          aiContext: 'component',
+        ),
         FieldConfig(key: 'template', label: 'Şablon', hint: 'örn: BComponent', maxLength: 50),
         FieldConfig(
           key: 'type',
@@ -194,6 +210,8 @@ class ModulesConfig {
           pattern: _slugPattern,
           patternMessage: _slugMessage,
           slugFrom: 'title',
+          aiAction: 'slug',
+          aiSourceKey: 'title',
         ),
         FieldConfig(key: 'template', label: 'Şablon', hint: 'örn: APost', maxLength: 50),
         FieldConfig(key: 'orderIndex', label: 'Sıra', type: FieldType.number, defaultValue: 0),
@@ -394,7 +412,14 @@ class ModulesConfig {
       ],
       fields: [
         FieldConfig(key: 'name', label: 'Widget Adı', isRequired: true, maxLength: 100),
-        FieldConfig(key: 'description', label: 'Açıklama', type: FieldType.longText),
+        FieldConfig(
+          key: 'description',
+          label: 'Açıklama',
+          type: FieldType.longText,
+          aiAction: 'description',
+          aiSourceKey: 'name',
+          aiContext: 'widget',
+        ),
         FieldConfig(key: 'template', label: 'Şablon', hint: 'örn: BWidget', maxLength: 50),
         FieldConfig(
           key: 'type',
@@ -443,7 +468,7 @@ class ModulesConfig {
       payloadKeys: ['title', 'altText', 'link', 'target', 'type', 'orderIndex', 'status', 'images', 'subFolder'],
       fields: [
         FieldConfig(key: 'title', label: 'Başlık', isRequired: true, maxLength: 200),
-        FieldConfig(key: 'altText', label: 'Alt Metin'),
+        FieldConfig(key: 'altText', label: 'Alt Metin', aiAction: 'altText', aiSourceKey: 'title'),
         FieldConfig(key: 'link', label: 'Link (URL)', pattern: _urlPattern, patternMessage: _urlMessage),
         FieldConfig(
           key: 'target',

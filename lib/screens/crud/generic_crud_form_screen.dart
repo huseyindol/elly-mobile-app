@@ -47,6 +47,7 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
   final Map<String, List<MapEntry<Object, String>>> _remoteOptions = {};
   final Set<String> _optionsDenied = {}; // remote dropdowns not loaded: missing optionsPermission
   final Set<String> _editedSlugs = {}; // slug fields the user typed into (no more auto-fill)
+  final Set<String> _aiBusy = {}; // active AI generation keys ('field_<key>' or 'section_<name>')
   Map<String, dynamic>? _original;
   bool _ready = false;
   String? _loadError;
@@ -574,12 +575,200 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
             fontFamily: isJson ? 'monospace' : null,
             fontSize: isJson ? 13 : null,
           ),
-          decoration: _decoration(field).copyWith(helperText: field.type == FieldType.tags ? 'Virgülle ayırın' : null),
+          decoration: _decoration(field).copyWith(
+            helperText: field.type == FieldType.tags ? 'Virgülle ayırın' : null,
+            suffixIcon: _buildAiFieldButton(field),
+          ),
           onChanged: (text) => _onTextChanged(field, text),
           validator: (val) => _validateText(field, val),
         );
     }
     return Padding(padding: const EdgeInsets.only(bottom: 16), child: child);
+  }
+
+  Widget? _buildAiFieldButton(FieldConfig field) {
+    if (field.aiAction == null) return null;
+    final busy = _aiBusy.contains('field_${field.key}');
+    return IconButton(
+      key: ValueKey('ai_button_${field.key}'),
+      tooltip: '${field.label}: AI ile oluştur',
+      onPressed: busy || _isLoading ? null : () => _generateFieldAi(field),
+      icon: busy
+          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+          : Icon(Icons.auto_awesome_rounded, size: 20, color: _scheme.primary),
+    );
+  }
+
+  Widget? _buildSectionAiAction(String section) {
+    final (String key, String label, VoidCallback onPressed)? config = switch (section) {
+      'SEO Ayarları' when _controllers.containsKey('seoInfo.title') => (
+        'section_seo',
+        'AI ile Oluştur',
+        _generateSeoAi,
+      ),
+      'Blog Bilgileri' when widget.module.permissionKey == 'posts' => (
+        'section_blog_info',
+        'AI ile Oluştur',
+        _generateBlogInfoAi,
+      ),
+      'İçerik' when widget.module.permissionKey == 'posts' => ('section_article', 'AI Makale', _generateArticleAi),
+      _ => null,
+    };
+    if (config == null) return null;
+    final (busyKey, label, handler) = config;
+    final busy = _aiBusy.contains(busyKey);
+    return TextButton.icon(
+      key: ValueKey('ai_$busyKey'),
+      onPressed: busy || _isLoading ? null : handler,
+      icon: busy
+          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+          : const Icon(Icons.auto_awesome_rounded, size: 18),
+      label: Text(label),
+    );
+  }
+
+  Future<void> _generateFieldAi(FieldConfig field) async {
+    final sourceKey = field.aiSourceKey ?? 'title';
+    final source = _controllers[sourceKey]?.text.trim() ?? '';
+    if (source.isEmpty) {
+      final sourceLabel = _fields.where((f) => f.key == sourceKey).firstOrNull?.label ?? sourceKey;
+      _showError('Önce $sourceLabel alanını doldurun');
+      return;
+    }
+    final busyKey = 'field_${field.key}';
+    setState(() => _aiBusy.add(busyKey));
+    try {
+      switch (field.aiAction) {
+        case 'slug':
+          final data = Map<String, dynamic>.from(await _apiService.post('/ai/slug', {'title': source}) as Map);
+          final slug = data['slug']?.toString() ?? '';
+          if (slug.isNotEmpty) {
+            _controllers[field.key]?.text = slug;
+            _editedSlugs.add(field.key);
+            _markDirty();
+            if (mounted) showAppSnackBar(context, 'Slug oluşturuldu');
+          }
+        case 'description':
+          final data = Map<String, dynamic>.from(
+            await _apiService.post('/ai/description', {'name': source, 'context': field.aiContext ?? 'sayfa'}) as Map,
+          );
+          final desc = data['description']?.toString() ?? '';
+          if (desc.isNotEmpty) {
+            _controllers[field.key]?.text = desc;
+            _markDirty();
+            if (mounted) showAppSnackBar(context, 'Açıklama oluşturuldu');
+          }
+        case 'altText':
+          final data = Map<String, dynamic>.from(await _apiService.post('/ai/alt-text', {'title': source}) as Map);
+          final altText = data['altText']?.toString() ?? '';
+          if (altText.isNotEmpty) {
+            _controllers[field.key]?.text = altText;
+            _markDirty();
+            if (mounted) showAppSnackBar(context, 'Alt metin oluşturuldu');
+          }
+      }
+    } catch (e) {
+      if (mounted) _showError(e.toString());
+    } finally {
+      if (mounted) setState(() => _aiBusy.remove(busyKey));
+    }
+  }
+
+  Future<void> _generateSeoAi() async {
+    final title = _controllers['title']?.text.trim() ?? '';
+    if (title.isEmpty) {
+      _showError('Önce Başlık alanını doldurun');
+      return;
+    }
+    const busyKey = 'section_seo';
+    setState(() => _aiBusy.add(busyKey));
+    try {
+      final data = Map<String, dynamic>.from(await _apiService.post('/ai/seo', {'title': title}) as Map);
+      _controllers['seoInfo.title']?.text = data['seoTitle']?.toString() ?? '';
+      _controllers['seoInfo.description']?.text = data['seoDescription']?.toString() ?? '';
+      final rawKeywords = data['seoKeywords'];
+      _controllers['seoInfo.keywords']?.text = rawKeywords is List
+          ? rawKeywords.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).join(', ')
+          : (rawKeywords?.toString() ?? '');
+      final slug = _controllers['slug']?.text.trim() ?? '';
+      if (slug.isNotEmpty) _controllers['seoInfo.canonicalUrl']?.text = '/$slug';
+      _markDirty();
+      if (mounted) showAppSnackBar(context, 'SEO alanları oluşturuldu');
+    } catch (e) {
+      if (mounted) _showError(e.toString());
+    } finally {
+      if (mounted) setState(() => _aiBusy.remove(busyKey));
+    }
+  }
+
+  Future<void> _generateBlogInfoAi() async {
+    final title = _controllers['title']?.text.trim() ?? '';
+    final content = (_richKeys['content']?.currentState?.html ?? _values['content']?.toString() ?? '').trim();
+    final plainContent = content.replaceAll(RegExp(r'<[^>]*>'), '').trim();
+    if (title.isEmpty || plainContent.isEmpty) {
+      _showError('Önce Başlık ve İçerik alanlarını doldurun');
+      return;
+    }
+    const busyKey = 'section_blog_info';
+    setState(() => _aiBusy.add(busyKey));
+    try {
+      final data = Map<String, dynamic>.from(
+        await _apiService.post('/ai/blog-info', {'title': title, 'content': content}) as Map,
+      );
+      _controllers['description']?.text = data['description']?.toString() ?? '';
+      _controllers['category']?.text = data['category']?.toString() ?? '';
+      _controllers['readingTime']?.text = data['readingTime']?.toString() ?? '';
+      final imagePrompt = data['imagePrompt']?.toString().trim() ?? '';
+      if (imagePrompt.isNotEmpty) {
+        _controllers['coverImage']?.text =
+            'https://image.pollinations.ai/prompt/${Uri.encodeComponent(imagePrompt)}?width=1600&height=900&nologo=true';
+      }
+      final now = DateTime.now();
+      final today =
+          '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-'
+          '${now.day.toString().padLeft(2, '0')}';
+      if (!mounted) return;
+      final auth = context.read<AuthProvider>();
+      final author = auth.currentUser?.username ?? auth.profile?['email']?.toString() ?? '';
+      if (author.isNotEmpty) _controllers['author']?.text = author;
+      _dirty = true;
+      setState(() => _values['publishedAt'] = today);
+      showAppSnackBar(context, 'Blog bilgileri oluşturuldu');
+    } catch (e) {
+      if (mounted) _showError(e.toString());
+    } finally {
+      if (mounted) setState(() => _aiBusy.remove(busyKey));
+    }
+  }
+
+  Future<void> _generateArticleAi() async {
+    final params = await showDialog<({String topic, String keywords})>(
+      context: context,
+      builder: (_) => _AiArticleDialog(initialTopic: _controllers['title']?.text.trim() ?? ''),
+    );
+    if (params == null || !mounted) return;
+    const busyKey = 'section_article';
+    setState(() => _aiBusy.add(busyKey));
+    try {
+      final data = Map<String, dynamic>.from(
+        await _apiService.post('/ai/article', {
+              'topic': params.topic,
+              if (params.keywords.isNotEmpty) 'keywords': params.keywords,
+            })
+            as Map,
+      );
+      final html = data['html']?.toString() ?? '';
+      if (html.isNotEmpty) {
+        _values['content'] = html;
+        _richKeys['content']?.currentState?.replaceHtml(html);
+        _markDirty();
+        if (mounted) showAppSnackBar(context, 'Makale oluşturuldu');
+      }
+    } catch (e) {
+      if (mounted) _showError(e.toString());
+    } finally {
+      if (mounted) setState(() => _aiBusy.remove(busyKey));
+    }
   }
 
   /// Visible fields with a header above each new [FieldConfig.section].
@@ -589,15 +778,23 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
     for (final field in _fields.where((f) => isFieldVisible(f, _values))) {
       if (field.section != null && field.section != section) {
         section = field.section;
+        final sectionAction = _buildSectionAiAction(section!);
         widgets.add(
           Padding(
             padding: const EdgeInsets.only(top: 8, bottom: 12),
-            child: Semantics(
-              header: true,
-              child: Text(
-                section!,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-              ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Semantics(
+                    header: true,
+                    child: Text(
+                      section,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+                ?sectionAction,
+              ],
             ),
           ),
         );
@@ -647,6 +844,69 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
         // Save stays reachable at the bottom while the long form scrolls; SnackBars show above it.
         bottomNavigationBar: _ready ? SaveBar(onPressed: _submit, loading: _isLoading) : null,
       ),
+    );
+  }
+}
+
+class _AiArticleDialog extends StatefulWidget {
+  final String initialTopic;
+  const _AiArticleDialog({required this.initialTopic});
+
+  @override
+  State<_AiArticleDialog> createState() => _AiArticleDialogState();
+}
+
+class _AiArticleDialogState extends State<_AiArticleDialog> {
+  late final _topic = TextEditingController(text: widget.initialTopic);
+  final _keywords = TextEditingController();
+
+  @override
+  void dispose() {
+    _topic.dispose();
+    _keywords.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final topic = _topic.text.trim();
+    return AlertDialog(
+      scrollable: true,
+      title: const Text('AI Makale Oluşturucu'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            key: const ValueKey('ai_article_topic'),
+            controller: _topic,
+            decoration: const InputDecoration(
+              labelText: 'Makale Konusu *',
+              hintText: 'Örn: React Server Components nasıl çalışır?',
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const ValueKey('ai_article_keywords'),
+            controller: _keywords,
+            decoration: const InputDecoration(
+              labelText: 'Yardımcı Anahtar Kelimeler',
+              hintText: 'Örn: performans, SSR, hydration',
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('İptal')),
+        FilledButton.icon(
+          key: const ValueKey('ai_article_submit'),
+          onPressed: topic.isEmpty
+              ? null
+              : () => Navigator.of(context).pop((topic: topic, keywords: _keywords.text.trim())),
+          icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+          label: const Text('Makale Oluştur'),
+        ),
+      ],
     );
   }
 }

@@ -337,4 +337,86 @@ void main() {
       expect(find.text('Kaydedilmemiş değişiklikler'), findsOneWidget);
     });
   });
+
+  group('AI generation', () {
+    testWidgets('page form: AI slug, description, and SEO generation populate fields', (tester) async {
+      backend.ok('/ai/slug', {'slug': 'ai-uretilen-slug'});
+      backend.ok('/ai/description', {'description': 'AI sayfa açıklaması'});
+      backend.ok('/ai/seo', {
+        'seoTitle': 'AI SEO Başlığı',
+        'seoDescription': 'AI SEO Açıklaması',
+        'seoKeywords': 'flutter, cms, ai',
+      });
+      final sent = capture('/pages', 'POST');
+      await pumpForm(tester, ModulesConfig.byKey('pages'));
+
+      await tester.enterText(find.byKey(const ValueKey('field_title')), 'Hakkımızda Sayfası');
+      await tester.pump();
+
+      tester.widget<IconButton>(find.byKey(const ValueKey('ai_button_slug'))).onPressed!();
+      await settle(tester);
+
+      tester.widget<IconButton>(find.byKey(const ValueKey('ai_button_description'))).onPressed!();
+      await settle(tester);
+
+      tester.widget<ButtonStyleButton>(find.byKey(const ValueKey('ai_section_seo'))).onPressed!();
+      await settle(tester);
+
+      await save(tester);
+      expect(sent, hasLength(1));
+      final body = jsonDecode(sent.single.body) as Map<String, dynamic>;
+      expect(body['slug'], 'ai-uretilen-slug');
+      expect(body['description'], 'AI sayfa açıklaması');
+      expect(body['seoInfo'], {
+        'title': 'AI SEO Başlığı',
+        'description': 'AI SEO Açıklaması',
+        'keywords': 'flutter, cms, ai',
+        'canonicalUrl': '/ai-uretilen-slug',
+        'noIndex': false,
+        'noFollow': false,
+      });
+    });
+
+    testWidgets('post form: AI article and blog-info generation populate content and metadata', (tester) async {
+      backend.ok('/ai/article', {'html': '<h2>Giriş</h2><p>Bu bir AI makalesidir.</p>'});
+      backend.ok('/ai/blog-info', {
+        'description': 'Kısa blog özeti',
+        'category': 'Teknoloji',
+        'readingTime': '4 dk',
+        'imagePrompt': 'modern cloud server illustration',
+      });
+      final sent = capture('/posts', 'POST');
+      await pumpForm(tester, ModulesConfig.byKey('posts'));
+
+      await tester.enterText(find.byKey(const ValueKey('field_title')), 'Bulut Mimarisi');
+      await tester.pump();
+
+      // Open AI Article dialog and submit
+      tester.widget<ButtonStyleButton>(find.byKey(const ValueKey('ai_section_article'))).onPressed!();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('ai_article_topic')), findsOneWidget);
+      await tester.enterText(find.byKey(const ValueKey('ai_article_keywords')), 'cloud, k8s');
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('ai_article_submit')));
+      await tester.pumpAndSettle();
+      await settle(tester);
+
+      // Generate blog info from title + generated article content
+      tester.widget<ButtonStyleButton>(find.byKey(const ValueKey('ai_section_blog_info'))).onPressed!();
+      await settle(tester);
+
+      await save(tester);
+      expect(sent, hasLength(1));
+      final body = jsonDecode(sent.single.body) as Map<String, dynamic>;
+      expect(body['content'], contains('Bu bir AI makalesidir.'));
+      expect(body['description'], 'Kısa blog özeti');
+      expect(body['category'], 'Teknoloji');
+      expect(body['readingTime'], '4 dk');
+      expect(
+        body['coverImage'],
+        'https://image.pollinations.ai/prompt/modern%20cloud%20server%20illustration?width=1600&height=900&nologo=true',
+      );
+      expect(body['publishedAt'], isNotNull);
+    });
+  });
 }

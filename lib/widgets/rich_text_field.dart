@@ -125,6 +125,23 @@ class RichTextFieldState extends State<RichTextField> {
     });
   }
 
+  /// Replaces the editor content with newly generated HTML (e.g. from AI article generation).
+  void replaceHtml(String newHtml) {
+    final analysis = analyzeHtml(newHtml);
+    setState(() {
+      if (analysis.supported) {
+        _openRich(analysis.ops!, newHtml);
+        _dirty = true;
+        _problem = null;
+      } else {
+        _closeRich();
+        _raw.text = newHtml;
+        _problem = analysis.problem;
+      }
+    });
+    widget.onChanged?.call();
+  }
+
   Future<void> _insertImage() async {
     final quill = _quill;
     if (quill == null) return;
