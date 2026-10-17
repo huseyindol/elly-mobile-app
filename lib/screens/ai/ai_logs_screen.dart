@@ -178,7 +178,11 @@ class _AiLogsScreenState extends State<AiLogsScreen> {
     final muted = TextStyle(color: scheme.onSurface.withValues(alpha: 0.65), fontSize: 12);
     final id = log['id'];
     final ok = log['status'] == 'SUCCESS';
-    final preview = (log['parsedOutput'] ?? log['responseText'] ?? log['errorMessage'] ?? '').toString();
+    final errorCode = (log['errorCode'] ?? '').toString();
+    final preview = (ok
+            ? (log['parsedOutput'] ?? log['responseText'] ?? '')
+            : (log['errorMessage'] ?? log['responseText'] ?? ''))
+        .toString();
     return Padding(
       key: ValueKey('ai_log_$id'),
       padding: const EdgeInsets.only(bottom: 12),
@@ -206,7 +210,7 @@ class _AiLogsScreenState extends State<AiLogsScreen> {
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
-                  ok ? 'BAŞARILI' : 'HATA',
+                  ok ? 'BAŞARILI' : (errorCode.isNotEmpty ? 'HATA · $errorCode' : 'HATA'),
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -223,7 +227,12 @@ class _AiLogsScreenState extends State<AiLogsScreen> {
               if ((log['userInput']?.toString() ?? '').isNotEmpty)
                 Text('İstek: ${log['userInput']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: muted),
               if (preview.isNotEmpty)
-                Text('Sonuç: $preview', maxLines: 1, overflow: TextOverflow.ellipsis, style: muted),
+                Text(
+                  ok ? 'Sonuç: $preview' : 'Hata: $preview',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: ok ? muted : muted.copyWith(color: scheme.error),
+                ),
               const SizedBox(height: 4),
               Text(
                 'Token: ${log['totalTokens'] ?? 0} (G:${log['inputTokens'] ?? 0} / Ç:${log['outputTokens'] ?? 0} / D:${log['thoughtTokens'] ?? 0}) · '
