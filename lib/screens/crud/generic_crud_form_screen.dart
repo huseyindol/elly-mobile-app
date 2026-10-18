@@ -17,6 +17,7 @@ import '../../widgets/app_snack_bar.dart';
 import '../../widgets/asset_picker.dart';
 import '../../widgets/confirm_dialog.dart';
 import '../../widgets/form_schema_editor.dart';
+import '../../widgets/post_preview_sheet.dart';
 import '../../widgets/relation_multi_select.dart';
 import '../../widgets/rich_text_field.dart';
 import '../../widgets/save_bar.dart';
@@ -771,6 +772,27 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
     }
   }
 
+  void _openPostPreview() {
+    _collectControllerValues();
+    final auth = context.read<AuthProvider>();
+    final fallbackAuthor = auth.currentUser?.username ?? auth.profile?['email']?.toString() ?? '';
+    final authorText = _values['author']?.toString().trim() ?? '';
+    showPostPreviewSheet(
+      context,
+      post: PostPreviewData(
+        title: _values['title']?.toString() ?? '',
+        slug: _values['slug']?.toString() ?? '',
+        content: _values['content']?.toString() ?? '',
+        description: _values['description']?.toString() ?? '',
+        category: _values['category']?.toString() ?? '',
+        coverImage: _values['coverImage']?.toString() ?? '',
+        publishedAt: _values['publishedAt']?.toString() ?? '',
+        author: authorText.isNotEmpty ? authorText : fallbackAuthor,
+        readingTime: _values['readingTime']?.toString() ?? '',
+      ),
+    );
+  }
+
   /// Visible fields with a header above each new [FieldConfig.section].
   List<Widget> _formFields(bool canPickAssets) {
     final widgets = <Widget>[];
@@ -779,6 +801,7 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
       if (field.section != null && field.section != section) {
         section = field.section;
         final sectionAction = _buildSectionAiAction(section!);
+        final showSectionPreview = section == 'İçerik' && widget.module.permissionKey == 'posts';
         widgets.add(
           Padding(
             padding: const EdgeInsets.only(top: 8, bottom: 12),
@@ -793,6 +816,13 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
                     ),
                   ),
                 ),
+                if (showSectionPreview)
+                  TextButton.icon(
+                    key: const ValueKey('post_section_preview_button'),
+                    onPressed: _isLoading ? null : _openPostPreview,
+                    icon: const Icon(Icons.visibility_outlined, size: 18),
+                    label: const Text('Önizleme'),
+                  ),
                 ?sectionAction,
               ],
             ),
@@ -822,6 +852,13 @@ class _GenericCrudFormScreenState extends State<GenericCrudFormScreen> {
       child: AppScaffold(
         title: _isEditing ? '${widget.module.title} · Düzenle' : '${widget.module.title} · Yeni',
         actions: [
+          if (widget.module.permissionKey == 'posts' && _ready)
+            IconButton(
+              key: const ValueKey('post_preview_button'),
+              tooltip: 'Canlı Önizleme (Mobil / Web)',
+              icon: const Icon(Icons.visibility_outlined),
+              onPressed: _openPostPreview,
+            ),
           if (link != null && _original != null && auth.can(widget.module.permissionKey, link.action))
             IconButton(
               key: const ValueKey('record_link_button'),

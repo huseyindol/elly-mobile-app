@@ -418,5 +418,50 @@ void main() {
       );
       expect(body['publishedAt'], isNotNull);
     });
+
+    testWidgets('post form: live preview renders article in Mobile Web and Desktop viewports', (tester) async {
+      final postRecord = {
+        'id': 42,
+        'title': 'Spring Boot ve Kubernetes Rehberi',
+        'slug': 'spring-boot-k8s',
+        'content': '<h2>Mimari</h2><p>Bu makalede <strong>mikroservis</strong> mimarisini inceliyoruz.</p>',
+        'description': 'Adım adım üretim ortamı kurulumu',
+        'category': 'DevOps',
+        'author': 'Hüseyin DOL',
+        'readingTime': '6 dk',
+        'publishedAt': '2026-10-18',
+        'status': true,
+      };
+      backend.ok('/posts/42', postRecord);
+      await pumpForm(tester, ModulesConfig.byKey('posts'), postRecord);
+
+      expect(find.byKey(const ValueKey('post_preview_button')), findsOneWidget);
+      expect(find.byKey(const ValueKey('post_section_preview_button')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('post_preview_button')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Canlı Site Önizlemesi (elly-tenant)'), findsOneWidget);
+      expect(find.byKey(const ValueKey('post_preview_frame_mobile')), findsOneWidget);
+      expect(find.text('Spring Boot ve Kubernetes Rehberi'), findsWidgets);
+      expect(find.text('Adım adım üretim ortamı kurulumu'), findsWidgets);
+      expect(find.text('DevOps'), findsWidgets);
+      expect(find.text('6 dk okuma'), findsOneWidget);
+      expect(find.textContaining('mikroservis'), findsWidgets);
+
+      // Switch to Desktop viewport
+      await tester.tap(find.byKey(const ValueKey('post_preview_viewport_desktop')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('post_preview_frame_desktop')), findsOneWidget);
+
+      // Toggle Light/Dark theme
+      await tester.tap(find.byKey(const ValueKey('post_preview_theme_toggle')));
+      await tester.pumpAndSettle();
+
+      // Close preview
+      await tester.tap(find.byKey(const ValueKey('post_preview_close')));
+      await tester.pumpAndSettle();
+      expect(find.text('Canlı Site Önizlemesi (elly-tenant)'), findsNothing);
+    });
   });
 }
