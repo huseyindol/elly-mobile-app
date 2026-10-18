@@ -16,6 +16,7 @@ const aiLogActions = <(String?, String)>[
   ('description', 'description'),
   ('alt-text', 'alt-text'),
   ('blog-info', 'blog-info'),
+  ('article', 'article'),
   ('article:outline', 'article:outline'),
   ('article:draft', 'article:draft'),
   ('article:sanitize', 'article:sanitize'),
