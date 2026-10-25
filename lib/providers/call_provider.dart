@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../services/call_machine.dart';
 import '../services/call_media.dart';
 import '../services/incoming_call_service.dart';
+import '../services/push_notification_service.dart';
 import '../services/realtime_service.dart';
 import '../services/stomp_destinations.dart';
 import '../services/webrtc_call_media.dart';
@@ -64,6 +65,11 @@ class CallProvider extends ChangeNotifier {
 
   final _machine = CallMachine();
   final _notices = StreamController<CallNotice>.broadcast();
+  late final IncomingCallService _incomingCallBridge = IncomingCallService(
+    onAccept: ({required bool video}) => answer(video: video),
+    onReject: end,
+    onVoipToken: _syncVoipToken,
+  );
   RealtimeSubscription? _sub;
   int? _userId;
   int _seenSeq = 0;
@@ -112,6 +118,22 @@ class CallProvider extends ChangeNotifier {
     _seenSeq = realtime.connectionSeq;
     _sub = realtime.subscribe(StompDest.userRtc(userId), _onFrame);
     realtime.addListener(_onRealtime);
+    // Ensure native CallKit/PushKit bridge is initialized and sync any iOS VoIP token.
+    _incomingCallBridge;
+    unawaited(
+      IncomingCallService.getVoipToken().then((token) {
+        if (token != null && _userId == userId) _syncVoipToken(token);
+      }),
+    );
+  }
+
+  void _syncVoipToken(String voipToken) {
+    if (_userId == null || voipToken.isEmpty) return;
+    unawaited(
+      PushNotificationService()
+          .registerDeviceToken(token: voipToken, platform: 'IOS', voipToken: voipToken)
+          .catchError((_) => null),
+    );
   }
 
   /// Sign-out (before the connection closes): ends any call — the peer is told, media is closed — silently.
