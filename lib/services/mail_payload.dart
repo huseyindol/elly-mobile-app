@@ -20,6 +20,7 @@ Map<String, dynamic> mailAccountPayload(Map<String, Object?> values, {required S
     'isPrimary': values['isPrimary'] == true,
     'active': values['active'] != false,
     'tenantId': tenant.isEmpty ? null : tenant,
+    'dailyLimit': int.tryParse(text('dailyLimit')) ?? 500,
   };
 }
 
@@ -42,7 +43,12 @@ Map<String, dynamic> emailTemplatePayload({
 };
 
 /// Backend `EmailStatus` → label (dashboard "Son E-postalar", e-mail logs).
-const emailStatusLabels = {'PENDING': 'Beklemede', 'SENT': 'Gönderildi', 'FAILED': 'Başarısız'};
+const emailStatusLabels = {
+  'PENDING': 'Beklemede',
+  'SENT': 'Gönderildi',
+  'FAILED': 'Başarısız',
+  'QUOTA_EXCEEDED': 'Kota Aşıldı',
+};
 
 /// `GET /emails` (newest first like the admin), optionally filtered by `status`; page/size are appended by the list.
 String emailLogsEndpoint(String? status) =>

@@ -36,6 +36,7 @@ void main() {
         'isPrimary': true,
         'active': false,
         'tenantId': null,
+        'dailyLimit': 500,
       });
       expect(mailAccountPayload({...values, 'tenantId': 'tenant1'}, password: '')['tenantId'], 'tenant1');
     });
@@ -104,7 +105,7 @@ void main() {
     });
 
     test('labels for every backend EmailStatus', () {
-      expect(emailStatusLabels.keys, ['PENDING', 'SENT', 'FAILED']);
+      expect(emailStatusLabels.keys, ['PENDING', 'SENT', 'FAILED', 'QUOTA_EXCEEDED']);
     });
   });
 

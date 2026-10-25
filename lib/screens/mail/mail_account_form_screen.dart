@@ -25,7 +25,15 @@ class MailAccountFormScreen extends StatefulWidget {
 }
 
 class _MailAccountFormScreenState extends State<MailAccountFormScreen> {
-  static const _textKeys = ['name', 'fromAddress', 'smtpHost', 'smtpPort', 'smtpUsername', 'tenantId'];
+  static const _textKeys = [
+    'name',
+    'fromAddress',
+    'smtpHost',
+    'smtpPort',
+    'smtpUsername',
+    'tenantId',
+    'dailyLimit',
+  ];
   static const _labels = {
     'name': 'Hesap Adı',
     'fromAddress': 'Gönderen E-posta',
@@ -34,6 +42,7 @@ class _MailAccountFormScreenState extends State<MailAccountFormScreen> {
     'smtpUsername': 'SMTP Kullanıcı Adı',
     'smtpPassword': 'SMTP Şifre',
     'tenantId': 'Tenant',
+    'dailyLimit': 'Günlük Gönderim Kotası',
   };
 
   late final ApiService _api = widget.apiService ?? ApiService();
@@ -81,7 +90,18 @@ class _MailAccountFormScreenState extends State<MailAccountFormScreen> {
     setState(() {
       _record = record;
       for (final k in _textKeys) {
-        _controllers[k]!.text = record == null ? (k == 'smtpPort' ? '587' : '') : '${record[k] ?? ''}';
+        if (record == null) {
+          _controllers[k]!.text = switch (k) {
+            'smtpPort' => '587',
+            'dailyLimit' => '500',
+            _ => '',
+          };
+        } else {
+          _controllers[k]!.text = switch (k) {
+            'dailyLimit' => '${record[k] ?? 500}',
+            _ => '${record[k] ?? ''}',
+          };
+        }
       }
       _isPrimary = record?['isPrimary'] == true;
       _active = record == null || record['active'] != false;
@@ -256,6 +276,22 @@ class _MailAccountFormScreenState extends State<MailAccountFormScreen> {
             hint: 'tenant1 (boş bırakılabilir)',
             helper: 'Hangi tenant\'a ait olduğunu belirtir',
             max: 50,
+          ),
+          _text(
+            'dailyLimit',
+            required: false,
+            hint: '500',
+            helper: 'Bir günde gönderilebilecek maksimum e-posta sayısı (varsayılan: 500)',
+            keyboard: TextInputType.number,
+            formatters: [FilteringTextInputFormatter.digitsOnly],
+            validator: (v) {
+              final text = v?.trim() ?? '';
+              if (text.isEmpty) return null;
+              final limit = int.tryParse(text);
+              return limit == null || limit < 1 || limit > 100000
+                  ? 'Kota 1-100000 aralığında olmalıdır'
+                  : null;
+            },
           ),
           SwitchListTile(
             key: const ValueKey('mail_field_isPrimary'),

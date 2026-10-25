@@ -28,7 +28,7 @@ void main() {
 
     test('blank password: exactly the DTO fields, nothing else', () {
       expect(mailAccountPayload(base, password: '').keys.toSet(), {
-        'name', 'fromAddress', 'smtpHost', 'smtpPort', 'smtpUsername', 'isPrimary', 'active', 'tenantId', //
+        'name', 'fromAddress', 'smtpHost', 'smtpPort', 'smtpUsername', 'isPrimary', 'active', 'tenantId', 'dailyLimit', //
       });
     });
 

@@ -29,9 +29,30 @@ class _EmailLogsScreenState extends State<EmailLogsScreen> {
   var _listKey = GlobalKey<SearchablePagedListState>();
   String? _status; // null = Tümü
   int? _total;
+  Map<String, dynamic>? _stats;
   final Set<Object?> _retrying = {};
 
-  Future<void> _reload() async => _listKey.currentState?.reload();
+  @override
+  void initState() {
+    super.initState();
+    _loadStats();
+  }
+
+  Future<void> _loadStats() async {
+    try {
+      final data = await _api.get('/emails/stats');
+      if (mounted && data is Map) {
+        setState(() => _stats = Map<String, dynamic>.from(data));
+      }
+    } catch (_) {
+      // Best-effort stats bar: ignore if offline or mocked in existing tests.
+    }
+  }
+
+  Future<void> _reload() async {
+    await _loadStats();
+    await _listKey.currentState?.reload();
+  }
 
   void _selectStatus(String? status) => setState(() {
     _status = status;
@@ -139,6 +160,38 @@ class _EmailLogsScreenState extends State<EmailLogsScreen> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if ((_stats?['failedLast24hCount'] as num? ?? 0) > 0)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Container(
+                key: const ValueKey('email_logs_24h_alert'),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.25),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      size: 18,
+                      color: Theme.of(context).colorScheme.onErrorContainer,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Son 24 saatte ${_stats!['failedLast24hCount']} başarısız / kota aşımı gönderim var.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onErrorContainer,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           _statusChips(),
           if (_total != null)
             Padding(
@@ -204,6 +257,7 @@ class EmailStatusBadge extends StatelessWidget {
     color: switch (status) {
       'SENT' => AppColors.success,
       'PENDING' => AppColors.warning,
+      'QUOTA_EXCEEDED' => AppColors.warning,
       'FAILED' => Theme.of(context).colorScheme.onErrorContainer,
       _ => null,
     },
@@ -242,8 +296,12 @@ class _EmailLogDetailScreenState extends State<EmailLogDetailScreen> {
     final sent = !canRetryEmail(log);
     final sentAt = formatDateTimeTr(log['sentAt']);
     final errorMessage = '${log['errorMessage'] ?? ''}'.trim();
+    final cc = '${log['cc'] ?? ''}'.trim();
+    final bcc = '${log['bcc'] ?? ''}'.trim();
     final rows = [
-      ('Alıcı', '${log['recipient'] ?? ''}', true),
+      ('Alıcı (TO)', '${log['recipient'] ?? ''}', true),
+      if (cc.isNotEmpty) ('CC', cc, true),
+      if (bcc.isNotEmpty) ('BCC', bcc, true),
       ('Konu', '${log['subject'] ?? ''}', false),
       ('Template', '${log['templateName'] ?? ''}', true),
       ('Deneme sayısı', '${log['retryCount'] ?? 0}', false),

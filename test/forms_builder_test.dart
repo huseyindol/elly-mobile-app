@@ -246,6 +246,9 @@ void main() {
         'active': true,
         'senderMailAccountId': 4,
         'recipientEmail': 'ops@example.com',
+        'ccEmails': '',
+        'bccEmails': '',
+        'notificationTemplateKey': '',
         'notificationSubject': '',
         'notificationEnabled': true,
       });

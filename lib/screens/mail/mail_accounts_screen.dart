@@ -129,6 +129,12 @@ class _MailAccountsScreenState extends State<MailAccountsScreen> {
             style: muted.copyWith(fontFamily: 'monospace'),
           ),
           Text('${account['smtpUsername'] ?? ''}', style: muted.copyWith(fontSize: 12)),
+          const SizedBox(height: 4),
+          Text(
+            'Günlük Kota: ${account['dailySentCount'] ?? 0} / ${account['dailyLimit'] ?? 500}',
+            key: ValueKey('quota_$id'),
+            style: muted.copyWith(fontFamily: 'monospace', fontSize: 12),
+          ),
           Wrap(
             alignment: WrapAlignment.end,
             children: [

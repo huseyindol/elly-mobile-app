@@ -237,6 +237,7 @@ void main() {
         'isPrimary': false,
         'active': true,
         'tenantId': null,
+        'dailyLimit': 500,
       });
     });
 
