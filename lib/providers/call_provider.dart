@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../services/call_machine.dart';
 import '../services/call_media.dart';
+import '../services/incoming_call_service.dart';
 import '../services/realtime_service.dart';
 import '../services/stomp_destinations.dart';
 import '../services/webrtc_call_media.dart';
@@ -44,9 +45,20 @@ class CallProvider extends ChangeNotifier {
     this.connectGuard = const Duration(seconds: 30),
   }) : _newMedia = mediaFactory ?? WebrtcCallMedia.new;
 
-  /// Admin's default. No TURN server exists (backend has none either): calls between strict NATs cannot connect.
-  static const iceServers = [
-    {'urls': 'stun:stun.l.google.com:19302'},
+  /// C3: Default STUN + optional TURN server configured via `--dart-define=TURN_URL=...`
+  /// (`TURN_USERNAME`, `TURN_CREDENTIAL`).
+  static const String _turnUrl = String.fromEnvironment('TURN_URL');
+  static const String _turnUsername = String.fromEnvironment('TURN_USERNAME');
+  static const String _turnCredential = String.fromEnvironment('TURN_CREDENTIAL');
+
+  static List<Map<String, Object>> get iceServers => [
+    const {'urls': 'stun:stun.l.google.com:19302'},
+    if (_turnUrl.isNotEmpty)
+      {
+        'urls': _turnUrl,
+        if (_turnUsername.isNotEmpty) 'username': _turnUsername,
+        if (_turnCredential.isNotEmpty) 'credential': _turnCredential,
+      },
   ];
   static const maxPendingIce = 100;
 
@@ -295,9 +307,22 @@ class CallProvider extends ChangeNotifier {
     if (changed) {
       switch (phase) {
         case CallPhase.idle:
+          unawaited(IncomingCallService.endNativeCall());
           _teardown();
         case CallPhase.outgoing || CallPhase.incoming:
-          if (newCall) _arm(ringGuard, phase == CallPhase.outgoing ? 'Cevap yok.' : null);
+          if (newCall) {
+            _arm(ringGuard, phase == CallPhase.outgoing ? 'Cevap yok.' : null);
+            if (phase == CallPhase.incoming && _machine.callId != null) {
+              unawaited(
+                IncomingCallService.showIncomingCall(
+                  callId: _machine.callId!,
+                  callerName: _machine.peerName,
+                  callerUserId: _machine.peerUserId,
+                  ringAll: _machine.ringAll,
+                ),
+              );
+            }
+          }
         case CallPhase.connecting:
           _arm(connectGuard, 'Bağlantı kurulamadı. Ağınız doğrudan bağlantıya izin vermiyor olabilir.');
           if (_machine.isCaller) {

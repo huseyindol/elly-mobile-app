@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
+import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/form_schema.dart';
 import '../../services/text_format.dart';
@@ -47,6 +50,43 @@ class _FormSubmissionsScreenState extends State<FormSubmissionsScreen> {
     await Future.wait([_loadCount(), if (_listKey.currentState != null) _listKey.currentState!.reload()]);
   }
 
+  Future<void> _exportCsv() async {
+    try {
+      final res = await _api.get('/forms/$_id/submissions/export');
+      final map = (res as Map?)?.cast<String, dynamic>() ?? const {};
+      final csv = '${map['csvContent'] ?? ''}';
+      final count = (map['count'] as num?)?.toInt() ?? 0;
+      await Clipboard.setData(ClipboardData(text: csv));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$count yanıt CSV olarak panoya kopyalandı.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('CSV dışa aktarma başarısız: $e')),
+      );
+    }
+  }
+
+  Future<void> _cleanupOldSubmissions() async {
+    try {
+      final res = await _api.delete('/forms/$_id/submissions/cleanup?retentionDays=365');
+      final map = (res as Map?)?.cast<String, dynamic>() ?? const {};
+      final deleted = (map['deletedCount'] as num?)?.toInt() ?? 0;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('KVKK temizliği tamamlandı ($deleted eski kayıt silindi).')),
+      );
+      await _reload();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('KVKK temizliği başarısız: $e')),
+      );
+    }
+  }
+
   Widget _item(BuildContext context, Map<String, dynamic> submission) {
     final scheme = Theme.of(context).colorScheme;
     final payload = submissionPayload(submission);
@@ -86,9 +126,23 @@ class _FormSubmissionsScreenState extends State<FormSubmissionsScreen> {
   @override
   Widget build(BuildContext context) {
     final title = '${widget.form['title'] ?? 'Yanıtlar'}';
+    final canDelete = context.watch<AuthProvider?>()?.has('forms:delete') ?? false;
     return AppScaffold(
       title: 'Yanıtlar',
-      actions: [IconButton(tooltip: 'Yenile', icon: const Icon(Icons.refresh_rounded), onPressed: _reload)],
+      actions: [
+        IconButton(
+          tooltip: 'CSV Dışa Aktar',
+          icon: const Icon(Icons.download_rounded),
+          onPressed: _exportCsv,
+        ),
+        if (canDelete)
+          IconButton(
+            tooltip: 'KVKK Eski Yanıtları Temizle',
+            icon: const Icon(Icons.cleaning_services_rounded),
+            onPressed: _cleanupOldSubmissions,
+          ),
+        IconButton(tooltip: 'Yenile', icon: const Icon(Icons.refresh_rounded), onPressed: _reload),
+      ],
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
