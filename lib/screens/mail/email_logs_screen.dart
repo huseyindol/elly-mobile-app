@@ -241,6 +241,7 @@ class _EmailLogDetailScreenState extends State<EmailLogDetailScreen> {
     final canRetry = context.watch<AuthProvider>().has('emails:retry');
     final sent = !canRetryEmail(log);
     final sentAt = formatDateTimeTr(log['sentAt']);
+    final errorMessage = '${log['errorMessage'] ?? ''}'.trim();
     final rows = [
       ('Alıcı', '${log['recipient'] ?? ''}', true),
       ('Konu', '${log['subject'] ?? ''}', false),
@@ -271,6 +272,35 @@ class _EmailLogDetailScreenState extends State<EmailLogDetailScreen> {
                     SelectableText(value, style: mono ? const TextStyle(fontFamily: 'monospace') : null),
                   ],
                 ),
+              ),
+            ),
+          if (errorMessage.isNotEmpty)
+            MergeSemantics(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Hata Mesajı',
+                    style: muted.copyWith(color: theme.colorScheme.onErrorContainer, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.errorContainer.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: SelectableText(
+                      errorMessage,
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                        color: theme.colorScheme.onErrorContainer,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
         ],

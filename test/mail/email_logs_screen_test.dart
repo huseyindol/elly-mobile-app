@@ -8,13 +8,14 @@ import 'package:provider/provider.dart';
 
 import '../helpers/fake_backend.dart';
 
-Map<String, dynamic> _log(int id, String status, {int retry = 0, String? sentAt}) => {
+Map<String, dynamic> _log(int id, String status, {int retry = 0, String? sentAt, String? errorMessage}) => {
   'id': id,
   'recipient': 'alici$id@ornek.com',
   'subject': 'Konu $id',
   'templateName': 'form-notification',
   'status': status,
   'retryCount': retry,
+  'errorMessage': errorMessage,
   'createdAt': '2026-04-0${id}T08:00:00',
   'sentAt': sentAt,
 };
@@ -28,7 +29,11 @@ void main() {
     auth = backend.newAuth();
     backend.routes['/emails'] = (req) {
       final status = req.url.queryParameters['status'];
-      final all = [_log(3, 'FAILED', retry: 3), _log(2, 'SENT', sentAt: '2026-04-02T08:01:00'), _log(1, 'PENDING')];
+      final all = [
+        _log(3, 'FAILED', retry: 3, errorMessage: 'SMTP 535 Authentication failed'),
+        _log(2, 'SENT', sentAt: '2026-04-02T08:01:00'),
+        _log(1, 'PENDING'),
+      ];
       final items = status == null ? all : all.where((l) => l['status'] == status).toList();
       return okData({'content': items, 'last': true, 'totalElements': items.length});
     };
@@ -147,6 +152,8 @@ void main() {
       formatDateTimeTr('2026-04-03T08:00:00'),
       'Henüz gönderilmedi',
       'Başarısız',
+      'Hata Mesajı',
+      'SMTP 535 Authentication failed',
     ]) {
       expect(find.text(text), findsOneWidget, reason: text);
     }
