@@ -99,6 +99,7 @@ class AuthWrapper extends StatefulWidget {
 
 class _AuthWrapperState extends State<AuthWrapper> {
   bool _wasAuthenticated = false;
+  bool _inBackground = false;
   late final AppLifecycleListener _lifecycle;
   StreamSubscription<AppNotification>? _incoming;
   CallProvider? _call;
@@ -127,8 +128,15 @@ class _AuthWrapperState extends State<AuthWrapper> {
     final realtime = context.read<RealtimeService?>();
     switch (state) {
       case AppLifecycleState.resumed:
+        _inBackground = false;
         realtime?.setForeground(true);
-      case AppLifecycleState.hidden || AppLifecycleState.paused || AppLifecycleState.detached:
+      case AppLifecycleState.hidden || AppLifecycleState.paused:
+        _inBackground = true;
+        if (_call?.keepAliveInBackground == true) break;
+        _call?.endForBackground();
+        realtime?.setForeground(false);
+      case AppLifecycleState.detached:
+        _inBackground = true;
         _call?.endForBackground();
         realtime?.setForeground(false);
       case AppLifecycleState.inactive:
@@ -191,6 +199,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
     } else if (call.phase == CallPhase.idle && _callRoute != null) {
       navigator?.removeRoute(_callRoute!);
       _callRoute = null;
+      if (_inBackground) {
+        context.read<RealtimeService?>()?.setForeground(false);
+      }
     }
   }
 

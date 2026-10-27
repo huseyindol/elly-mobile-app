@@ -12,6 +12,7 @@ import UIKit
   private var callProvider: CXProvider?
   private let callController = CXCallController()
   private var activeCallUUID: UUID?
+  private var activeCallAnswered = false
   private var cachedVoipToken: String?
 
   override func application(
@@ -70,7 +71,18 @@ import UIKit
       let args = call.arguments as? [String: Any] ?? [:]
       let rawCallId = args["callId"] as? String
       let callerName = (args["callerName"] as? String) ?? "Gelen Çağrı"
-      reportIncomingCall(rawCallId: rawCallId, callerName: callerName, completion: nil)
+      // Uygulama ön plandayken Flutter kendi tam ekran CallScreen'ini zaten gösteriyor;
+      // üstüne ikinci bir CallKit başlığı düşürmemek için yalnız arka planda/kilit ekranında bildir.
+      if UIApplication.shared.applicationState != .active {
+        reportIncomingCall(rawCallId: rawCallId, callerName: callerName, completion: nil)
+      } else if let rawCallId = rawCallId, let uuid = UUID(uuidString: rawCallId), activeCallUUID == nil {
+        activeCallUUID = uuid
+        activeCallAnswered = false
+      }
+      result(true)
+
+    case "acceptCall":
+      acceptActiveCallFromFlutter()
       result(true)
 
     case "endCall":
@@ -93,6 +105,7 @@ import UIKit
       return
     }
     activeCallUUID = uuid
+    activeCallAnswered = false
 
     let update = CXCallUpdate()
     update.remoteHandle = CXHandle(type: .generic, value: callerName)
@@ -104,9 +117,24 @@ import UIKit
     }
   }
 
+  private func configureAudioSession() {
+    let session = AVAudioSession.sharedInstance()
+    try? session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .defaultToSpeaker])
+  }
+
+  private func acceptActiveCallFromFlutter() {
+    guard let uuid = activeCallUUID, !activeCallAnswered else { return }
+    activeCallAnswered = true
+    configureAudioSession()
+    let action = CXAnswerCallAction(call: uuid)
+    let transaction = CXTransaction(action: action)
+    callController.request(transaction) { _ in }
+  }
+
   private func endActiveCall() {
     guard let uuid = activeCallUUID else { return }
     activeCallUUID = nil
+    activeCallAnswered = false
     let action = CXEndCallAction(call: uuid)
     let transaction = CXTransaction(action: action)
     callController.request(transaction) { _ in }
@@ -139,8 +167,9 @@ import UIKit
     let dict = payload.dictionaryPayload
     let rawCallId = dict["callId"] as? String
     let callerName = (dict["callerDisplayName"] as? String) ?? "Elly Gelen Arama"
-    let callerUserId = dict["callerUserId"] as? Int
-    let ringAll = (dict["ringAll"] as? Bool) ?? false
+    let callerUserId = (dict["callerUserId"] as? NSNumber)?.intValue ?? (dict["callerUserId"] as? Int)
+    let ringAll = (dict["ringAll"] as? NSNumber)?.boolValue ?? (dict["ringAll"] as? Bool) ?? false
+    reportIncomingCall(rawCallId: rawCallId, callerName: callerName, completion: completion)
     callkitChannel?.invokeMethod(
       "onIncomingPush",
       arguments: [
@@ -150,23 +179,36 @@ import UIKit
         "ringAll": ringAll,
       ]
     )
-    reportIncomingCall(rawCallId: rawCallId, callerName: callerName, completion: completion)
   }
 
   // MARK: - CXProviderDelegate
 
   func providerDidReset(_ provider: CXProvider) {
     activeCallUUID = nil
+    activeCallAnswered = false
+  }
+
+  func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
+    configureAudioSession()
   }
 
   func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
-    callkitChannel?.invokeMethod("onAcceptCall", arguments: ["video": false])
+    configureAudioSession()
+    let alreadyAnsweredInFlutter = activeCallAnswered
+    activeCallAnswered = true
     action.fulfill()
+    if !alreadyAnsweredInFlutter {
+      callkitChannel?.invokeMethod("onAcceptCall", arguments: ["video": true])
+    }
   }
 
   func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
+    let wasActiveInNative = (activeCallUUID != nil)
     activeCallUUID = nil
-    callkitChannel?.invokeMethod("onRejectCall", arguments: nil)
+    activeCallAnswered = false
     action.fulfill()
+    if wasActiveInNative {
+      callkitChannel?.invokeMethod("onRejectCall", arguments: nil)
+    }
   }
 }

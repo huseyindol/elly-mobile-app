@@ -66,7 +66,10 @@ class CallProvider extends ChangeNotifier {
   final _machine = CallMachine();
   final _notices = StreamController<CallNotice>.broadcast();
   late final IncomingCallService _incomingCallBridge = IncomingCallService(
-    onAccept: ({required bool video}) => answer(video: video),
+    onAccept: ({required bool video}) {
+      _nativeCallActive = true;
+      return answer(video: video);
+    },
     onReject: end,
     onVoipToken: _syncVoipToken,
     onIncomingPush: _onIncomingVoipPush,
@@ -75,6 +78,8 @@ class CallProvider extends ChangeNotifier {
   int? _userId;
   int _seenSeq = 0;
   bool _pendingVoipWakeup = false;
+  bool _nativeCallActive = false;
+  String? _lastSyncedVoipToken;
 
   CallMedia? _media;
   Future<void> _queue = Future.value();
@@ -110,6 +115,9 @@ class CallProvider extends ChangeNotifier {
   bool get speakerOn => _speakerOn;
   DateTime? get connectedAt => _connectedAt;
 
+  /// True when a native CallKit / PushKit call is ringing or active so backgrounding must not kill it.
+  bool get keepAliveInBackground => phase != CallPhase.idle && (_nativeCallActive || _pendingVoipWakeup);
+
   // ── lifecycle ──
 
   /// Signed in as [userId]: listen for call signals (idempotent).
@@ -130,7 +138,8 @@ class CallProvider extends ChangeNotifier {
   }
 
   void _syncVoipToken(String voipToken) {
-    if (_userId == null || voipToken.isEmpty) return;
+    if (_userId == null || voipToken.isEmpty || _lastSyncedVoipToken == '$_userId:$voipToken') return;
+    _lastSyncedVoipToken = '$_userId:$voipToken';
     unawaited(
       PushNotificationService()
           .registerDeviceToken(token: voipToken, platform: 'IOS', voipToken: voipToken)
@@ -142,6 +151,7 @@ class CallProvider extends ChangeNotifier {
     final callId = '${payload['callId'] ?? ''}'.trim();
     if (callId.isEmpty) return;
     _pendingVoipWakeup = true;
+    _nativeCallActive = true;
     realtime.setForeground(true);
     if (phase == CallPhase.idle) {
       final callerName = '${payload['callerDisplayName'] ?? 'Gelen Çağrı'}'.trim();
@@ -166,7 +176,7 @@ class CallProvider extends ChangeNotifier {
   Future<bool> _waitForRealtimeConnected() async {
     if (realtime.connected) return true;
     realtime.setForeground(true);
-    final deadline = DateTime.now().add(const Duration(seconds: 5));
+    final deadline = DateTime.now().add(const Duration(seconds: 8));
     while (!realtime.connected && DateTime.now().isBefore(deadline)) {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
@@ -180,6 +190,8 @@ class CallProvider extends ChangeNotifier {
     _sub = null;
     _userId = null;
     _pendingVoipWakeup = false;
+    _nativeCallActive = false;
+    _lastSyncedVoipToken = null;
     _apply(_machine.reset());
   }
 
@@ -221,7 +233,7 @@ class CallProvider extends ChangeNotifier {
   /// Accepts the ringing call (with or without the camera).
   Future<void> answer({required bool video}) async {
     if (phase != CallPhase.incoming || answering) return;
-    if (!realtime.connected && _pendingVoipWakeup) {
+    if (!realtime.connected && (_pendingVoipWakeup || _nativeCallActive)) {
       await _waitForRealtimeConnected();
     }
     _pendingVoipWakeup = false;
@@ -231,6 +243,11 @@ class CallProvider extends ChangeNotifier {
     }
     _machine.beginAnswer();
     final generation = _machine.generation;
+    unawaited(
+      IncomingCallService.acceptNativeCall(_machine.callId).then((ok) {
+        if (ok && generation == _machine.generation) _nativeCallActive = true;
+      }),
+    );
     notifyListeners();
     if (!await _openMedia(generation, video)) return;
     _apply(_machine.confirmAnswer(generation));
@@ -389,7 +406,9 @@ class CallProvider extends ChangeNotifier {
                   callerName: _machine.peerName,
                   callerUserId: _machine.peerUserId,
                   ringAll: _machine.ringAll,
-                ),
+                ).then((ok) {
+                  if (ok && generation == _machine.generation) _nativeCallActive = true;
+                }),
               );
             }
           }
@@ -494,6 +513,8 @@ class CallProvider extends ChangeNotifier {
   void _teardown() {
     _guard?.cancel();
     _guard = null;
+    _nativeCallActive = false;
+    _pendingVoipWakeup = false;
     final media = _media;
     _media = null;
     _mediaReady = false;

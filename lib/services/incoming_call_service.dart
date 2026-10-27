@@ -49,22 +49,35 @@ class IncomingCallService {
   }
 
   /// Displays native full-screen incoming call UI (CallKit / ConnectionService).
-  static Future<void> showIncomingCall({
+  static Future<bool> showIncomingCall({
     required String callId,
     required String callerName,
     int? callerUserId,
     bool ringAll = false,
   }) async {
     try {
-      await _channel.invokeMethod('showIncomingCall', {
+      final res = await _channel.invokeMethod<bool>('showIncomingCall', {
         'callId': callId,
         'callerName': callerName,
         'callerUserId': callerUserId,
         'ringAll': ringAll,
       });
+      return res == true;
     } on MissingPluginException {
       // Native channel not registered in current build/test environment — ignore.
     } catch (_) {}
+    return false;
+  }
+
+  /// Marks the native incoming call as answered when user answers from Flutter in-app UI.
+  static Future<bool> acceptNativeCall([String? callId]) async {
+    try {
+      final res = await _channel.invokeMethod<bool>('acceptCall', {'callId': callId});
+      return res == true;
+    } on MissingPluginException {
+      // Ignore in test / non-native environment.
+    } catch (_) {}
+    return false;
   }
 
   /// Dismisses native incoming call UI when call is answered, rejected, or timed out.
