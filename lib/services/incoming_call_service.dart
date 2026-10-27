@@ -9,8 +9,9 @@ class IncomingCallService {
   final Future<void> Function({required bool video})? onAccept;
   final void Function()? onReject;
   final void Function(String voipToken)? onVoipToken;
+  final void Function(Map<String, dynamic> payload)? onIncomingPush;
 
-  IncomingCallService({this.onAccept, this.onReject, this.onVoipToken}) {
+  IncomingCallService({this.onAccept, this.onReject, this.onVoipToken, this.onIncomingPush}) {
     try {
       _channel.setMethodCallHandler(_handleNativeCall);
     } catch (_) {
@@ -30,6 +31,9 @@ class IncomingCallService {
         final args = (call.arguments as Map?)?.cast<String, dynamic>() ?? const {};
         final token = '${args['voipToken'] ?? ''}'.trim();
         if (token.isNotEmpty) onVoipToken?.call(token);
+      case 'onIncomingPush':
+        final args = (call.arguments as Map?)?.cast<String, dynamic>() ?? const {};
+        onIncomingPush?.call(args);
     }
   }
 

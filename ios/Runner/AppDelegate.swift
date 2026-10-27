@@ -139,6 +139,17 @@ import UIKit
     let dict = payload.dictionaryPayload
     let rawCallId = dict["callId"] as? String
     let callerName = (dict["callerDisplayName"] as? String) ?? "Elly Gelen Arama"
+    let callerUserId = dict["callerUserId"] as? Int
+    let ringAll = (dict["ringAll"] as? Bool) ?? false
+    callkitChannel?.invokeMethod(
+      "onIncomingPush",
+      arguments: [
+        "callId": rawCallId ?? "",
+        "callerDisplayName": callerName,
+        "callerUserId": callerUserId as Any,
+        "ringAll": ringAll,
+      ]
+    )
     reportIncomingCall(rawCallId: rawCallId, callerName: callerName, completion: completion)
   }
 

@@ -69,10 +69,12 @@ class CallProvider extends ChangeNotifier {
     onAccept: ({required bool video}) => answer(video: video),
     onReject: end,
     onVoipToken: _syncVoipToken,
+    onIncomingPush: _onIncomingVoipPush,
   );
   RealtimeSubscription? _sub;
   int? _userId;
   int _seenSeq = 0;
+  bool _pendingVoipWakeup = false;
 
   CallMedia? _media;
   Future<void> _queue = Future.value();
@@ -136,12 +138,48 @@ class CallProvider extends ChangeNotifier {
     );
   }
 
+  void _onIncomingVoipPush(Map<String, dynamic> payload) {
+    final callId = '${payload['callId'] ?? ''}'.trim();
+    if (callId.isEmpty) return;
+    _pendingVoipWakeup = true;
+    realtime.setForeground(true);
+    if (phase == CallPhase.idle) {
+      final callerName = '${payload['callerDisplayName'] ?? 'Gelen Çağrı'}'.trim();
+      final callerUserId = payload['callerUserId'] is int
+          ? payload['callerUserId'] as int
+          : int.tryParse('${payload['callerUserId'] ?? ''}');
+      final ringAll = payload['ringAll'] == true;
+      _apply(
+        _machine.handle(
+          CallSignal(
+            'INCOMING_CALL',
+            callId: callId,
+            peerUserId: callerUserId,
+            peerName: callerName.isEmpty ? 'Gelen Çağrı' : callerName,
+            ringAll: ringAll,
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<bool> _waitForRealtimeConnected() async {
+    if (realtime.connected) return true;
+    realtime.setForeground(true);
+    final deadline = DateTime.now().add(const Duration(seconds: 5));
+    while (!realtime.connected && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    return realtime.connected;
+  }
+
   /// Sign-out (before the connection closes): ends any call — the peer is told, media is closed — silently.
   void reset() {
     if (_userId != null) realtime.removeListener(_onRealtime);
     _sub?.cancel();
     _sub = null;
     _userId = null;
+    _pendingVoipWakeup = false;
     _apply(_machine.reset());
   }
 
@@ -183,6 +221,10 @@ class CallProvider extends ChangeNotifier {
   /// Accepts the ringing call (with or without the camera).
   Future<void> answer({required bool video}) async {
     if (phase != CallPhase.incoming || answering) return;
+    if (!realtime.connected && _pendingVoipWakeup) {
+      await _waitForRealtimeConnected();
+    }
+    _pendingVoipWakeup = false;
     if (!realtime.connected) {
       _notify(const CallNotice('Canlı bağlantı yok; çağrı cevaplanamadı.', error: true));
       return;
@@ -195,7 +237,10 @@ class CallProvider extends ChangeNotifier {
   }
 
   /// Reject (incoming) · cancel (own, ringing) · hang up (answered).
-  void end() => _apply(_machine.end());
+  void end() {
+    _pendingVoipWakeup = false;
+    _apply(_machine.end());
+  }
 
   void toggleMic() {
     final m = media;
@@ -244,6 +289,9 @@ class CallProvider extends ChangeNotifier {
   void _onRealtime() {
     if (realtime.connectionSeq == _seenSeq) return;
     _seenSeq = realtime.connectionSeq;
+    if (_pendingVoipWakeup && phase == CallPhase.incoming) {
+      return;
+    }
     _machine.connectionReset();
   }
 
