@@ -243,12 +243,11 @@ class CallProvider extends ChangeNotifier {
     }
     _machine.beginAnswer();
     final generation = _machine.generation;
-    unawaited(
-      IncomingCallService.acceptNativeCall(_machine.callId).then((ok) {
-        if (ok && generation == _machine.generation) _nativeCallActive = true;
-      }),
-    );
     notifyListeners();
+    final acceptedInNative = await IncomingCallService.acceptNativeCall(_machine.callId);
+    if (acceptedInNative && generation == _machine.generation) {
+      _nativeCallActive = true;
+    }
     if (!await _openMedia(generation, video)) return;
     _apply(_machine.confirmAnswer(generation));
   }
@@ -426,6 +425,10 @@ class CallProvider extends ChangeNotifier {
         case CallPhase.active:
           _guard?.cancel();
           _connectedAt = DateTime.now();
+          final activeMedia = _media;
+          if (activeMedia != null) {
+            unawaited(activeMedia.setSpeaker(_speakerOn).catchError((_) {}));
+          }
       }
     }
     notifyListeners();
@@ -461,7 +464,10 @@ class CallProvider extends ChangeNotifier {
         onIce: (candidate, sdpMid, index) => _onLocalIce(generation, candidate, sdpMid, index),
         onState: (state) => _onPeerState(generation, state),
         onRemote: () {
-          if (generation == _machine.generation) notifyListeners();
+          if (generation == _machine.generation) {
+            unawaited(media.setSpeaker(_speakerOn).catchError((_) {}));
+            notifyListeners();
+          }
         },
       );
       if (generation != _machine.generation) throw const CallMediaException(CallMediaError.other);

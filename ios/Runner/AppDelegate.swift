@@ -3,6 +3,7 @@ import CallKit
 import Flutter
 import PushKit
 import UIKit
+import WebRTC
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate, PKPushRegistryDelegate, CXProviderDelegate {
@@ -12,6 +13,7 @@ import UIKit
   private var callProvider: CXProvider?
   private let callController = CXCallController()
   private var activeCallUUID: UUID?
+  private var activeCallReportedToCallKit = false
   private var activeCallAnswered = false
   private var cachedVoipToken: String?
 
@@ -19,6 +21,7 @@ import UIKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    configureWebRTCAudioDefaults()
     configureCallKit()
     configurePushKit()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
@@ -39,7 +42,20 @@ import UIKit
     }
   }
 
-  // MARK: - CallKit & PushKit Setup
+  // MARK: - CallKit, PushKit & WebRTC Audio Setup
+
+  private func configureWebRTCAudioDefaults() {
+    let config = RTCAudioSessionConfiguration.webRTC()
+    config.category = AVAudioSession.Category.playAndRecord.rawValue
+    config.mode = AVAudioSession.Mode.voiceChat.rawValue
+    config.categoryOptions = [
+      .allowBluetooth,
+      .allowBluetoothA2DP,
+      .allowAirPlay,
+      .defaultToSpeaker,
+    ]
+    RTCAudioSessionConfiguration.setWebRTC(config)
+  }
 
   private func configureCallKit() {
     let config = CXProviderConfiguration(localizedName: "Elly Studio")
@@ -77,6 +93,7 @@ import UIKit
         reportIncomingCall(rawCallId: rawCallId, callerName: callerName, completion: nil)
       } else if let rawCallId = rawCallId, let uuid = UUID(uuidString: rawCallId), activeCallUUID == nil {
         activeCallUUID = uuid
+        activeCallReportedToCallKit = false
         activeCallAnswered = false
       }
       result(true)
@@ -100,44 +117,83 @@ import UIKit
       return
     }
     let uuid = (rawCallId != nil ? UUID(uuidString: rawCallId!) : nil) ?? UUID()
-    if activeCallUUID == uuid {
+    if activeCallUUID == uuid && activeCallReportedToCallKit {
       completion?()
       return
     }
+    let wasAlreadyAnswered = (activeCallUUID == uuid && activeCallAnswered)
     activeCallUUID = uuid
-    activeCallAnswered = false
+    activeCallReportedToCallKit = true
+    if !wasAlreadyAnswered {
+      activeCallAnswered = false
+      let rtcAudio = RTCAudioSession.sharedInstance()
+      rtcAudio.useManualAudio = true
+      rtcAudio.isAudioEnabled = false
+    }
 
     let update = CXCallUpdate()
     update.remoteHandle = CXHandle(type: .generic, value: callerName)
     update.localizedCallerName = callerName
     update.hasVideo = true
 
-    provider.reportNewIncomingCall(with: uuid, update: update) { _ in
+    provider.reportNewIncomingCall(with: uuid, update: update) { [weak self] error in
       completion?()
+      guard error == nil, let self = self else { return }
+      if wasAlreadyAnswered || (self.activeCallUUID == uuid && self.activeCallAnswered) {
+        let action = CXAnswerCallAction(call: uuid)
+        self.callController.request(CXTransaction(action: action)) { _ in }
+      }
     }
   }
 
   private func configureAudioSession() {
-    let session = AVAudioSession.sharedInstance()
-    try? session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .defaultToSpeaker])
+    let rtcAudio = RTCAudioSession.sharedInstance()
+    rtcAudio.lockForConfiguration()
+    defer { rtcAudio.unlockForConfiguration() }
+    let config = RTCAudioSessionConfiguration.webRTC()
+    try? rtcAudio.setConfiguration(config)
+  }
+
+  private func activateWebRTCAudioDirectly() {
+    let rtcAudio = RTCAudioSession.sharedInstance()
+    rtcAudio.lockForConfiguration()
+    let config = RTCAudioSessionConfiguration.webRTC()
+    try? rtcAudio.setConfiguration(config, active: true)
+    rtcAudio.unlockForConfiguration()
+    rtcAudio.useManualAudio = false
+    rtcAudio.isAudioEnabled = true
   }
 
   private func acceptActiveCallFromFlutter() {
-    guard let uuid = activeCallUUID, !activeCallAnswered else { return }
     activeCallAnswered = true
-    configureAudioSession()
-    let action = CXAnswerCallAction(call: uuid)
-    let transaction = CXTransaction(action: action)
-    callController.request(transaction) { _ in }
+    if activeCallReportedToCallKit, let uuid = activeCallUUID {
+      configureAudioSession()
+      let action = CXAnswerCallAction(call: uuid)
+      let transaction = CXTransaction(action: action)
+      callController.request(transaction) { [weak self] error in
+        if error != nil {
+          self?.activateWebRTCAudioDirectly()
+        }
+      }
+    } else {
+      activateWebRTCAudioDirectly()
+    }
   }
 
   private func endActiveCall() {
-    guard let uuid = activeCallUUID else { return }
+    let uuid = activeCallUUID
+    let wasReported = activeCallReportedToCallKit
     activeCallUUID = nil
+    activeCallReportedToCallKit = false
     activeCallAnswered = false
-    let action = CXEndCallAction(call: uuid)
-    let transaction = CXTransaction(action: action)
-    callController.request(transaction) { _ in }
+    if wasReported, let uuid = uuid {
+      let action = CXEndCallAction(call: uuid)
+      let transaction = CXTransaction(action: action)
+      callController.request(transaction) { _ in }
+    } else {
+      let rtcAudio = RTCAudioSession.sharedInstance()
+      rtcAudio.useManualAudio = false
+    }
   }
 
   // MARK: - PKPushRegistryDelegate (Apple VoIP Push)
@@ -185,11 +241,25 @@ import UIKit
 
   func providerDidReset(_ provider: CXProvider) {
     activeCallUUID = nil
+    activeCallReportedToCallKit = false
     activeCallAnswered = false
+    let rtcAudio = RTCAudioSession.sharedInstance()
+    rtcAudio.isAudioEnabled = false
+    rtcAudio.useManualAudio = false
   }
 
   func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
     configureAudioSession()
+    let rtcAudio = RTCAudioSession.sharedInstance()
+    rtcAudio.audioSessionDidActivate(audioSession)
+    rtcAudio.isAudioEnabled = true
+  }
+
+  func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
+    let rtcAudio = RTCAudioSession.sharedInstance()
+    rtcAudio.audioSessionDidDeactivate(audioSession)
+    rtcAudio.isAudioEnabled = false
+    rtcAudio.useManualAudio = false
   }
 
   func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
@@ -205,6 +275,7 @@ import UIKit
   func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
     let wasActiveInNative = (activeCallUUID != nil)
     activeCallUUID = nil
+    activeCallReportedToCallKit = false
     activeCallAnswered = false
     action.fulfill()
     if wasActiveInNative {

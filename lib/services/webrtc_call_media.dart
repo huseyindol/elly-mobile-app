@@ -31,6 +31,9 @@ class WebrtcCallMedia implements CallMedia {
       await _stop(stream);
       throw const CallMediaException(CallMediaError.other);
     }
+    for (final t in stream.getAudioTracks()) {
+      t.enabled = true;
+    }
     _local = stream;
   }
 
@@ -73,9 +76,15 @@ class WebrtcCallMedia implements CallMedia {
       _ => PeerState.connecting,
     });
     pc.onTrack = (e) {
-      if (_closed || e.streams.isEmpty) return;
-      _remote = e.streams.first;
-      _remoteRenderer.srcObject = _remote;
+      if (_closed) return;
+      e.track.enabled = true;
+      if (e.streams.isNotEmpty) {
+        _remote = e.streams.first;
+        for (final t in _remote!.getAudioTracks()) {
+          t.enabled = true;
+        }
+        _remoteRenderer.srcObject = _remote;
+      }
       onRemote();
     };
     for (final track in local.getTracks()) {
