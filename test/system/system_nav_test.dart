@@ -5,6 +5,7 @@ import 'package:elly_mobile_app/screens/account/settings_screen.dart';
 import 'package:elly_mobile_app/screens/ai/ai_logs_screen.dart';
 import 'package:elly_mobile_app/screens/coming_soon_screen.dart';
 import 'package:elly_mobile_app/screens/dashboard_screen.dart';
+import 'package:elly_mobile_app/screens/devices/mac_camera_screen.dart';
 import 'package:elly_mobile_app/screens/rabbit/rabbit_screen.dart';
 import 'package:elly_mobile_app/screens/users/users_screen.dart';
 import 'package:elly_mobile_app/widgets/app_drawer.dart';
@@ -27,7 +28,13 @@ void main() {
     final system = NavConfig.groups.firstWhere((g) => g.title == 'Sistem');
     expect(
       {for (final i in system.items) i.id: navScreen(i).runtimeType},
-      {'users': UsersScreen, 'rabbitmq': RabbitScreen, 'ai-logs': AiLogsScreen, 'settings': SettingsScreen},
+      {
+        'users': UsersScreen,
+        'mac-camera': MacCameraScreen,
+        'rabbitmq': RabbitScreen,
+        'ai-logs': AiLogsScreen,
+        'settings': SettingsScreen,
+      },
     );
     expect(navScreen(NavConfig.profile), isA<ProfileScreen>());
     final placeholders = [

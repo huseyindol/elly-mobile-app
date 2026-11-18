@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../services/api_service.dart';
 import '../services/call_machine.dart';
 import '../services/call_media.dart';
 import '../services/incoming_call_service.dart';
@@ -39,9 +40,13 @@ class CallProvider extends ChangeNotifier {
   /// Answered but no media connection yet (no TURN: some NATs never connect).
   final Duration connectGuard;
 
+  /// ICE listesi çözücü — testlerde değiştirilir; varsayılan backend (`/notifications/ice-servers`).
+  final Future<List<Map<String, Object>>> Function()? iceResolver;
+
   CallProvider({
     required this.realtime,
     CallMedia Function()? mediaFactory,
+    this.iceResolver,
     this.ringGuard = const Duration(seconds: 35),
     this.connectGuard = const Duration(seconds: 30),
   }) : _newMedia = mediaFactory ?? WebrtcCallMedia.new;
@@ -61,6 +66,45 @@ class CallProvider extends ChangeNotifier {
         if (_turnCredential.isNotEmpty) 'credential': _turnCredential,
       },
   ];
+
+  /// ICE sunuculari once backend'den (`GET /notifications/ice-servers`: TURN env'i
+  /// yalniz orada tanimli), olmazsa [iceServers] (dart-define/STUN) fallback.
+  /// 10 dakika onbellekli; her cagri icin yalniz bir istek.
+  static List<Map<String, Object>>? _iceCache;
+  static DateTime _iceCacheAt = DateTime.fromMillisecondsSinceEpoch(0);
+  static const _iceTtl = Duration(minutes: 10);
+  final ApiService _api = ApiService();
+
+  Future<List<Map<String, Object>>> _ice() async {
+    if (_iceCache != null && DateTime.now().difference(_iceCacheAt) < _iceTtl) return _iceCache!;
+    if (iceResolver != null) return iceResolver!();
+    try {
+      final data = await _api.get('/notifications/ice-servers');
+      final list = data is List
+          ? data
+                .map((e) {
+                  if (e is! Map) return null;
+                  final urls = e['urls'];
+                  return <String, Object>{
+                    'urls': urls is List ? urls.join(',') : urls,
+                    if (e['username'] != null) 'username': e['username'],
+                    if (e['credential'] != null) 'credential': e['credential'],
+                  };
+                })
+                .whereType<Map<String, Object>>()
+                .toList()
+          : <Map<String, Object>>[];
+      if (list.isNotEmpty) {
+        _iceCache = list;
+        _iceCacheAt = DateTime.now();
+        return list;
+      }
+    } catch (_) {
+      // cevrimdisi/hata: fallback listesi
+    }
+    return iceServers;
+  }
+
   static const maxPendingIce = 100;
 
   final _machine = CallMachine();
@@ -212,7 +256,9 @@ class CallProvider extends ChangeNotifier {
   // ── user actions ──
 
   /// Calls panel user [userId] ([groupId]: the chat group it was started from — members skip the role hierarchy).
-  Future<void> call(int userId, String name, {String? groupId, required bool video}) async {
+  ///
+  /// [recvOnly]: watches the peer without opening this device's microphone/camera (Mac camera page).
+  Future<void> call(int userId, String name, {String? groupId, required bool video, bool recvOnly = false}) async {
     if (_userId == null || userId == _userId) return;
     if (!realtime.connected) {
       _notify(
@@ -226,7 +272,7 @@ class CallProvider extends ChangeNotifier {
     }
     _sync();
     final generation = _machine.generation;
-    if (!await _openMedia(generation, video)) return;
+    if (!await _openMedia(generation, video, recvOnly: recvOnly)) return;
     _apply(_machine.dial(generation));
   }
 
@@ -446,21 +492,25 @@ class CallProvider extends ChangeNotifier {
     });
   }
 
-  Future<bool> _openMedia(int generation, bool video) async {
+  Future<bool> _openMedia(int generation, bool video, {bool recvOnly = false}) async {
     final media = _newMedia();
     _media = media;
     String? fallback;
     try {
-      try {
-        await media.open(video: video);
-      } on CallMediaException {
-        if (!video) rethrow;
-        await media.open(video: false); // camera refused / missing → audio only (admin)
+      if (recvOnly) {
+        await media.open(video: false, recvOnly: true); // cihaz yok — yalnız izleme
+      } else {
+        try {
+          await media.open(video: video);
+        } on CallMediaException {
+          if (!video) rethrow;
+          await media.open(video: false); // camera refused / missing → audio only (admin)
+        }
+        if (video && !media.hasVideo) fallback = 'Kamera açılamadı — sesli devam ediliyor.';
       }
-      if (video && !media.hasVideo) fallback = 'Kamera açılamadı — sesli devam ediliyor.';
       if (generation != _machine.generation) throw const CallMediaException(CallMediaError.other);
       await media.connect(
-        iceServers: iceServers,
+        iceServers: await _ice(),
         onIce: (candidate, sdpMid, index) => _onLocalIce(generation, candidate, sdpMid, index),
         onState: (state) => _onPeerState(generation, state),
         onRemote: () {
@@ -481,7 +531,7 @@ class CallProvider extends ChangeNotifier {
       return false;
     }
     _mediaReady = true;
-    _micOn = true;
+    _micOn = !recvOnly; // yalnız izlemede mikrofon yok
     _camOn = media.hasVideo;
     _speakerOn = media.hasVideo; // video calls on the loudspeaker, voice calls on the earpiece
     unawaited(media.setSpeaker(_speakerOn).catchError((_) {}));

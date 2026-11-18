@@ -62,6 +62,37 @@ void main() {
     await pumpEvents();
   }
 
+  group('recvonly (Mac Kamerası):', () {
+    test('hiçbir cihaz açılmadan dial frame çıkar; izin hiç sorulmaz', () async {
+      await started();
+      await calls.provider.call(9, 'Mac Kamerası', video: false, recvOnly: true);
+      await pumpEvents();
+
+      final m = calls.media;
+      expect(m.opened, isTrue);
+      expect(m.ops.first, 'open:false:recvonly');
+      expect(m.tracksLive, isFalse, reason: 'recvonly: mikrofon/kamera hiç açılmaz');
+      expect(m.videoOpen, isFalse);
+      expect(calls.sentTo, contains('/app/rtc/call'));
+      expect(calls.provider.micOn, isFalse);
+    });
+
+    test('ANSWERED sonrası offer gider; cevap uygulanır; sonlandırmada kaynak sızmadı', () async {
+      await started();
+      await calls.provider.call(9, 'Mac Kamerası', video: false, recvOnly: true);
+      signal({'type': 'RINGING', 'callId': c1, 'peerUserId': 9, 'peerDisplayName': 'mac-agent'});
+      signal({'type': 'ANSWERED', 'callId': c1, 'peerUserId': 9, 'peerDisplayName': 'mac-agent'});
+      await pumpEvents();
+      signal({'type': 'SDP', 'callId': c1, 'peerUserId': 9, 'sdpType': 'offer', 'sdp': 'v=0 offer'});
+      await pumpEvents();
+
+      expect(calls.media.applied, contains('remote:offer'));
+      signal({'type': 'HANGUP', 'callId': c1, 'peerUserId': 9});
+      await pumpEvents();
+      expect(calls.leaks, isEmpty);
+    });
+  });
+
   group('subscription', () {
     test(
       'only /topic/user/{me}/rtc (the user-queue copy would deliver every signal twice); idempotent start',

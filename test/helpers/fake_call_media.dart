@@ -63,9 +63,12 @@ class FakeCallMedia implements CallMedia {
   bool? speaker;
   int switches = 0;
 
+  /// Yalnız izleme açıldı (cihaz yok, recvonly).
+  bool recvOnlyOpen = false;
+
   @override
-  Future<void> open({required bool video}) async {
-    ops.add('open:$video');
+  Future<void> open({required bool video, bool recvOnly = false}) async {
+    ops.add(recvOnly ? 'open:$video:recvonly' : 'open:$video');
     if (openGate != null) await openGate!.future;
     final error = openError?.call(video);
     if (error != null) throw error;
@@ -74,8 +77,9 @@ class FakeCallMedia implements CallMedia {
       throw const CallMediaException(CallMediaError.other);
     }
     opened = true;
-    tracksLive = true;
-    videoOpen = video;
+    recvOnlyOpen = recvOnly;
+    tracksLive = !recvOnly; // recvonly: hiçbir cihaz açılmadı
+    videoOpen = video && !recvOnly;
   }
 
   @override
@@ -176,6 +180,8 @@ class FakeCalls {
       medias.add(m);
       return m;
     },
+    // testlerde aga cikma: statik fallback listesi
+    iceResolver: () async => CallProvider.iceServers,
     ringGuard: ringGuard,
     connectGuard: connectGuard,
   );

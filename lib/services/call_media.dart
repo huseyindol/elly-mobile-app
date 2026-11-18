@@ -42,7 +42,10 @@ class CallMediaException implements Exception {
 /// stopped at once) — the microphone and camera must never stay on after a call.
 abstract class CallMedia {
   /// Microphone (+ camera). Throws [CallMediaException]. Asks the OS permission on first use.
-  Future<void> open({required bool video});
+  ///
+  /// [recvOnly]: no local devices at all — the peer is only watched (Mac camera):
+  /// no getUserMedia, no permission prompt, recvonly transceivers on [connect].
+  Future<void> open({required bool video, bool recvOnly = false});
 
   /// A local video track exists (the camera opened).
   bool get hasVideo;

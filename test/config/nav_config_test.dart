@@ -30,6 +30,8 @@ const _adminSidebar = <String, List<(String, String, String?)>>{
   ],
   'Sistem': [
     ('users', 'Kullanıcılar', 'users:manage'),
+    // Mobil'e özel (admin kenar çubuğunda yok): elly-mac-agent kamera görüntüleyici
+    ('mac-camera', 'Mac Kamerası', 'users:manage'),
     ('rabbitmq', 'RabbitMQ', 'rabbit:read'),
     ('ai-logs', 'AI Logları', null),
     ('settings', 'Ayarlar', null),
@@ -157,7 +159,7 @@ void main() {
       expect(hidden.ids, ['dashboard', 'ai-logs', 'settings']);
 
       final shown = await visibleFor(['users:manage']);
-      expect(shown.ids, ['dashboard', 'users', 'ai-logs', 'settings']);
+      expect(shown.ids, ['dashboard', 'users', 'mac-camera', 'ai-logs', 'settings']);
     });
 
     test('all permissions: every item and every titled group is visible', () async {

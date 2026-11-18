@@ -14,9 +14,15 @@ class WebrtcCallMedia implements CallMedia {
   bool _renderers = false;
   bool _closed = false;
   bool _front = true;
+  bool _recvOnly = false;
 
   @override
-  Future<void> open({required bool video}) async {
+  Future<void> open({required bool video, bool recvOnly = false}) async {
+    if (recvOnly) {
+      // Yalnız izleme (Mac kamerası): hiçbir cihaz açılmaz, izin istenmez.
+      _recvOnly = true;
+      return;
+    }
     final MediaStream stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
@@ -51,11 +57,11 @@ class WebrtcCallMedia implements CallMedia {
     required void Function() onRemote,
   }) async {
     final local = _local;
-    if (_closed || local == null) throw const CallMediaException(CallMediaError.other);
+    if (_closed || (local == null && !_recvOnly)) throw const CallMediaException(CallMediaError.other);
     await _localRenderer.initialize();
     await _remoteRenderer.initialize();
     _renderers = true;
-    _localRenderer.srcObject = local;
+    if (local != null) _localRenderer.srcObject = local;
     final pc = await createPeerConnection({'iceServers': iceServers, 'sdpSemantics': 'unified-plan'});
     if (_closed) {
       await pc.close();
@@ -87,8 +93,20 @@ class WebrtcCallMedia implements CallMedia {
       }
       onRemote();
     };
-    for (final track in local.getTracks()) {
-      await pc.addTrack(track, local);
+    if (_recvOnly) {
+      // Yalnız izleme: yerel track yok, sadece alan (recvonly) transceiver'lar.
+      await pc.addTransceiver(
+        kind: RTCRtpMediaType.RTCRtpMediaTypeVideo,
+        init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly),
+      );
+      await pc.addTransceiver(
+        kind: RTCRtpMediaType.RTCRtpMediaTypeAudio,
+        init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly),
+      );
+    } else {
+      for (final track in local!.getTracks()) {
+        await pc.addTrack(track, local);
+      }
     }
   }
 

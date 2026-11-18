@@ -10,6 +10,7 @@ import '../screens/assets_screen.dart';
 import '../screens/chat/chat_screen.dart';
 import '../screens/coming_soon_screen.dart';
 import '../screens/crud/generic_crud_list_screen.dart';
+import '../screens/devices/mac_camera_screen.dart';
 import '../screens/mail/email_logs_screen.dart';
 import '../screens/mail/email_templates_screen.dart';
 import '../screens/mail/mail_accounts_screen.dart';
@@ -27,6 +28,7 @@ Widget? navScreen(NavItem item) => switch (item.id) {
   'email-templates' => const EmailTemplatesScreen(),
   'email-logs' => const EmailLogsScreen(),
   'users' => const UsersScreen(),
+  'mac-camera' => const MacCameraScreen(),
   'rabbitmq' => const RabbitScreen(),
   'ai-logs' => const AiLogsScreen(),
   'settings' => const SettingsScreen(),
