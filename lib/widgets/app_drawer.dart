@@ -18,7 +18,10 @@ import '../screens/rabbit/rabbit_screen.dart';
 import '../screens/users/users_screen.dart';
 import '../services/text_format.dart';
 
-bool isNavItemVisible(AuthProvider auth, NavItem item) => item.permission == null || auth.has(item.permission!);
+/// Permission + (varsa) kullanıcı adı kısıtı birlikte geçmek zorunda; bilinmeyen kullanıcı adı gizler (fail-closed).
+bool isNavItemVisible(AuthProvider auth, NavItem item) =>
+    (item.permission == null || auth.has(item.permission!)) &&
+    (item.visibleUsernames == null || item.visibleUsernames!.contains(auth.username));
 
 /// Mobile screen of [item]; null = not on mobile yet ("yakında" placeholder).
 Widget? navScreen(NavItem item) => switch (item.id) {

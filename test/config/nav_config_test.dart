@@ -119,10 +119,12 @@ void main() {
     setUp(() => backend = FakeBackend());
 
     /// Ids of the items a user holding exactly [keys] sees; group titles of non-empty groups.
-    Future<({List<String> ids, List<String> groupTitles})> visibleFor(List<String> keys) async {
+    /// [username]: signed-in account (Mac Kamerası is visible only to the owner).
+    Future<({List<String> ids, List<String> groupTitles})> visibleFor(List<String> keys, {String username = 'huseyindol'}) async {
       final auth = backend.newAuth();
       FlutterSecureStorage.setMockInitialValues({'accessToken': 'a', 'tenantId': 't1'});
       backend.permissions(keys);
+      backend.ok('/users/me', {'id': 1, 'username': username});
       await auth.checkAuthStatus();
 
       final ids = <String>[];
@@ -160,6 +162,19 @@ void main() {
 
       final shown = await visibleFor(['users:manage']);
       expect(shown.ids, ['dashboard', 'users', 'mac-camera', 'ai-logs', 'settings']);
+    });
+
+    test('Mac Kamerası is user-specific: another users:manage admin and an unknown username do not see it', () async {
+      final other = await visibleFor(['users:manage'], username: 'ilker');
+      expect(other.ids, ['dashboard', 'users', 'ai-logs', 'settings']);
+
+      // kullanıcı adı bilinmiyor (profil yüklenemedi, login verisi yok) → fail-closed gizli
+      final auth = backend.newAuth();
+      FlutterSecureStorage.setMockInitialValues({'accessToken': 'a', 'tenantId': 't1'});
+      backend.permissions(['users:manage']);
+      await auth.checkAuthStatus();
+      final macCamera = NavConfig.groups.expand((g) => g.items).singleWhere((i) => i.id == 'mac-camera');
+      expect(isNavItemVisible(auth, macCamera), isFalse);
     });
 
     test('all permissions: every item and every titled group is visible', () async {

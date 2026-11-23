@@ -58,6 +58,15 @@ class AuthProvider with ChangeNotifier {
   /// Signed-in user's id (self-action guards); from the profile, else the login response.
   int? get userId => (_profile?['id'] as num?)?.toInt() ?? int.tryParse(_currentUser?.userId ?? '');
 
+  /// Signed-in user's username; from the profile, else the login response; null while
+  /// unknown (user-specific items like Mac Kamerası stay hidden — fail-closed).
+  String? get username {
+    final fromProfile = _profile?['username']?.toString();
+    if (fromProfile != null && fromProfile.isNotEmpty) return fromProfile;
+    final fromLogin = _currentUser?.username;
+    return (fromLogin != null && fromLogin.isNotEmpty) ? fromLogin : null;
+  }
+
   /// Drawer / dashboard name: "Ad Soyad" (admin sidebar), else the username; '' while unknown.
   String get displayName {
     final name = displayNameOf(_profile);

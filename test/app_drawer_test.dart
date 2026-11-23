@@ -27,11 +27,12 @@ void main() {
   List<NavItem> allItems() => [for (final g in NavConfig.groups) ...g.items];
 
   /// Dashboard as a user holding exactly [permissions], with the drawer open.
-  Future<void> openDrawer(WidgetTester tester, List<String> permissions) async {
+  /// Signs in as [username] — Mac Kamerası is visible only to the owner account.
+  Future<void> openDrawer(WidgetTester tester, List<String> permissions, {String username = 'huseyindol'}) async {
     tester.view.physicalSize = const Size(800, 3000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
-    await tester.runAsync(() => backend.signIn(auth, permissions));
+    await tester.runAsync(() => backend.signIn(auth, permissions, me: {'id': 1, 'username': username}));
     await tester.pumpWidget(
       MultiProvider(
         providers: [
@@ -86,6 +87,15 @@ void main() {
     }
     final ys = [for (final item in items) tester.getTopLeft(nav(item.id)).dy];
     expect(ys, orderedEquals([...ys]..sort()), reason: 'drawer order = admin sidebar order');
+  });
+
+  testWidgets('Mac Kamerası is personal: another admin with every permission does not see it', (tester) async {
+    final all = [for (final i in allItems()) if (i.permission != null) i.permission!];
+    await openDrawer(tester, all, username: 'ilker');
+    expect(nav('mac-camera'), findsNothing, reason: 'yalnız sahibin hesabı görmeli');
+    for (final stillVisible in ['users', 'rabbitmq', 'ai-logs', 'settings']) {
+      expect(nav(stillVisible), findsOneWidget);
+    }
   });
 
   testWidgets('chat is no longer "yakında": it opens the chat screen', (tester) async {

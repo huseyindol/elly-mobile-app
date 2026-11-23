@@ -13,10 +13,15 @@ class NavItem {
   /// `<module>:<action>` from PermissionConstants.java; null = every signed-in user (like the admin).
   final String? permission;
 
+  /// Usernames allowed to see this item (null = not user-specific). Both [permission] AND this must pass —
+  /// e.g. Mac Kamerası is a personal-device page: users:manage admins other than the owner must not see it.
+  /// Unknown username (profile not loaded, login data missing) hides the item (fail-closed).
+  final Set<String>? visibleUsernames;
+
   /// CRUD screen; null = custom screen (`navScreen` in app_drawer.dart) or not on mobile yet → "yakında".
   final CrudModule? module;
 
-  const NavItem({required this.id, required this.label, required this.icon, this.permission, this.module});
+  const NavItem({required this.id, required this.label, required this.icon, this.permission, this.module, this.visibleUsernames});
 
   NavItem.crud(String permissionKey) : this._fromModule(ModulesConfig.byKey(permissionKey));
 
@@ -60,7 +65,13 @@ class NavConfig {
     ]),
     const NavGroup('Sistem', [
       NavItem(id: 'users', label: 'Kullanıcılar', icon: Icons.people_rounded, permission: 'users:manage'),
-      NavItem(id: 'mac-camera', label: 'Mac Kamerası', icon: Icons.videocam_rounded, permission: 'users:manage'),
+      NavItem(
+        id: 'mac-camera',
+        label: 'Mac Kamerası',
+        icon: Icons.videocam_rounded,
+        permission: 'users:manage',
+        visibleUsernames: {'huseyindol'}, // kişisel cihaz sayfası — yalnız sahip hesap
+      ),
       NavItem(id: 'rabbitmq', label: 'RabbitMQ', icon: Icons.monitor_heart_rounded, permission: 'rabbit:read'),
       NavItem(id: 'ai-logs', label: 'AI Logları', icon: Icons.auto_awesome_rounded),
       NavItem(id: 'settings', label: 'Ayarlar', icon: Icons.settings_rounded),

@@ -96,6 +96,24 @@ class _MacCameraScreenState extends State<MacCameraScreen> {
     final call = context.watch<CallProvider>();
     final inCall = call.phase != CallPhase.idle;
 
+    // Derin bağlantı savunması: sayfa yalnız sahibin hesabında (kullanıcı adı
+    // bilinmiyorsa da kapalı — fail-closed).
+    if (context.watch<AuthProvider>().username != 'huseyindol') {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Mac Kamerası')),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.lock_outline_rounded, size: 40, color: theme.colorScheme.error),
+              const SizedBox(height: 12),
+              const Text('Bu alan erişiminize kapalı.'),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text('Mac Kamerası')),
       body: RefreshIndicator(
