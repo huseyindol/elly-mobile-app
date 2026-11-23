@@ -30,6 +30,8 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Görüntülü aramalarda karşı tarafa görüntünüzü göndermek için kamera kullanılır. Yalnız siz arama başlattığınızda ya da bir çağrıyı görüntülü cevapladığınızda açılır.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Sesli ve görüntülü aramalarda, aynı Wi-Fi ağındaki karşı tarafa doğrudan bağlanabilmek için yerel ağ kullanılır.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Sesli ve görüntülü aramalarda karşı tarafla konuşabilmeniz için mikrofon kullanılır. Yalnız siz arama başlattığınızda ya da bir çağrıyı cevapladığınızda açılır.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
