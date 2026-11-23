@@ -75,25 +75,30 @@ class CallProvider extends ChangeNotifier {
   static const _iceTtl = Duration(minutes: 10);
   final ApiService _api = ApiService();
 
+  /// Backend `GET /notifications/ice-servers` yanıtı → flutter_webrtc `iceServers`. `urls` liste olarak
+  /// korunur: iOS yerel katmanı metni TEK adres sayar; virgülle birleştirilen liste geçersiz bir adres
+  /// olur ve geçersiz bir ICE adresiyle peer connection hiç oluşmaz (sonraki her adım "peerConnection not
+  /// found" ile düşer → "Mikrofon/kamera açılamadı"). `urls`'ü olmayan ya da boş olan girdiler atlanır.
+  @visibleForTesting
+  static List<Map<String, Object>> iceServersFrom(dynamic data) => [
+    for (final e in data is List ? data : const [])
+      if (e is Map && _hasUrls(e['urls']))
+        <String, Object>{
+          'urls': e['urls'] is List ? List<String>.from(e['urls'] as List) : e['urls'] as String,
+          if (e['username'] != null) 'username': e['username'] as String,
+          if (e['credential'] != null) 'credential': e['credential'] as String,
+        },
+  ];
+
+  /// `urls` boş olmayan bir liste ya da boş olmayan bir metin.
+  static bool _hasUrls(dynamic urls) =>
+      urls is List ? urls.isNotEmpty : urls is String && urls.isNotEmpty;
+
   Future<List<Map<String, Object>>> _ice() async {
     if (_iceCache != null && DateTime.now().difference(_iceCacheAt) < _iceTtl) return _iceCache!;
     if (iceResolver != null) return iceResolver!();
     try {
-      final data = await _api.get('/notifications/ice-servers');
-      final list = data is List
-          ? data
-                .map((e) {
-                  if (e is! Map) return null;
-                  final urls = e['urls'];
-                  return <String, Object>{
-                    'urls': urls is List ? urls.join(',') : urls,
-                    if (e['username'] != null) 'username': e['username'],
-                    if (e['credential'] != null) 'credential': e['credential'],
-                  };
-                })
-                .whereType<Map<String, Object>>()
-                .toList()
-          : <Map<String, Object>>[];
+      final list = iceServersFrom(await _api.get('/notifications/ice-servers'));
       if (list.isNotEmpty) {
         _iceCache = list;
         _iceCacheAt = DateTime.now();
