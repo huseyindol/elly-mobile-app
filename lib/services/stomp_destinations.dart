@@ -27,12 +27,23 @@ abstract final class StompDest {
   static const notifications = '/user/queue/notifications';
   static const notificationsUnreadCount = '/user/queue/notifications/unread-count';
 
+  // Kullanıcıya özel konular TENANT'LI (`/topic/tenant/{tenantId}/user/{userId}/…`, backend `ChatTopics`):
+  // kullanıcı numaraları her tenant veritabanında ayrı sayılır; tenant'sız eski kullanıcı konusu başka
+  // tenant'taki aynı numaralı kullanıcıya da açık olduğundan sunucu onu kaldırdı. Çağıran tenant'ı önce
+  // [isSafeTenantId] ile doğrular (bilinmiyorsa abone olunmaz); güvenli olmayan değer burada yakalanır.
+
   /// JOINED (with the group) / REMOVED events of the signed-in user (backend's primary path).
-  static String membership(int userId) => '/topic/user/$userId/membership';
+  static String membership(String tenantId, int userId) {
+    assert(isSafeTenantId(tenantId), 'unsafe tenant id: $tenantId');
+    return '/topic/tenant/$tenantId/user/$userId/membership';
+  }
 
   /// WebRTC signals for the signed-in user (backend's primary path). The backend also copies every signal to
   /// `/user/queue/rtc`; that one is not subscribed — where it delivers, each signal would arrive twice.
-  static String userRtc(int userId) => '/topic/user/$userId/rtc';
+  static String userRtc(String tenantId, int userId) {
+    assert(isSafeTenantId(tenantId), 'unsafe tenant id: $tenantId');
+    return '/topic/tenant/$tenantId/user/$userId/rtc';
+  }
 
   static String group(String tenantId, String groupId) => '/topic/tenant/$tenantId/group/$groupId';
   static String typing(String tenantId, String groupId) => '/topic/tenant/$tenantId/group/$groupId/typing';

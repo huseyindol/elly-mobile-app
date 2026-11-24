@@ -83,7 +83,7 @@ void main() {
       ),
     );
     await settle(tester);
-    expect(live.link.destinations, contains('/topic/user/$me/rtc'), reason: 'listening once the user id is known');
+    expect(live.link.destinations, contains('/topic/tenant/t1/user/$me/rtc'), reason: 'listening once the user id is known');
   }
 
   Future<void> signal(WidgetTester tester, Map<String, Object?> body) async {

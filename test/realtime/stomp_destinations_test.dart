@@ -180,14 +180,14 @@ void main() {
         StompDest.bans('t1', gid): 6,
         StompDest.sendTyping('t1', gid): 5,
         StompDest.sendRead('t1', gid): 5,
-        StompDest.membership(7): 4,
+        StompDest.membership('t1', 7): 6,
         StompDest.presence: 2,
         StompDest.groupsNew: 3,
         StompDest.groupsDeleted: 3,
         StompDest.chatErrors: 3,
         StompDest.notifications: 3,
         StompDest.notificationsUnreadCount: 4,
-        StompDest.userRtc(7): 4,
+        StompDest.userRtc('t1', 7): 6,
         StompDest.rtcCall: 3,
         StompDest.rtcAnswer(gid): 4,
         StompDest.rtcReject(gid): 4,
@@ -207,8 +207,28 @@ void main() {
 
     test('membership takes an int: nothing but digits (and a sign) can ever be injected', () {
       for (final id in [0, 7, 9223372036854775807, -1]) {
-        expect(StompDest.membership(id), matches(RegExp(r'^/topic/user/-?\d+/membership$')));
+        expect(StompDest.membership('t1', id), matches(RegExp(r'^/topic/tenant/t1/user/-?\d+/membership$')));
       }
+    });
+
+    test('per-user topics are tenant-scoped: the same user id in another tenant is another topic', () {
+      // User ids are numbered per tenant database — the tenant-less `/topic/user/{id}/…` topic was open to
+      // the same-numbered user of every tenant.
+      expect(StompDest.membership('t1', 7), '/topic/tenant/t1/user/7/membership');
+      expect(StompDest.membership('t2', 7), '/topic/tenant/t2/user/7/membership');
+      expect(StompDest.userRtc('t1', 7), '/topic/tenant/t1/user/7/rtc');
+      expect(StompDest.userRtc('t2', 7), '/topic/tenant/t2/user/7/rtc');
+      expect(StompDest.userRtc('t1', 7), isNot(StompDest.userRtc('t2', 7)));
+      expect(StompDest.membership('t1', 7), isNot(contains('/topic/user/')));
+    });
+
+    test('an unsafe tenant is refused by the builders (callers validate first and never subscribe)', () {
+      for (final tenant in ['', 't1/x', 'a b', 't/../x', 'üü']) {
+        expect(() => StompDest.membership(tenant, 7), throwsAssertionError, reason: tenant);
+        expect(() => StompDest.userRtc(tenant, 7), throwsAssertionError, reason: tenant);
+      }
+      // A missing tenant never gets past the callers: CallProvider.start / ChatProvider._subscribeMembership
+      // skip the subscription (see call_provider_test / chat_provider_security_test).
     });
 
     test('the group-scoped destinations of two different groups / tenants never collide or nest', () {
@@ -227,7 +247,7 @@ void main() {
   });
 
   test('WebRTC destinations: backend CallSignalController / CallSessionService shapes', () {
-    expect(StompDest.userRtc(7), '/topic/user/7/rtc');
+    expect(StompDest.userRtc('t1', 7), '/topic/tenant/t1/user/7/rtc');
     expect(StompDest.rtcCall, '/app/rtc/call');
     for (final action in ['answer', 'reject', 'cancel', 'hangup', 'sdp', 'ice']) {
       final built = switch (action) {

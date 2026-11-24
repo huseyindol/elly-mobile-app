@@ -183,7 +183,7 @@ void main() {
       expect(StompDest.bans('t1', gid), '/topic/tenant/t1/group/$gid/bans');
       expect(StompDest.sendTyping('t1', gid), '/app/tenant-chat/t1/$gid/typing');
       expect(StompDest.sendRead('t1', gid), '/app/tenant-chat/t1/$gid/read');
-      expect(StompDest.membership(7), '/topic/user/7/membership');
+      expect(StompDest.membership('t1', 7), '/topic/tenant/t1/user/7/membership');
     });
 
     test('id guards', () {

@@ -178,7 +178,7 @@ bool _always(_State s) => true;
 final _causes = <_Cause>[
   _Cause('user ends it (cancel / reject / hang up)', (r, s) async => r.provider.end()),
   _Cause('sign-out (reset)', (r, s) async => r.provider.reset()),
-  _Cause('session change A → B (start another user id)', (r, s) async => r.provider.start(8)),
+  _Cause('session change A → B (start another user id)', (r, s) async => r.provider.start(8, tenantId: 't1')),
   _Cause('app goes to background', (r, s) async => r.provider.endForBackground()),
   _Cause('ICE failed', (r, s) async => r.calls.media.onState!(PeerState.failed), applies: (s) => s.hasPc),
   _Cause(
@@ -400,12 +400,12 @@ void main() {
   group('session change', () {
     test('A → B: A\'s call is hung up and released, B does not inherit it, A\'s topic is dead', () async {
       await _states.firstWhere((s) => s.name == 'active (we answered, with remote video)').setup(rig, _Pending());
-      rig.provider.start(8);
+      rig.provider.start(8, tenantId: 't1');
       await flush();
       expect(rig.calls.sentTo, ['/app/rtc/$c1/answer', '/app/rtc/$c1/hangup']);
       expect(rig.leaks, isEmpty);
       expect(rig.provider.phase, CallPhase.idle);
-      expect(rig.live.link.destinations, {'/topic/user/8/rtc'});
+      expect(rig.live.link.destinations, {'/topic/tenant/t1/user/8/rtc'});
       // frames for A are dropped, frames for B work
       rig.signal({..._sig('INCOMING_CALL', c2), 'peerUserId': 5}, user: me);
       expect(rig.provider.phase, CallPhase.idle);
@@ -416,8 +416,8 @@ void main() {
 
     test('same user id again is a no-op: a running call is not cut', () async {
       await _states.firstWhere((s) => s.name == 'active (we called)').setup(rig, _Pending());
-      rig.provider.start(me);
-      rig.provider.start(me);
+      rig.provider.start(me, tenantId: 't1');
+      rig.provider.start(me, tenantId: 't1');
       await flush();
       expect(rig.provider.phase, CallPhase.active);
       expect(rig.calls.media.leaks, isNotEmpty);
@@ -427,7 +427,7 @@ void main() {
       await _states.firstWhere((s) => s.name == 'connecting (we called)').setup(rig, _Pending());
       final old = rig.calls.media;
       rig.provider.reset();
-      rig.provider.start(8);
+      rig.provider.start(8, tenantId: 't1');
       rig.incoming(id: c2, user: 8);
       await rig.provider.answer(video: false);
       rig.signal(_sig('ANSWERED', c2), user: 8);

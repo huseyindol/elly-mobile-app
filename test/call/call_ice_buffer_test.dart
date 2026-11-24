@@ -225,7 +225,7 @@ void main() {
         e.value();
         await flush();
         expect(rig.provider.phase, CallPhase.idle, reason: e.key);
-        if (e.key == 'sign-out') rig.provider.start(me);
+        if (e.key == 'sign-out') rig.provider.start(me, tenantId: 't1');
         await answered(id: c2);
         rig.signal(_sdp(c2, 'offer'));
         await flush();

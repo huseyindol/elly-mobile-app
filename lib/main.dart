@@ -106,6 +106,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
   StreamSubscription<CallNotice>? _callNotices;
   Route<void>? _callRoute;
   int? _callUserId;
+  String? _callTenantId;
 
   @override
   void initState() {
@@ -154,6 +155,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
   void _sessionEnded() {
     _call?.reset();
     _callUserId = null;
+    _callTenantId = null;
     _incoming?.cancel();
     _incoming = null;
     context.read<ChatProvider?>()?.reset();
@@ -222,12 +224,18 @@ class _AuthWrapperState extends State<AuthWrapper> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final authenticated = auth.isAuthenticated;
-    // Call signals are per user id (known after /users/me or the login response).
+    // Call signals are per user id (known after /users/me or the login response) AND per tenant: the
+    // topic is tenant-scoped, so the subscription starts once both are known.
     final callUserId = authenticated ? auth.userId : null;
-    if (callUserId != null && callUserId != _callUserId) {
+    final callTenantId = authenticated ? auth.tenantId : null;
+    if (callUserId != null &&
+        (callUserId != _callUserId || callTenantId != _callTenantId)) {
       _callUserId = callUserId;
+      _callTenantId = callTenantId;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _callUserId == callUserId) _call?.start(callUserId);
+        if (mounted && _callUserId == callUserId && _callTenantId == callTenantId) {
+          _call?.start(callUserId, tenantId: callTenantId);
+        }
       });
     }
     if (_wasAuthenticated != authenticated) {

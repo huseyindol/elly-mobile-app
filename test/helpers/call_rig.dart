@@ -41,14 +41,14 @@ class CallRig {
     for (var i = 0; i < 100 && !live.realtime.connected; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 2));
     }
-    calls.provider.start(userId);
+    calls.provider.start(userId, tenantId: 't1');
   }
 
   /// Same, for `fakeAsync` zones: no real timers, microtasks only.
   void startSync(void Function() flushMicrotasks, {int userId = me}) {
     live.realtime.start();
     flushMicrotasks();
-    calls.provider.start(userId);
+    calls.provider.start(userId, tenantId: 't1');
   }
 
   CallProvider get provider => calls.provider;

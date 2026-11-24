@@ -31,6 +31,8 @@ class AuthProvider with ChangeNotifier {
   // GET /users/me (DtoUserResponse); null until loaded — the login response has only the username.
   Map<String, dynamic>? _profile;
 
+  String? _tenantId;
+
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _isAuthenticated;
   String? get errorMessage => _errorMessage;
@@ -66,6 +68,11 @@ class AuthProvider with ChangeNotifier {
     final fromLogin = _currentUser?.username;
     return (fromLogin != null && fromLogin.isNotEmpty) ? fromLogin : null;
   }
+
+  /// Tenant of the signed-in session (`tenant1`); null when signed out. User ids are numbered per tenant
+  /// database, so every per-user WebSocket topic must carry the tenant
+  /// (`/topic/tenant/{tenantId}/user/{userId}/…`).
+  String? get tenantId => _tenantId;
 
   /// Drawer / dashboard name: "Ad Soyad" (admin sidebar), else the username; '' while unknown.
   String get displayName {
@@ -118,6 +125,7 @@ class AuthProvider with ChangeNotifier {
   Future<void> checkAuthStatus() async {
     final token = await _secureStorage.read(key: 'accessToken');
     if (token != null) {
+      _tenantId = await _secureStorage.read(key: 'tenantId');
       _isAuthenticated = true;
       notifyListeners();
       await Future.wait([loadPermissions(), loadProfile()]);
@@ -202,6 +210,7 @@ class AuthProvider with ChangeNotifier {
       _permissions = user.permissions?.toSet();
       _roles = user.roles ?? const [];
       _permissionsError = null;
+      _tenantId = tenantId; // authenticated'dan ÖNCE: dinleyiciler aynı anda hem id hem tenant görür
       _isAuthenticated = true;
       await Future.wait([loadPermissions(), loadProfile()]);
       _isLoading = false;
@@ -219,6 +228,7 @@ class AuthProvider with ChangeNotifier {
     await _secureStorage.deleteAll();
     _isAuthenticated = false;
     _currentUser = null;
+    _tenantId = null;
     _mfaToken = null;
     _mfaTenantId = null;
     _permissions = null;

@@ -94,7 +94,7 @@ void main() {
       await signIn('tok-a', 't1', 7);
       live.chat.enterGroup(live.chat.groupById(gA)!);
       final a = live.link;
-      expect(a.destinations, contains('/topic/user/7/membership'));
+      expect(a.destinations, contains('/topic/tenant/t1/user/7/membership'));
       expect(a.destinations, contains('/topic/tenant/t1/group/$gA/typing'));
 
       signOut();
@@ -110,7 +110,7 @@ void main() {
         '/topic/groups/new',
         '/topic/groups/deleted',
         '/user/queue/chat-errors',
-        '/topic/user/9/membership',
+        '/topic/tenant/t2/user/9/membership',
         '/user/queue/notifications',
         '/user/queue/notifications/unread-count',
         '/topic/tenant/t2/group/$gB',
@@ -136,7 +136,7 @@ void main() {
       expect(mentions(live.link, '/7/'), isFalse);
       expect(mentions(live.link, '/t1/'), isFalse);
       expect(live.link.headers['Authorization'], 'Bearer tok-b');
-      expect(live.link.destinations, contains('/topic/user/9/membership'));
+      expect(live.link.destinations, contains('/topic/tenant/t2/user/9/membership'));
     }
   }, timeout: const Timeout(Duration(seconds: 30)));
 
@@ -150,7 +150,7 @@ void main() {
     a.deliver('/topic/tenant/t1/group/$gA', message(gA, 'late'));
     a.deliver('/user/queue/notifications', notif(999));
     a.deliver('/user/queue/notifications/unread-count', {'count': 0});
-    a.deliver('/topic/user/7/membership', {'action': 'JOINED', 'groupId': gA, 'group': grp(gA, 't1')});
+    a.deliver('/topic/tenant/t1/user/7/membership', {'action': 'JOINED', 'groupId': gA, 'group': grp(gA, 't1')});
     a.deliver('/topic/groups/new', grp(gA, 't1'));
     await pumpEvents();
 
@@ -314,7 +314,7 @@ void main() {
     live.chat.enterGroup(live.chat.groupById(gA)!);
     final a = live.link;
     expect(a.headers, {'Authorization': 'Bearer a'});
-    expect(a.destinations, contains('/topic/user/7/membership'));
+    expect(a.destinations, contains('/topic/tenant/t1/user/7/membership'));
 
     await tester.runAsync(() => auth.logout());
     await tester.pumpAndSettle();
@@ -334,7 +334,7 @@ void main() {
     final b = live.link;
     expect(identical(a, b), isFalse);
     expect(b.headers, {'Authorization': 'Bearer tok-b'});
-    expect(b.destinations, contains('/topic/user/9/membership'));
+    expect(b.destinations, contains('/topic/tenant/t2/user/9/membership'));
     expect(b.destinations, contains('/topic/tenant/t2/group/$gB'));
     expect(mentions(b, '/7/'), isFalse);
     expect(mentions(b, '/t1/'), isFalse);

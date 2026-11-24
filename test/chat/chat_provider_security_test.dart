@@ -54,7 +54,14 @@ void main() {
     await pumpEvents();
   }
 
-  Set<String> scoped() => live.link.destinations.where((d) => d.contains('/tenant/') || d.startsWith('/app/')).toSet();
+  /// Tenant'lı GRUP hedefleri (abone olunan + gönderilen). Kullanıcının kendi üyelik konusu
+  /// (`/topic/tenant/t1/user/{me}/membership`) tenant'lı ama grup hedefi değil: [userTopic].
+  Set<String> scoped() => live.link.destinations
+      .where((d) => (d.contains('/tenant/') && !d.contains('/user/')) || d.startsWith('/app/'))
+      .toSet();
+
+  /// Kullanıcıya özel üyelik konusu — tenant'lı (kullanıcı numaraları tenant veritabanına özeldir).
+  String userTopic([String tenant = 't1']) => '/topic/tenant/$tenant/user/$me/membership';
 
   /// Everything a conversation could do over STOMP for [g]: enter (typing/read/bans), typing and read signals.
   void exercise(ChatGroup g) {
@@ -152,6 +159,8 @@ void main() {
         await expectLater(chat.members(ChatGroup(id: g1, tenantId: tenant)), throwsA(isA<ApiException>()));
         exercise(ChatGroup(id: g1, tenantId: tenant));
         expect(scoped(), isEmpty);
+        // Kullanıcıya özel konu tenant'lı: güvenli olmayan tenant ile hiç abone olunmaz.
+        expect(live.link.destinations.any((d) => d.startsWith('/topic/') && d.contains('/user/')), isFalse);
         expect(live.link.sent, isEmpty);
       });
     }
@@ -286,8 +295,8 @@ void main() {
     }
   });
 
-  group('/topic/user/{me}/membership', () {
-    final topic = '/topic/user/$me/membership';
+  group('/topic/tenant/{tenant}/user/{me}/membership', () {
+    final topic = userTopic();
 
     test(
       'JOINED with a group of another tenant, or whose id differs from groupId, is not inserted (list re-fetched)',

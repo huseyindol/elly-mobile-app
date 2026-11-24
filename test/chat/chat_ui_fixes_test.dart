@@ -215,7 +215,7 @@ void main() {
     await pump(tester, conversation());
     expect(find.text('Bu gruba yazmak için üye olmalısınız.'), findsOneWidget);
     canWrite = true;
-    live.push('/topic/user/$me/membership', {
+    live.push('/topic/tenant/t1/user/$me/membership', {
       'action': 'JOINED',
       'groupId': g1,
       'userId': me,

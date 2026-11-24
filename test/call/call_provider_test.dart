@@ -28,7 +28,7 @@ void main() {
     )..listen();
     live.realtime.start();
     await pumpEvents();
-    calls.provider.start(me);
+    calls.provider.start(me, tenantId: 't1');
   }
 
   setUp(() {
@@ -95,12 +95,12 @@ void main() {
 
   group('subscription', () {
     test(
-      'only /topic/user/{me}/rtc (the user-queue copy would deliver every signal twice); idempotent start',
+      'only /topic/tenant/{tenant}/user/{me}/rtc (the user-queue copy would deliver every signal twice); idempotent start',
       () async {
         await started();
-        expect(live.link.destinations, {'/topic/user/7/rtc'});
+        expect(live.link.destinations, {'/topic/tenant/t1/user/7/rtc'});
         calls.provider.start(me);
-        expect(live.link.subscriptions['/topic/user/7/rtc'], hasLength(1));
+        expect(live.link.subscriptions['/topic/tenant/t1/user/7/rtc'], hasLength(1));
       },
     );
 
@@ -108,14 +108,35 @@ void main() {
       await started();
       calls.provider.reset();
       expect(live.link.destinations, isEmpty);
-      calls.provider.start(8);
-      expect(live.link.destinations, {'/topic/user/8/rtc'});
+      calls.provider.start(8, tenantId: 't1');
+      expect(live.link.destinations, {'/topic/tenant/t1/user/8/rtc'});
+    });
+
+    test('without a usable tenant: no topic, no outgoing call, a notice', () async {
+      // The topic is tenant-scoped; an unknown/unsafe tenant must never become a subscription.
+      calls = FakeCalls(
+        live,
+        ringGuard: const Duration(seconds: 35),
+        connectGuard: const Duration(seconds: 30),
+      )..listen();
+      live.realtime.start();
+      await pumpEvents();
+      for (final tenant in [null, '', 't1/../t2']) {
+        calls.provider.start(me, tenantId: tenant);
+      }
+      expect(live.link.destinations, isEmpty);
+
+      await calls.provider.call(9, 'Ayşe', groupId: g1, video: true);
+
+      expect(calls.sent, isEmpty, reason: 'no dial frame');
+      expect(calls.medias, isEmpty, reason: 'no microphone/camera was ever opened');
+      expect(calls.notices.map((n) => n.message), contains('Oturumun tenant bilgisi okunamadı; arama kullanılamaz.'));
     });
 
     test('malformed frames are ignored', () async {
       await started();
       for (final body in ['', 'x', '[]', '{"type":"INCOMING_CALL","callId":"nope"}']) {
-        live.push('/topic/user/7/rtc', body);
+        live.push('/topic/tenant/t1/user/7/rtc', body);
       }
       expect(calls.provider.phase, CallPhase.idle);
       expect(calls.sent, isEmpty);

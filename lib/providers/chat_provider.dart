@@ -142,9 +142,18 @@ class ChatProvider extends ChangeNotifier {
     if (epoch != _epoch) return;
     if (_myUserId == null && myUserId != null) {
       _myUserId = myUserId;
-      _globalSubs.add(realtime.subscribe(StompDest.membership(myUserId), _onMembership));
+      _subscribeMembership();
     }
     await loadGroups();
+  }
+
+  /// Membership topic of the signed-in user — tenant-scoped (user ids are numbered per tenant database).
+  /// Skipped while the tenant is unknown: never a subscription on another tenant's topic.
+  void _subscribeMembership() {
+    final tenantId = _tenantId;
+    final myUserId = _myUserId;
+    if (myUserId == null || tenantId == null || !isSafeTenantId(tenantId)) return;
+    _globalSubs.add(realtime.subscribe(StompDest.membership(tenantId, myUserId), _onMembership));
   }
 
   Future<void> _start(int? myUserId) async {
@@ -160,7 +169,7 @@ class ChatProvider extends ChangeNotifier {
       ..add(realtime.subscribe(StompDest.groupsNew, _onGroupCreated))
       ..add(realtime.subscribe(StompDest.groupsDeleted, _onGroupDeleted))
       ..add(realtime.subscribe(StompDest.chatErrors, _onChatError));
-    if (myUserId != null) _globalSubs.add(realtime.subscribe(StompDest.membership(myUserId), _onMembership));
+    _subscribeMembership();
     realtime.addListener(_onRealtime);
   }
 

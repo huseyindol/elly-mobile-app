@@ -90,7 +90,7 @@ void main() {
       '/topic/groups/new',
       '/topic/groups/deleted',
       '/user/queue/chat-errors',
-      '/topic/user/$me/membership',
+      '/topic/tenant/t1/user/$me/membership',
       '/topic/tenant/t1/group/$g1',
       '/topic/tenant/t1/group/$g2',
     });
@@ -275,7 +275,7 @@ void main() {
     backend.routes['/chat/tenant/t1/groups/$g2/access'] = (_) => okData({'canRead': false, 'canWrite': false});
     await opened();
     const g4 = '44444444-4444-4444-8444-444444444444';
-    final topic = '/topic/user/$me/membership';
+    final topic = '/topic/tenant/t1/user/$me/membership';
     live.push(topic, {
       'action': 'JOINED',
       'groupId': g4,

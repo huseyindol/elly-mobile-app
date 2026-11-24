@@ -69,7 +69,7 @@ void main() {
       ),
     );
     await settle(tester);
-    expect(live.link.destinations, contains('/topic/user/$me/rtc'));
+    expect(live.link.destinations, contains('/topic/tenant/t1/user/$me/rtc'));
   }
 
   Future<void> signal(WidgetTester tester, Map<String, Object?> body, {int user = me}) async {
@@ -100,7 +100,7 @@ void main() {
       expect(link.destinations, isEmpty, reason: 'every subscription unsubscribed');
     } else {
       // a dead link keeps its handlers in the fake; the service must drop whatever they still deliver
-      link.deliver('/topic/user/$me/rtc', {'type': 'INCOMING_CALL', 'callId': c1, 'peerUserId': 5});
+      link.deliver('/topic/tenant/t1/user/$me/rtc', {'type': 'INCOMING_CALL', 'callId': c1, 'peerUserId': 5});
       expect(calls.provider.phase, CallPhase.idle, reason: 'a frame of the signed-out session is ignored');
     }
     expect(live.realtime.started, isFalse);
@@ -192,8 +192,8 @@ void main() {
 
     await tester.runAsync(() => backend.signIn(auth, ['chat:read'], roles: ['ADMIN'], me: _bJson));
     await settle(tester);
-    expect(live.link.destinations, contains('/topic/user/8/rtc'));
-    expect(live.link.destinations, isNot(contains('/topic/user/$me/rtc')), reason: 'only the new user\'s signals');
+    expect(live.link.destinations, contains('/topic/tenant/t1/user/8/rtc'));
+    expect(live.link.destinations, isNot(contains('/topic/tenant/t1/user/$me/rtc')), reason: 'only the new user\'s signals');
     expect(calls.provider.phase, CallPhase.idle);
     expect(first.leaks, isEmpty);
 

@@ -24,7 +24,7 @@ class CallNotice {
 
 /// Admin `call-store` + `useWebRTCCall`: panel-to-panel calls (started from the chat member list) and answering a
 /// tenant support call (ring-all). Signalling over the app's one STOMP connection ([RealtimeService]) on
-/// `/topic/user/{myId}/rtc` + `/app/rtc/*`; transitions in the pure [CallMachine].
+/// `/topic/tenant/{tenantId}/user/{myId}/rtc` + `/app/rtc/*`; transitions in the pure [CallMachine].
 ///
 /// Media opens only on the user's own action — dialling or accepting — and **before** the dial/answer frame goes
 /// out: a refused permission never claims a ring-all call from the other panel users (the call is rejected instead)
@@ -169,13 +169,19 @@ class CallProvider extends ChangeNotifier {
 
   // ── lifecycle ──
 
-  /// Signed in as [userId]: listen for call signals (idempotent).
-  void start(int userId) {
+  /// Signed in as [userId] in [tenantId]: listen for call signals (idempotent). The topic is tenant-scoped
+  /// (user ids are numbered per tenant database). Without a usable tenant nothing is subscribed and outgoing
+  /// calls stay closed — never a subscription on another tenant's topic.
+  void start(int userId, {String? tenantId}) {
     if (_userId == userId) return;
     reset();
+    if (tenantId == null || !isSafeTenantId(tenantId)) {
+      _notify(const CallNotice('Oturumun tenant bilgisi okunamadı; arama kullanılamaz.', error: true));
+      return;
+    }
     _userId = userId;
     _seenSeq = realtime.connectionSeq;
-    _sub = realtime.subscribe(StompDest.userRtc(userId), _onFrame);
+    _sub = realtime.subscribe(StompDest.userRtc(tenantId, userId), _onFrame);
     realtime.addListener(_onRealtime);
     // Ensure native CallKit/PushKit bridge is initialized and sync any iOS VoIP token.
     _incomingCallBridge;

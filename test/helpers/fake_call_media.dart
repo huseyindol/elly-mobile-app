@@ -203,7 +203,7 @@ class FakeCalls {
 
   List<String> get sentTo => [for (final s in sent) s[0] as String];
 
-  void signal(int userId, Map<String, Object?> body) => live.push('/topic/user/$userId/rtc', body);
+  void signal(int userId, Map<String, Object?> body) => live.push('/topic/tenant/t1/user/$userId/rtc', body);
 
   List<SingleChildWidget> get providers => [ChangeNotifierProvider<CallProvider>.value(value: provider)];
 
