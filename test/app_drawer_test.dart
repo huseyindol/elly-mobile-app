@@ -89,10 +89,13 @@ void main() {
     expect(ys, orderedEquals([...ys]..sort()), reason: 'drawer order = admin sidebar order');
   });
 
-  testWidgets('Mac Kamerası is personal: another admin with every permission does not see it', (tester) async {
+  testWidgets('Hızlı Arama is personal: huseyindol and zehradol see it, another admin does not', (tester) async {
     final all = [for (final i in allItems()) if (i.permission != null) i.permission!];
+    await openDrawer(tester, all, username: 'zehradol');
+    expect(nav('mac-camera'), findsOneWidget, reason: 'zehradol hesabı da görmeli');
+
     await openDrawer(tester, all, username: 'ilker');
-    expect(nav('mac-camera'), findsNothing, reason: 'yalnız sahibin hesabı görmeli');
+    expect(nav('mac-camera'), findsNothing, reason: 'yalnız yetkili hesaplar görmeli');
     for (final stillVisible in ['users', 'rabbitmq', 'ai-logs', 'settings']) {
       expect(nav(stillVisible), findsOneWidget);
     }

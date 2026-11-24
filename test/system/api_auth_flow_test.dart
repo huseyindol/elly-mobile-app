@@ -311,9 +311,9 @@ void main() {
     );
 
     final failures = <String, http.Response Function()>{
+      'refresh 400': () => json({'message': 'Refresh token not found'}, 400),
       'refresh 401': () => json({'message': 'Invalid refresh token'}, 401),
       'refresh 403': () => json({'message': 'x'}, 403),
-      'refresh 500': () => http.Response('', 500),
       'refresh 200 ama result:false (token yok)': () =>
           json({'result': false}, 200),
       'refresh 200 token boş': () => json({
@@ -359,21 +359,98 @@ void main() {
       },
     );
 
-    test(
-      'refresh ağ hatası (istisna) da oturumu bitirir; istisna dışarı sızmaz',
-      () async {
+    group('geçici ağ / 5xx hatası: oturum DÜŞMEZ, tokenlar korunur', () {
+      for (final code in [408, 429, 500, 502, 503]) {
+        test('refresh HTTP $code → onSessionExpired çağrılmaz, 503 döner, tokenlar silinmez', () async {
+          respond = (req) => req.url.path.endsWith('/auth/refresh')
+              ? http.Response('', code)
+              : json({'message': 'x'}, 401);
+          await expectLater(
+            api.get('/users/me'),
+            throwsA(isA<ApiException>().having((e) => e.statusCode, 'statusCode', 503)),
+          );
+          expect(expired, 0);
+          final storage = const FlutterSecureStorage();
+          expect(await storage.read(key: 'accessToken'), 'a1');
+          expect(await storage.read(key: 'refreshToken'), 'r1');
+        });
+      }
+
+      test('refresh ağ hatası (istisna) → onSessionExpired çağrılmaz, tokenlar korunur', () async {
         final failing = ApiService(
           client: MockClient((req) async {
             sent.add(req);
-            if (req.url.path.endsWith('/auth/refresh'))
+            if (req.url.path.endsWith('/auth/refresh')) {
               throw http.ClientException('bağlantı koptu');
+            }
             return http.Response('', 401);
           }),
         );
-        await expectLater(failing.get('/users/me'), sessionEnded());
+        await expectLater(
+          failing.get('/users/me'),
+          throwsA(isA<ApiException>().having((e) => e.statusCode, 'statusCode', 503)),
+        );
+        expect(expired, 0);
+        final storage = const FlutterSecureStorage();
+        expect(await storage.read(key: 'accessToken'), 'a1');
+        expect(await storage.read(key: 'refreshToken'), 'r1');
+      });
+    });
+
+    group('ensureFreshToken: proaktif sessiz yenileme', () {
+      test('tokenExpiresAt geçmişteyse tek refresh atar ve yeni tokenExpiresAt yazar', () async {
+        final expiredAt = DateTime.now().millisecondsSinceEpoch - 60_000;
+        final nextExp = DateTime.now().millisecondsSinceEpoch + 1_800_000;
+        FlutterSecureStorage.setMockInitialValues({
+          'accessToken': 'a1',
+          'refreshToken': 'r1',
+          'tenantId': 't1',
+          'tokenExpiresAt': '$expiredAt',
+        });
+        respond = (_) => json({
+          'result': true,
+          'data': {'token': 'a2', 'refreshToken': 'r2', 'expiredDate': nextExp},
+        }, 200);
+
+        await api.ensureFreshToken();
+        expect(to('/auth/refresh'), hasLength(1));
+        expect(expired, 0);
+        final storage = const FlutterSecureStorage();
+        expect(await storage.read(key: 'accessToken'), 'a2');
+        expect(await storage.read(key: 'refreshToken'), 'r2');
+        expect(await storage.read(key: 'tokenExpiresAt'), '$nextExp');
+      });
+
+      test('tokenExpiresAt yeterince gelecekteyse refresh atmaz', () async {
+        final futureExp = DateTime.now().millisecondsSinceEpoch + 600_000;
+        FlutterSecureStorage.setMockInitialValues({
+          'accessToken': 'a1',
+          'refreshToken': 'r1',
+          'tenantId': 't1',
+          'tokenExpiresAt': '$futureExp',
+        });
+        await api.ensureFreshToken();
+        expect(sent, isEmpty);
+        expect(expired, 0);
+      });
+
+      test('ensureFreshToken geçici ağ hatasında oturumu kapatmaz; 401 de kapatır', () async {
+        final expiredAt = DateTime.now().millisecondsSinceEpoch - 60_000;
+        FlutterSecureStorage.setMockInitialValues({
+          'accessToken': 'a1',
+          'refreshToken': 'r1',
+          'tenantId': 't1',
+          'tokenExpiresAt': '$expiredAt',
+        });
+        respond = (_) => http.Response('', 503);
+        await api.ensureFreshToken();
+        expect(expired, 0);
+
+        respond = (_) => json({'message': 'revoked'}, 401);
+        await api.ensureFreshToken();
         expect(expired, 1);
-      },
-    );
+      });
+    });
 
     test('yenilenen token ile tekrar da 401 olursa: tek tekrar, döngü yok, oturum düşmez, backend mesajı', () async {
       respond = (req) => req.url.path.endsWith('/auth/refresh')
@@ -464,6 +541,31 @@ void main() {
       expect(provider.isAuthenticated, isTrue);
       expect(provider.profile, isNotNull);
       expect(await const FlutterSecureStorage().read(key: 'accessToken'), 'a2');
+    });
+
+    test('geçici 5xx sırasında AuthProvider oturumu kapatmaz ve tokenları korur', () async {
+      respond = (req) {
+        if (req.url.path.endsWith('/users/me/permissions')) {
+          return json({
+            'result': true,
+            'data': {'permissions': ['users:manage'], 'roles': ['ADMIN']},
+          }, 200);
+        }
+        if (req.url.path.endsWith('/users/me')) {
+          return json({'result': true, 'data': {'id': 1, 'username': 'huseyindol'}}, 200);
+        }
+        if (req.url.path.endsWith('/auth/refresh')) {
+          return http.Response('', 503);
+        }
+        return http.Response('', 401);
+      };
+      await provider.checkAuthStatus();
+      expect(provider.isAuthenticated, isTrue);
+      await expectLater(api.get('/posts/list'), throwsA(isA<ApiException>()));
+      await Future<void>.delayed(Duration.zero);
+      expect(provider.isAuthenticated, isTrue);
+      expect(await const FlutterSecureStorage().read(key: 'accessToken'), 'a1');
+      expect(await const FlutterSecureStorage().read(key: 'refreshToken'), 'r1');
     });
 
     test('refresh başarısızsa oturum gerçekten kapanır: depo temiz, profil/izin/rol sıfır', () async {

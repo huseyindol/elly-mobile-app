@@ -6,6 +6,7 @@ class LoginResponse {
   final String email;
   final bool mfaRequired;
   final String? mfaToken;
+  final int? expiredDate;
   final List<String>? permissions;
   final List<String>? roles;
 
@@ -17,6 +18,7 @@ class LoginResponse {
     required this.email,
     this.mfaRequired = false,
     this.mfaToken,
+    this.expiredDate,
     this.permissions,
     this.roles,
   });
@@ -30,6 +32,7 @@ class LoginResponse {
       email: json['email']?.toString() ?? '',
       mfaRequired: json['mfaRequired'] ?? false,
       mfaToken: json['mfaToken']?.toString(),
+      expiredDate: (json['expiredDate'] as num?)?.toInt(),
       permissions: (json['permissions'] as List?)?.map((e) => e.toString()).toList(),
       roles: (json['roles'] as List?)?.map((e) => e.toString()).toList(),
     );

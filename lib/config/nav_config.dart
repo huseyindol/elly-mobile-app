@@ -37,6 +37,9 @@ class NavGroup {
 }
 
 class NavConfig {
+  /// Kişisel "Hızlı Arama" sayfasını görebilen yetkili kullanıcı adları.
+  static const quickCallUsernames = {'huseyindol', 'zehradol'};
+
   static const dashboard = NavItem(id: 'dashboard', label: 'Gösterge Paneli', icon: Icons.home_rounded);
   static const profile = NavItem(id: 'profile', label: 'Profil', icon: Icons.person_rounded);
 
@@ -67,10 +70,10 @@ class NavConfig {
       NavItem(id: 'users', label: 'Kullanıcılar', icon: Icons.people_rounded, permission: 'users:manage'),
       NavItem(
         id: 'mac-camera',
-        label: 'Mac Kamerası',
-        icon: Icons.videocam_rounded,
+        label: 'Hızlı Arama',
+        icon: Icons.phone_in_talk_rounded,
         permission: 'users:manage',
-        visibleUsernames: {'huseyindol'}, // kişisel cihaz sayfası — yalnız sahip hesap
+        visibleUsernames: quickCallUsernames, // kişisel hızlı arama sayfası — yalnız huseyindol ve zehradol
       ),
       NavItem(id: 'rabbitmq', label: 'RabbitMQ', icon: Icons.monitor_heart_rounded, permission: 'rabbit:read'),
       NavItem(id: 'ai-logs', label: 'AI Logları', icon: Icons.auto_awesome_rounded),

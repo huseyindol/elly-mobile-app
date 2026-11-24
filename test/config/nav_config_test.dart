@@ -30,8 +30,8 @@ const _adminSidebar = <String, List<(String, String, String?)>>{
   ],
   'Sistem': [
     ('users', 'Kullanıcılar', 'users:manage'),
-    // Mobil'e özel (admin kenar çubuğunda yok): elly-mac-agent kamera görüntüleyici
-    ('mac-camera', 'Mac Kamerası', 'users:manage'),
+    // Mobil'e özel (admin kenar çubuğunda yok): kişisel hızlı arama
+    ('mac-camera', 'Hızlı Arama', 'users:manage'),
     ('rabbitmq', 'RabbitMQ', 'rabbit:read'),
     ('ai-logs', 'AI Logları', null),
     ('settings', 'Ayarlar', null),
@@ -164,7 +164,10 @@ void main() {
       expect(shown.ids, ['dashboard', 'users', 'mac-camera', 'ai-logs', 'settings']);
     });
 
-    test('Mac Kamerası is user-specific: another users:manage admin and an unknown username do not see it', () async {
+    test('Hızlı Arama is user-specific: huseyindol and zehradol see it; another admin and unknown do not', () async {
+      final zehra = await visibleFor(['users:manage'], username: 'zehradol');
+      expect(zehra.ids, ['dashboard', 'users', 'mac-camera', 'ai-logs', 'settings']);
+
       final other = await visibleFor(['users:manage'], username: 'ilker');
       expect(other.ids, ['dashboard', 'users', 'ai-logs', 'settings']);
 

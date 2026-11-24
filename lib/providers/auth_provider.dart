@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -10,7 +12,7 @@ class AuthProvider with ChangeNotifier {
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
   AuthProvider({ApiService? apiService}) : _apiService = apiService ?? ApiService() {
-    ApiService.onSessionExpired = logout;
+    ApiService.onSessionExpired = () => logout(revokeRemote: false);
   }
 
   bool _isLoading = false;
@@ -32,6 +34,8 @@ class AuthProvider with ChangeNotifier {
   Map<String, dynamic>? _profile;
 
   String? _tenantId;
+  String? _cachedUsername;
+  int? _cachedUserId;
 
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _isAuthenticated;
@@ -57,16 +61,17 @@ class AuthProvider with ChangeNotifier {
   /// (an unknown id cannot tell the own row; no roles = level 1).
   bool get identityKnown => userId != null && _roles.isNotEmpty;
 
-  /// Signed-in user's id (self-action guards); from the profile, else the login response.
-  int? get userId => (_profile?['id'] as num?)?.toInt() ?? int.tryParse(_currentUser?.userId ?? '');
+  /// Signed-in user's id (self-action guards); from the profile, else the login response or persisted cache.
+  int? get userId => (_profile?['id'] as num?)?.toInt() ?? int.tryParse(_currentUser?.userId ?? '') ?? _cachedUserId;
 
-  /// Signed-in user's username; from the profile, else the login response; null while
-  /// unknown (user-specific items like Mac Kamerası stay hidden — fail-closed).
+  /// Signed-in user's username; from the profile, else the login response or persisted cache; null while
+  /// unknown (user-specific items stay hidden — fail-closed).
   String? get username {
     final fromProfile = _profile?['username']?.toString();
     if (fromProfile != null && fromProfile.isNotEmpty) return fromProfile;
     final fromLogin = _currentUser?.username;
-    return (fromLogin != null && fromLogin.isNotEmpty) ? fromLogin : null;
+    if (fromLogin != null && fromLogin.isNotEmpty) return fromLogin;
+    return (_cachedUsername != null && _cachedUsername!.isNotEmpty) ? _cachedUsername : null;
   }
 
   /// Tenant of the signed-in session (`tenant1`); null when signed out. User ids are numbered per tenant
@@ -77,7 +82,7 @@ class AuthProvider with ChangeNotifier {
   /// Drawer / dashboard name: "Ad Soyad" (admin sidebar), else the username; '' while unknown.
   String get displayName {
     final name = displayNameOf(_profile);
-    return name.isNotEmpty ? name : (_currentUser?.username ?? '');
+    return name.isNotEmpty ? name : (_currentUser?.username ?? _cachedUsername ?? '');
   }
 
   /// GET /users/me. Errors are swallowed (callers that show the profile use [fetchProfile]); the drawer then
@@ -99,6 +104,16 @@ class AuthProvider with ChangeNotifier {
   void setProfile(Map<String, dynamic> profile) {
     if (!_isAuthenticated) return; // a late response after logout must not resurrect the old user
     _profile = profile;
+    final uname = profile['username']?.toString();
+    if (uname != null && uname.isNotEmpty) {
+      _cachedUsername = uname;
+      unawaited(_secureStorage.write(key: 'cachedUsername', value: uname));
+    }
+    final uid = (profile['id'] as num?)?.toInt();
+    if (uid != null) {
+      _cachedUserId = uid;
+      unawaited(_secureStorage.write(key: 'cachedUserId', value: '$uid'));
+    }
     notifyListeners();
   }
 
@@ -126,8 +141,13 @@ class AuthProvider with ChangeNotifier {
     final token = await _secureStorage.read(key: 'accessToken');
     if (token != null) {
       _tenantId = await _secureStorage.read(key: 'tenantId');
+      _cachedUsername = await _secureStorage.read(key: 'cachedUsername');
+      final rawUid = await _secureStorage.read(key: 'cachedUserId');
+      _cachedUserId = rawUid != null ? int.tryParse(rawUid) : null;
       _isAuthenticated = true;
       notifyListeners();
+      await _apiService.ensureFreshToken();
+      if (!_isAuthenticated) return;
       await Future.wait([loadPermissions(), loadProfile()]);
     }
     notifyListeners();
@@ -203,6 +223,18 @@ class AuthProvider with ChangeNotifier {
       await _secureStorage.write(key: 'accessToken', value: user.token);
       await _secureStorage.write(key: 'refreshToken', value: user.refreshToken);
       await _secureStorage.write(key: 'tenantId', value: tenantId);
+      if (user.expiredDate != null) {
+        await _secureStorage.write(key: 'tokenExpiresAt', value: '${user.expiredDate}');
+      }
+      if (user.username.isNotEmpty) {
+        _cachedUsername = user.username;
+        await _secureStorage.write(key: 'cachedUsername', value: user.username);
+      }
+      final parsedId = int.tryParse(user.userId);
+      if (parsedId != null) {
+        _cachedUserId = parsedId;
+        await _secureStorage.write(key: 'cachedUserId', value: '$parsedId');
+      }
 
       _mfaToken = null;
       _mfaTenantId = null;
@@ -224,11 +256,21 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  Future<void> logout() async {
+  Future<void> logout({bool revokeRemote = true}) async {
+    String? accessToken;
+    String? refreshToken;
+    String? tenantId;
+    if (revokeRemote) {
+      accessToken = await _secureStorage.read(key: 'accessToken');
+      refreshToken = await _secureStorage.read(key: 'refreshToken');
+      tenantId = _tenantId ?? await _secureStorage.read(key: 'tenantId');
+    }
     await _secureStorage.deleteAll();
     _isAuthenticated = false;
     _currentUser = null;
     _tenantId = null;
+    _cachedUsername = null;
+    _cachedUserId = null;
     _mfaToken = null;
     _mfaTenantId = null;
     _permissions = null;
@@ -236,5 +278,14 @@ class AuthProvider with ChangeNotifier {
     _permissionsError = null;
     _profile = null;
     notifyListeners();
+    if (revokeRemote && accessToken != null && accessToken.isNotEmpty) {
+      unawaited(
+        _apiService.revokeSession(
+          accessToken: accessToken,
+          refreshToken: refreshToken,
+          tenantId: tenantId,
+        ),
+      );
+    }
   }
 }

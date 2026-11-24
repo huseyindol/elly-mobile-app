@@ -112,7 +112,10 @@ class RealtimeService extends ChangeNotifier {
     Future<void> Function()? checkSession,
     Random? random,
   ) : _connector = connector ?? stompClientConnector,
-      _readToken = readToken ?? (() => api.secureStorage.read(key: 'accessToken')),
+      _readToken = readToken ?? (() async {
+        await api.ensureFreshToken();
+        return api.secureStorage.read(key: 'accessToken');
+      }),
       _checkSession = checkSession ?? (() => api.get('/notifications/unread-count')),
       _random = random ?? Random();
 

@@ -14,6 +14,10 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
+/// Token yenileme sonucu: yalnız sunucu geçersiz/iptal derse ([sessionInvalid]) oturum kapatılır;
+/// ağ veya 5xx hatalarında ([transientError]) kayıtlı token'lar korunur.
+enum RefreshResult { refreshed, sessionInvalid, transientError }
+
 /// A file part for multipart requests.
 class UploadFile {
   final String field;
@@ -37,7 +41,7 @@ class ApiService {
   ApiService({http.Client? client}) : _client = client ?? http.Client();
 
   // Concurrent 401s share one refresh call.
-  static Future<bool>? _refreshing;
+  static Future<RefreshResult>? _refreshing;
 
   Future<Map<String, String>> _getHeaders({String? overrideTenantId, bool json = true, bool auth = true}) async {
     // An expired bearer makes the backend JWT filter reject even /auth/refresh with 401.
@@ -119,41 +123,101 @@ class ApiService {
   Future<dynamic> _send(Future<http.Response> Function() request, String endpoint) async {
     var response = await request();
     if (response.statusCode == 401 && !isPublicAuthEndpoint(endpoint)) {
-      if (await _refreshSession()) {
-        response = await request();
-      } else {
-        onSessionExpired?.call();
-        throw ApiException('Oturum süresi doldu, lütfen tekrar giriş yapın.', statusCode: 401);
+      switch (await _refreshSession()) {
+        case RefreshResult.refreshed:
+          response = await request();
+        case RefreshResult.sessionInvalid:
+          onSessionExpired?.call();
+          throw ApiException('Oturum süresi doldu, lütfen tekrar giriş yapın.', statusCode: 401);
+        case RefreshResult.transientError:
+          throw ApiException('Bağlantı sorunu nedeniyle oturum doğrulanamadı. Lütfen tekrar deneyin.', statusCode: 503);
       }
     }
     return _handleResponse(response);
   }
 
-  Future<bool> _refreshSession() {
+  /// Access token süresi dolmuş veya [leeway] içinde dolacaksa tek bir refresh çağrısıyla tazeler.
+  /// `tokenExpiresAt` kayıtlı değilse (eski kurulum/testler) dokunmaz; ilk 401 normal yoldan yeniler.
+  Future<void> ensureFreshToken({Duration leeway = const Duration(minutes: 2)}) async {
+    final rawExp = await secureStorage.read(key: 'tokenExpiresAt');
+    if (rawExp == null) return;
+    final expMs = int.tryParse(rawExp);
+    if (expMs == null) return;
+    if (DateTime.now().millisecondsSinceEpoch + leeway.inMilliseconds < expMs) return;
+    final res = await _refreshSession();
+    if (res == RefreshResult.sessionInvalid) {
+      onSessionExpired?.call();
+    }
+  }
+
+  /// Best-effort tekil cihaz çıkışı: yerel depo silinmiş olsa bile eldeki [accessToken] ile
+  /// backend'den yalnız [refreshToken]'ı iptal eder; 401/ağ hatalarını yoksayar.
+  Future<void> revokeSession({
+    required String accessToken,
+    String? refreshToken,
+    String? tenantId,
+  }) async {
+    try {
+      await _client.post(
+        _uri('/auth/logout'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+          if (tenantId != null) 'X-Tenant-Id': tenantId,
+        },
+        body: jsonEncode({
+          if (refreshToken != null && refreshToken.isNotEmpty) 'refreshToken': refreshToken,
+        }),
+      );
+    } catch (_) {}
+  }
+
+  Future<RefreshResult> _refreshSession() {
     return _refreshing ??= _doRefresh().whenComplete(() => _refreshing = null);
   }
 
-  Future<bool> _doRefresh() async {
+  Future<RefreshResult> _doRefresh() async {
     final refreshToken = await secureStorage.read(key: 'refreshToken');
-    if (refreshToken == null || refreshToken.isEmpty) return false;
+    if (refreshToken == null || refreshToken.isEmpty) return RefreshResult.sessionInvalid;
+    late final http.Response response;
     try {
-      final response = await _client.post(
+      response = await _client.post(
         _uri('/auth/refresh'),
         headers: await _getHeaders(auth: false),
         body: jsonEncode({'refreshToken': refreshToken}),
       );
-      if (response.statusCode != 200) return false;
-      final data = (jsonDecode(response.body) as Map)['data'] as Map?;
-      final token = data?['token']?.toString();
-      if (token == null || token.isEmpty) return false;
+    } catch (_) {
+      // Ağ / zaman aşımı hatası: sunucu oturumu reddetmedi, token'ları koru.
+      return RefreshResult.transientError;
+    }
+
+    if (response.statusCode == 400 || response.statusCode == 401 || response.statusCode == 403) {
+      return RefreshResult.sessionInvalid;
+    }
+    if (response.statusCode != 200) {
+      return RefreshResult.transientError;
+    }
+
+    try {
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      if (decoded is! Map || decoded['result'] != true) return RefreshResult.sessionInvalid;
+      final data = decoded['data'];
+      if (data is! Map) return RefreshResult.sessionInvalid;
+      final token = data['token']?.toString();
+      if (token == null || token.isEmpty) return RefreshResult.sessionInvalid;
       await secureStorage.write(key: 'accessToken', value: token);
-      final newRefresh = data?['refreshToken']?.toString();
+      final newRefresh = data['refreshToken']?.toString();
       if (newRefresh != null && newRefresh.isNotEmpty) {
         await secureStorage.write(key: 'refreshToken', value: newRefresh);
       }
-      return true;
+      final exp = data['expiredDate'];
+      if (exp is num) {
+        await secureStorage.write(key: 'tokenExpiresAt', value: '${exp.toInt()}');
+      }
+      return RefreshResult.refreshed;
     } catch (_) {
-      return false;
+      return RefreshResult.sessionInvalid;
     }
   }
 

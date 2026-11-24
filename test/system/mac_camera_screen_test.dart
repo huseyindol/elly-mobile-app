@@ -9,7 +9,7 @@ import '../helpers/fake_backend.dart';
 import '../helpers/fake_call_media.dart';
 import '../helpers/fake_realtime.dart';
 
-/// Mac Kamerası sayfası: iki çağrı biçimi ve sahibin dışına kapalı olması.
+/// Hızlı Arama sayfası: iki çağrı biçimi ve huseyindol/zehradol dışına kapalı olması.
 void main() {
   late FakeBackend backend;
   late AuthProvider auth;
@@ -38,6 +38,7 @@ void main() {
     backend.ok('/users', [
       {'id': 4, 'username': 'huseyindol', 'email': 'h@x.com', 'isActive': true},
       {'id': 21, 'username': 'mac-agent', 'email': 'agent@x.com', 'isActive': true},
+      {'id': 23, 'username': 'zehradol', 'firstName': 'Zehra', 'lastName': 'DOL', 'email': 'z@x.com', 'isActive': true},
     ]);
   });
 
@@ -81,13 +82,14 @@ void main() {
   testWidgets('"Görüntülü Konuş": karşılıklı — bu cihazın mikrofonu ve kamerası açılır', (tester) async {
     await pump(tester);
 
+    expect(find.descendant(of: find.byType(AppBar), matching: find.text('Hızlı Arama')), findsOneWidget);
     await tap(tester, 'mac_camera_talk');
 
     expect(calls.media.ops.first, 'open:true', reason: 'standart görüntülü arama: getUserMedia ses + görüntü');
     expect(calls.media.recvOnlyOpen, isFalse);
     expect(calls.sentTo, contains('/app/rtc/call'));
     expect((calls.sent.single[1] as Map)['calleeUserId'], 21, reason: 'önerilen cihaz: mac-agent');
-    expect(calls.provider.peerName, 'Mac Kamerası');
+    expect(calls.provider.peerName, 'Hızlı Arama');
     calls.provider.reset();
     await tester.pump();
   });
@@ -105,7 +107,20 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('sahibin dışındaki hesap: sayfa kapalı, çağrı düğmeleri yok', (tester) async {
+  testWidgets('zehradol hesabı da Hızlı Arama sayfasına erişip çağrı başlatabilir', (tester) async {
+    await pump(tester, who: {...me, 'id': 23, 'username': 'zehradol', 'firstName': 'Zehra', 'lastName': 'DOL'});
+
+    expect(find.text('Bu alan erişiminize kapalı.'), findsNothing);
+    expect(key('mac_camera_talk'), findsOneWidget);
+    expect(key('mac_camera_watch'), findsOneWidget);
+
+    await tap(tester, 'mac_camera_talk');
+    expect((calls.sent.single[1] as Map)['calleeUserId'], 21);
+    calls.provider.reset();
+    await tester.pump();
+  });
+
+  testWidgets('yetkisiz hesap: sayfa kapalı, çağrı düğmeleri yok', (tester) async {
     await pump(tester, who: {...me, 'id': 13, 'username': 'diger-admin'});
 
     expect(find.text('Bu alan erişiminize kapalı.'), findsOneWidget);
