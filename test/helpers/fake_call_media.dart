@@ -86,6 +86,9 @@ class FakeCallMedia implements CallMedia {
   bool get hasVideo => opened && videoOpen && !closed;
 
   @override
+  bool get hasAudio => opened && !recvOnlyOpen && !closed;
+
+  @override
   bool get hasRemoteVideo => remoteVideo;
 
   @override

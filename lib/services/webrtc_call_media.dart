@@ -47,6 +47,9 @@ class WebrtcCallMedia implements CallMedia {
   bool get hasVideo => _local?.getVideoTracks().isNotEmpty ?? false;
 
   @override
+  bool get hasAudio => _local?.getAudioTracks().isNotEmpty ?? false;
+
+  @override
   bool get hasRemoteVideo => _remote?.getVideoTracks().isNotEmpty ?? false;
 
   @override

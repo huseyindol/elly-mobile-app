@@ -100,6 +100,9 @@ void main() {
       expect(key('edit_1'), findsOneWidget);
       expect(key('delete_1'), findsNothing);
       expect(key('status_1'), findsNothing);
+      // Direkt mesaj ve arama numarayı ister: her satırda kullanıcı numarası görünür.
+      expect(find.descendant(of: key('user_1'), matching: find.text('@ben · ID 1')), findsOneWidget);
+      expect(find.descendant(of: key('user_2'), matching: find.text('@patron · ID 2')), findsOneWidget);
     });
 
     testWidgets('ADMIN: a SUPER_ADMIN row is locked (no edit/status/delete), lower rows are manageable', (

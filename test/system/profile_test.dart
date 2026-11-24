@@ -103,6 +103,9 @@ void main() {
       expect(find.text('h@x.com'), findsOneWidget);
       expect(find.text('E-posta / Şifre'), findsOneWidget);
       expect(find.text('04.03.2025'), findsOneWidget);
+      // Direkt mesaj ve arama bu numarayı ister (chat → "Direkt mesaj başlat").
+      expect(find.text('Kullanıcı No'), findsOneWidget);
+      expect(find.text('7'), findsOneWidget);
       expect(find.text('Yazılar'), findsOneWidget);
       expect(find.text('Sayfalar'), findsOneWidget);
       expect(find.text('İzinler (3)'), findsOneWidget);

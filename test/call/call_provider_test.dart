@@ -77,6 +77,18 @@ void main() {
       expect(calls.provider.micOn, isFalse);
     });
 
+    test('izleme + dinleme: ses hoparlörden başlar; yerel mikrofon yok, mikrofon anahtarı boş döner', () async {
+      await started();
+      await calls.provider.call(9, 'Mac Kamerası', video: false, recvOnly: true);
+      await pumpEvents();
+
+      expect(calls.provider.hasLocalAudio, isFalse, reason: 'yalnız izlemede mikrofon açılmaz');
+      expect(calls.provider.speakerOn, isTrue, reason: 'ekrana bakılır, kulaklığa tutulmaz');
+      expect(calls.media.speaker, isTrue);
+      calls.provider.toggleMic();
+      expect(calls.media.mic, isNull, reason: 'açık mikrofon yok: anahtar medyaya hiç gitmez');
+    });
+
     test('ANSWERED sonrası offer gider; cevap uygulanır; sonlandırmada kaynak sızmadı', () async {
       await started();
       await calls.provider.call(9, 'Mac Kamerası', video: false, recvOnly: true);
@@ -481,6 +493,7 @@ void main() {
       await started();
       await outgoingAnswered(video: true);
       final p = calls.provider;
+      expect(p.hasLocalAudio, isTrue, reason: 'görüntülü arama: mikrofon açık');
       p.toggleMic();
       expect((p.micOn, calls.media.mic), (false, false));
       p.toggleCamera();

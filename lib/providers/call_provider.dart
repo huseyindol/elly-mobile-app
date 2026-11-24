@@ -159,6 +159,9 @@ class CallProvider extends ChangeNotifier {
   CallMedia? get media => _mediaReady ? _media : null;
   bool get hasLocalVideo => _mediaReady && (_media?.hasVideo ?? false);
   bool get hasRemoteVideo => _mediaReady && (_media?.hasRemoteVideo ?? false);
+
+  /// The microphone is open (false when only watching: there is no mic to switch).
+  bool get hasLocalAudio => _mediaReady && (_media?.hasAudio ?? false);
   bool get micOn => _micOn;
   bool get camOn => _camOn;
   bool get speakerOn => _speakerOn;
@@ -268,7 +271,7 @@ class CallProvider extends ChangeNotifier {
 
   /// Calls panel user [userId] ([groupId]: the chat group it was started from — members skip the role hierarchy).
   ///
-  /// [recvOnly]: watches the peer without opening this device's microphone/camera (Mac camera page).
+  /// [recvOnly]: watches and hears the peer without opening this device's microphone/camera (Mac camera page).
   Future<void> call(int userId, String name, {String? groupId, required bool video, bool recvOnly = false}) async {
     if (_userId == null || userId == _userId) return;
     if (!realtime.connected) {
@@ -317,7 +320,7 @@ class CallProvider extends ChangeNotifier {
 
   void toggleMic() {
     final m = media;
-    if (m == null) return;
+    if (m == null || !m.hasAudio) return; // only watching: nothing to switch
     _micOn = !_micOn;
     m.setMic(_micOn);
     notifyListeners();
@@ -544,7 +547,9 @@ class CallProvider extends ChangeNotifier {
     _mediaReady = true;
     _micOn = !recvOnly; // yalnız izlemede mikrofon yok
     _camOn = media.hasVideo;
-    _speakerOn = media.hasVideo; // video calls on the loudspeaker, voice calls on the earpiece
+    // Video calls and watching a camera use the loudspeaker (the screen is looked at, not held to the ear);
+    // voice calls use the earpiece.
+    _speakerOn = media.hasVideo || recvOnly;
     unawaited(media.setSpeaker(_speakerOn).catchError((_) {}));
     if (fallback != null) _notify(CallNotice(fallback));
     notifyListeners();

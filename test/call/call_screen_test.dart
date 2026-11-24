@@ -176,6 +176,29 @@ void main() {
     await finish(tester);
   });
 
+  testWidgets('yalnız izleme (Mac Kamerası): mikrofon düğmesi yok — açılacak mikrofon yok; hoparlör açık', (tester) async {
+    final handle = tester.ensureSemantics();
+    await pumpApp(tester);
+    await calls.provider.call(9, 'Mac Kamerası', video: false, recvOnly: true);
+    await settle(tester);
+    await signal(tester, {'type': 'RINGING', 'callId': c1, 'peerUserId': 9, 'peerDisplayName': 'Mac Kamerası'});
+    await signal(tester, {'type': 'ANSWERED', 'callId': c1, 'peerUserId': 9, 'peerDisplayName': 'Mac Kamerası'});
+    calls.media.onState!(PeerState.connected);
+    await settle(tester);
+
+    expect(status('Görüşmede'), findsOneWidget);
+    expect(calls.media.ops.first, 'open:false:recvonly');
+    expect(find.byKey(const ValueKey('call_mic')), findsNothing);
+    expect(find.byKey(const ValueKey('call_camera')), findsNothing);
+    expect(find.bySemanticsLabel('Hoparlörü kapat'), findsOneWidget, reason: 'izleme sesi hoparlörden');
+
+    await tapCall(tester, 'call_hangup');
+    expect(calls.sentTo.last, '/app/rtc/$c1/hangup');
+    expect(calls.leaks, isEmpty);
+    handle.dispose();
+    await finish(tester);
+  });
+
   testWidgets('video: own preview, remote video when it arrives, camera off hides the preview', (tester) async {
     await pumpApp(tester);
     await incoming(tester);

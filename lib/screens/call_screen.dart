@@ -246,13 +246,15 @@ class _CallScreenState extends State<CallScreen> {
         ),
       ],
       CallPhase.connecting || CallPhase.active => [
-        _CallButton(
-          key: const ValueKey('call_mic'),
-          icon: call.micOn ? Icons.mic_rounded : Icons.mic_off_rounded,
-          label: call.micOn ? 'Mikrofonu kapat' : 'Mikrofonu aç',
-          colors: call.micOn ? neutral : off,
-          onPressed: ready ? call.toggleMic : null,
-        ),
+        // Only watching (Mac camera): there is no microphone to switch, so no mic button.
+        if (call.hasLocalAudio)
+          _CallButton(
+            key: const ValueKey('call_mic'),
+            icon: call.micOn ? Icons.mic_rounded : Icons.mic_off_rounded,
+            label: call.micOn ? 'Mikrofonu kapat' : 'Mikrofonu aç',
+            colors: call.micOn ? neutral : off,
+            onPressed: ready ? call.toggleMic : null,
+          ),
         if (call.hasLocalVideo) ...[
           _CallButton(
             key: const ValueKey('call_camera'),

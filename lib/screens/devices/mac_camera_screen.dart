@@ -8,13 +8,19 @@ import '../../services/api_service.dart';
 import '../../services/call_machine.dart';
 import '../../widgets/app_snack_bar.dart';
 
-/// Mac kamerası: elly-mac-agent kullanıcıını recvonly arar — ajan otomatik cevaplar,
-/// görüntü tam ekran çağrı ekranına düşer (AuthWrapper._onCall). `Sonlandır` = kamera kapar.
+/// Mac kamerası: elly-mac-agent kullanıcısı aranır — ajan otomatik cevaplar, bağlantı tam ekran çağrı
+/// ekranına düşer (AuthWrapper._onCall). İki biçim:
+/// - **Görüntülü Konuş**: karşılıklı — bu telefonun kamerası ve mikrofonu da açılır, Mac'in ekranında
+///   görüntünüz belirir, ses iki yönde akar (`Sonlandır` = iki tarafta da kamera/mikrofon kapanır).
+/// - **İzle ve Dinle**: bu telefondan hiçbir şey gönderilmez; Mac'in kamerası ve mikrofonu izlenir.
 ///
 /// Hedef kullanıcı `GET /users?audience=panel` listesinden seçilir (kullanıcı adı
 /// `mac-agent` barındıran otomatik önerilir); seçim `SharedPreferences`ta kalıcı.
 class MacCameraScreen extends StatefulWidget {
-  const MacCameraScreen({super.key});
+  const MacCameraScreen({super.key, this.apiService});
+
+  /// Testlerde sahte backend; verilmezse gerçek istemci.
+  final ApiService? apiService;
 
   @override
   State<MacCameraScreen> createState() => _MacCameraScreenState();
@@ -23,7 +29,7 @@ class MacCameraScreen extends StatefulWidget {
 class _MacCameraScreenState extends State<MacCameraScreen> {
   static const _prefKey = 'mac_camera_target';
 
-  final _api = ApiService();
+  late final _api = widget.apiService ?? ApiService();
   List<Map<String, dynamic>> _users = [];
   Map<String, dynamic>? _target;
   bool _loading = true;
@@ -70,7 +76,8 @@ class _MacCameraScreenState extends State<MacCameraScreen> {
     }
   }
 
-  void _start() {
+  /// [talk]: karşılıklı görüşme (bu cihazın kamerası + mikrofonu); yoksa yalnız izle ve dinle.
+  void _start({required bool talk}) {
     final target = _target;
     if (target == null) {
       showAppSnackBar(context, 'Önce bir cihaz kullanıcısı seçin.', error: true);
@@ -81,12 +88,13 @@ class _MacCameraScreenState extends State<MacCameraScreen> {
       showAppSnackBar(context, 'Kendi hesabınızı arayamazsınız.', error: true);
       return;
     }
-    // video: false + recvOnly: bu telefonun kamerası/mikrofonu hiç açılmaz.
+    // talk: video true → mikrofon + kamera açılır, standart görüntülü arama ekranı.
+    // izle: video false + recvOnly → bu telefondan ses/görüntü gönderilmez.
     context.read<CallProvider>().call(
           target['id'] as int,
           'Mac Kamerası',
-          video: false,
-          recvOnly: true,
+          video: talk,
+          recvOnly: !talk,
         );
   }
 
@@ -114,6 +122,7 @@ class _MacCameraScreenState extends State<MacCameraScreen> {
       );
     }
 
+    final muted = TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.7));
     return Scaffold(
       appBar: AppBar(title: const Text('Mac Kamerası')),
       body: RefreshIndicator(
@@ -130,8 +139,8 @@ class _MacCameraScreenState extends State<MacCameraScreen> {
                     Icon(Icons.videocam_rounded, size: 48, color: theme.colorScheme.primary),
                     const SizedBox(height: 8),
                     Text(
-                      'Mac\'inizin kamerasını uzaktan açın ve izleyin. Ajan yalnız sizin '
-                      'hesabınızdan gelen çağrıları yanıtlar; oturum sonunda kamera kapanır.',
+                      'Mac\'inizin kamerasını ve mikrofonunu uzaktan açın. Ajan yalnız sizin '
+                      'hesabınızdan gelen çağrıları yanıtlar; görüşme sonunda kamera ve mikrofon kapanır.',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodySmall,
                     ),
@@ -164,14 +173,34 @@ class _MacCameraScreenState extends State<MacCameraScreen> {
                       onChanged: _pick,
                       menuMaxHeight: 320,
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     FilledButton.icon(
-                      onPressed: inCall ? null : _start,
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      icon: const Icon(Icons.play_arrow_rounded),
-                      label: const Text('Yayını Aç'),
+                      key: const ValueKey('mac_camera_talk'),
+                      onPressed: inCall ? null : () => _start(talk: true),
+                      style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+                      icon: const Icon(Icons.videocam_rounded),
+                      label: const Text('Görüntülü Konuş'),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Karşılıklı: bu telefonun kamerası ve mikrofonu da açılır, Mac\'in ekranında görüntünüz '
+                      'görünür.',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall?.copyWith(color: muted.color),
+                    ),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      key: const ValueKey('mac_camera_watch'),
+                      onPressed: inCall ? null : () => _start(talk: false),
+                      style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+                      icon: const Icon(Icons.visibility_rounded),
+                      label: const Text('İzle ve Dinle'),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Bu telefondan ses ya da görüntü gönderilmez; Mac\'in kamerası ve mikrofonu dinlenir.',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall?.copyWith(color: muted.color),
                     ),
                     ],
                   ],
@@ -183,7 +212,7 @@ class _MacCameraScreenState extends State<MacCameraScreen> {
               Card(
                 child: ListTile(
                   leading: const Icon(Icons.phone_in_talk_rounded),
-                  title: Text('Yayın sürüyor: ${call.peerName}'),
+                  title: Text('Bağlantı sürüyor: ${call.peerName}'),
                   subtitle: Text(call.phase == CallPhase.active ? 'Bağlandı' : 'Bağlanıyor…'),
                   trailing: OutlinedButton(
                     onPressed: () => context.read<CallProvider>().end(),

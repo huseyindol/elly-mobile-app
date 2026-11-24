@@ -192,6 +192,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _row('Kullanıcı Adı', profile['username']),
             ]),
             _section('Hesap Bilgileri', Icons.settings_outlined, [
+              // Direkt mesaj ve arama bu numarayı ister (chat → "Direkt mesaj başlat").
+              _row('Kullanıcı No', profile['id']),
               _row('Giriş Yöntemi', local ? 'E-posta / Şifre' : profile['provider']),
               _row('Kayıt Tarihi', formatDateTimeTr(profile['createdAt']).split(' ').first),
             ]),

@@ -147,7 +147,8 @@ class _UsersScreenState extends State<UsersScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(displayNameOf(user), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
-          Text('@$username', style: muted),
+          // Numara görünür: direkt mesaj ve arama bu numarayı ister (sohbet üyeleriyle aynı biçim).
+          Text('@$username · ID $id', key: ValueKey('user_id_$id'), style: muted),
           Text('${user['email'] ?? ''}', style: muted),
           const SizedBox(height: 8),
           Wrap(
